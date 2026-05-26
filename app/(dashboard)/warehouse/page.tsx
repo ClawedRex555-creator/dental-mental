@@ -1,0 +1,126 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Pencil, Plus, Search } from "lucide-react";
+import { ServiceModal } from "@/components/staff/service-modal";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { SERVICE_CATEGORIES } from "@/lib/catalogs";
+import { formatCurrency } from "@/lib/utils";
+import type { Service } from "@/lib/types";
+import { useClinicStore } from "@/store/useClinicStore";
+
+export default function ServicesPage() {
+  const { services } = useClinicStore();
+  const [search, setSearch] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+
+  const q = search.trim().toLowerCase();
+
+  const filteredByCategory = useMemo(() => {
+    return SERVICE_CATEGORIES.map((category) => ({
+      category,
+      items: services.filter((s) => {
+        if (s.category !== category) return false;
+        if (!q) return true;
+        return (
+          s.name.toLowerCase().includes(q) ||
+          s.category.toLowerCase().includes(q)
+        );
+      }),
+    }));
+  }, [services, q]);
+
+  const totalShown = filteredByCategory.reduce((n, g) => n + g.items.length, 0);
+
+  const openAdd = () => {
+    setEditingService(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (service: Service) => {
+    setEditingService(service);
+    setModalOpen(true);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Услуги</h1>
+          <p className="text-sm text-slate-500">Прайс клиники по категориям</p>
+        </div>
+        <Button onClick={openAdd}>
+          <Plus className="h-4 w-4" />
+          Добавить услугу
+        </Button>
+      </div>
+
+      <div className="relative max-w-lg">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Input
+          className="pl-9 text-base"
+          placeholder="Поиск по названию во всех категориях..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {services.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-slate-500">
+            Нет услуг. Добавьте первую — она понадобится в актах и планах лечения.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {filteredByCategory.map(({ category, items }) => {
+            if (items.length === 0 && q) return null;
+            return (
+              <section key={category} className="space-y-3">
+                <h2 className="text-lg font-semibold text-slate-900">{category}</h2>
+                {items.length === 0 ? (
+                  <p className="text-sm text-slate-400">Нет услуг в этой категории</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map((service) => (
+                      <Card key={service.id}>
+                        <CardContent className="flex items-center justify-between gap-2 p-4">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-900">{service.name}</p>
+                            <p className="text-sm text-teal-700">
+                              {formatCurrency(service.price)}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(service)}
+                            title="Редактировать"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+          {q && totalShown === 0 && (
+            <p className="text-center text-sm text-slate-500">Ничего не найдено по запросу «{search}»</p>
+          )}
+        </div>
+      )}
+
+      <ServiceModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        service={editingService}
+      />
+    </div>
+  );
+}
