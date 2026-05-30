@@ -1,0 +1,18 @@
+{
+  email {$ACME_EMAIL}
+}
+
+www.{$APP_ROOT_DOMAIN} {
+  redir https://{$APP_ROOT_DOMAIN}{uri} permanent
+}
+
+{$APP_ROOT_DOMAIN} {
+  encode gzip
+  reverse_proxy app:3000
+}
+
+# Per-clinic subdomains (HTTP-01 cert; add a block for each new clinic slug)
+tstom.{$APP_ROOT_DOMAIN} {
+  encode gzip
+  reverse_proxy app:3000
+}

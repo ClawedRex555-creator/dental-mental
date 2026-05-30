@@ -1,0 +1,146 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Pencil, Plus, Search } from "lucide-react";
+import { TreatmentPlanModal } from "@/components/treatment-plans/treatment-plan-modal";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { TREATMENT_PLAN_STATUS_LABELS, UI } from "@/lib/constants";
+import { formatCurrency, formatDate, getFullName } from "@/lib/utils";
+import { useClinicStore } from "@/store/useClinicStore";
+import type { TreatmentPlan } from "@/lib/types";
+
+export default function TreatmentPlansPage() {
+  const { treatmentPlans, patients, doctors, medicalRecords } = useClinicStore();
+  const [search, setSearch] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<TreatmentPlan | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return treatmentPlans.filter((plan) => {
+      const patient = patients.find((p) => p.id === plan.patientId);
+      const name = patient
+        ? getFullName(patient.firstName, patient.lastName, patient.middleName).toLowerCase()
+        : "";
+      return plan.title.toLowerCase().includes(q) || name.includes(q);
+    });
+  }, [treatmentPlans, patients, search]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Планы лечения</h1>
+          <p className="text-sm text-slate-500">Комплекс услуг с расчётом и скидкой</p>
+        </div>
+        <Button
+          onClick={() => {
+            setEditing(null);
+            setModalOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Добавить план лечения
+        </Button>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Input
+          className="pl-9"
+          placeholder={UI.searchPlans}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {filtered.length === 0 && (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-slate-500">
+            Планов лечения пока нет. Создайте первый план — можно привязать к записи в медкарте.
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {filtered.map((plan) => {
+          const patient = patients.find((p) => p.id === plan.patientId);
+          const doctor = doctors.find((d) => d.id === plan.doctorId);
+          const linkedRecord = plan.medicalRecordId
+            ? medicalRecords.find((r) => r.id === plan.medicalRecordId)
+            : undefined;
+          const discountLabel =
+            (plan.discountType ?? "percent") === "percent"
+              ? `${plan.discount}%`
+              : formatCurrency(plan.discount);
+
+          return (
+            <Card key={plan.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-base">{plan.title}</CardTitle>
+                  <div className="flex gap-1">
+                    <Badge variant="outline">
+                      {TREATMENT_PLAN_STATUS_LABELS[plan.status]}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setEditing(plan);
+                        setModalOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500">
+                  {patient ? (
+                    <Link href={`/patients/${patient.id}`} className="text-teal-700 hover:underline">
+                      {getFullName(patient.firstName, patient.lastName, patient.middleName)}
+                    </Link>
+                  ) : (
+                    "-"
+                  )}{" "}
+                  · {doctor?.name} · {formatDate(plan.createdAt)}
+                </p>
+                {linkedRecord && (
+                  <p className="text-xs text-teal-700">
+                    Медкарта: {linkedRecord.diagnosis.slice(0, 50)}
+                  </p>
+                )}
+              </CardHeader>
+              <CardContent>
+                <p className="text-lg font-bold text-teal-700">
+                  {formatCurrency(plan.finalAmount)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Сумма {formatCurrency(plan.totalAmount)}
+                  {plan.discount > 0 ? ` · скидка ${discountLabel}` : ""}
+                </p>
+                <ul className="mt-3 space-y-1 text-sm text-slate-600">
+                  {plan.items.map((item) => (
+                    <li key={item.id} className="flex justify-between">
+                      <span>
+                        {item.toothNumber ? `#${item.toothNumber} ` : ""}
+                        {item.serviceName}
+                      </span>
+                      <span>{formatCurrency(item.price)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <TreatmentPlanModal open={modalOpen} onOpenChange={setModalOpen} plan={editing} />
+    </div>
+  );
+}

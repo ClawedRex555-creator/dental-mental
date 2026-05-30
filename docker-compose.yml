@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: dentalcloud
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mis -d dentalcloud"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
+    environment:      NODE_ENV: production
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      ENABLE_DEMO_ACCOUNTS: "false"
+      DATABASE_URL: postgresql://mis:${POSTGRES_PASSWORD}@postgres:5432/dentalcloud
+      APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:?set APP_ROOT_DOMAIN in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://127.0.0.1:3000/api/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@${APP_ROOT_DOMAIN}}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  app-data:
+  caddy-data:
+  caddy-config:

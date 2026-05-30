@@ -1,0 +1,41 @@
+# Быстрый запуск для тестов: postgres + app на порту 3000 (без домена и HTTPS)
+# Запуск: docker compose -f docker-compose.quick.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: dentalcloud
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mis -d dentalcloud"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      ENABLE_DEMO_ACCOUNTS: ${ENABLE_DEMO_ACCOUNTS:-false}
+      DATABASE_URL: postgresql://mis:${POSTGRES_PASSWORD}@postgres:5432/dentalcloud
+      APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-localhost}
+      DEFAULT_CLINIC_SLUG: ${DEFAULT_CLINIC_SLUG:-tstom}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  app-data:
