@@ -20,7 +20,8 @@ services:
       context: .
       args:
         APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
-    environment:      NODE_ENV: production
+    environment:
+      NODE_ENV: production
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       ENABLE_DEMO_ACCOUNTS: "false"
       DATABASE_URL: postgresql://mis:${POSTGRES_PASSWORD}@postgres:5432/dentalcloud

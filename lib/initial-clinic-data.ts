@@ -6,6 +6,7 @@ import type {
   ClinicSettings,
   ClinicUser,
   Doctor,
+  DoctorMonthSchedule,
   Invoice,
   LegalDocument,
   MedicalRecord,
@@ -13,6 +14,7 @@ import type {
   Patient,
   PatientFile,
   PatientNote,
+  PatientPrepayment,
   Payment,
   Service,
   Task,
@@ -67,6 +69,8 @@ export function createEmptyClinicData() {
     documentTemplates: [] as ClinicDocumentTemplate[],
     clinicExpenses: [] as ClinicExpense[],
     legalDocuments: [] as LegalDocument[],
+    doctorSchedules: [] as DoctorMonthSchedule[],
+    prepayments: [] as PatientPrepayment[],
   };
 }
 

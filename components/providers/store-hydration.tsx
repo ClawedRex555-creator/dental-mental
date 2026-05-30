@@ -13,8 +13,7 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
     const finish = () => {
       if (typeof window !== "undefined") {
         const hadLegacy = LEGACY_CLINIC_STORAGE_KEYS.some((k) => localStorage.getItem(k));
-        const notWipedYet = !localStorage.getItem(WIPE_DONE_KEY);
-        if (hadLegacy || notWipedYet) {
+        if (hadLegacy) {
           useClinicStore.getState().resetAllData();
           localStorage.setItem(WIPE_DONE_KEY, "1");
         }

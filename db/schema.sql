@@ -24,3 +24,22 @@ CREATE TABLE IF NOT EXISTS auth_users (
 
 CREATE INDEX IF NOT EXISTS idx_auth_users_clinic_login ON auth_users (clinic_id, login);
 CREATE INDEX IF NOT EXISTS idx_clinics_slug ON clinics (slug);
+
+-- Сотрудники клиники (синхронизация между устройствами)
+CREATE TABLE IF NOT EXISTS staff_members (
+  id TEXT NOT NULL,
+  clinic_id UUID NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (clinic_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_staff_members_clinic ON staff_members (clinic_id);
+
+-- Полный снимок данных клиники (синхронизация между устройствами)
+CREATE TABLE IF NOT EXISTS clinic_snapshots (
+  clinic_id UUID PRIMARY KEY REFERENCES clinics(id) ON DELETE CASCADE,
+  data JSONB NOT NULL DEFAULT '{}',
+  version INT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

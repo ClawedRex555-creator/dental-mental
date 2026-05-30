@@ -33,32 +33,21 @@ import type {
   WarehouseItem,
   WorkAct,
 } from "@/lib/types";
-import { CLINIC_STORAGE_KEY, createEmptyClinicData, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import {
+  createFreshPersistedState,
+  pickPersistedState,
+  type ClinicPersistedState,
+} from "@/lib/clinic-persisted-state";
 import {
   clearPersistedClinicData,
   createSafeClinicStorage,
 } from "@/lib/clinic-storage-client";
 import { defaultWeeklySchedule, formatWeeklyScheduleSummary, monthKey } from "@/lib/clinic-schedule";
 import { generateId } from "@/lib/utils";
-import {
-  cabinets as initialCabinets,
-  clinicSettings as initialClinicSettings,
-  doctors as initialDoctors,
-  services as initialServices,
-  initialAppointments,
-  initialInvoices,
-  initialMedicalRecords,
-  initialOnlineBookings,
-  initialPatientFiles,
-  initialPatientNotes,
-  initialPatients,
-  initialPayments,
-  initialTasks,
-  initialTreatmentPlans,
-  initialWarehouse,
-  currentUser,
-  generateDefaultTeeth,
-} from "@/lib/mock-data";
+import { generateDefaultTeeth } from "@/lib/mock-data";
+
+const freshState = createFreshPersistedState();
 
 interface ClinicState {
   currentUser: ClinicUser;
@@ -99,6 +88,7 @@ interface ClinicState {
   toggleSidebar: () => void;
 
   addDoctor: (doctor: Doctor) => void;
+  setDoctors: (doctors: Doctor[]) => void;
   updateDoctor: (id: string, data: Partial<Doctor>) => void;
   removeDoctor: (id: string) => void;
   addCabinet: (cabinet: Cabinet) => void;
@@ -136,6 +126,8 @@ interface ClinicState {
   addPatientNote: (note: PatientNote) => void;
   addPatientFile: (file: PatientFile) => void;
   updateOnlineBooking: (id: string, data: Partial<OnlineBookingRequest>) => void;
+  /** Загрузить данные клиники с сервера (синхронизация между устройствами) */
+  hydratePersistedState: (data: ClinicPersistedState) => void;
   /** Удалить все данные клиники (пациенты, записи, акты, сотрудники и т.д.) */
   resetAllData: () => void;
 }
@@ -151,31 +143,31 @@ export const useClinicStore = create<ClinicState>()(
         status: "inactive",
       },
       currentRole: "assistant",
-      clinicSettings: { ...initialClinicSettings },
-      doctors: initialDoctors,
-      services: initialServices,
-      cabinets: initialCabinets,
-      patients: initialPatients,
-      appointments: initialAppointments,
-      medicalRecords: initialMedicalRecords,
-      treatmentPlans: initialTreatmentPlans,
-      payments: initialPayments,
-      invoices: initialInvoices,
-      workActs: [] as WorkAct[],
-      actCounter: 1,
-      warehouse: initialWarehouse,
-      tasks: initialTasks,
-      onlineBookings: initialOnlineBookings,
-      patientFiles: initialPatientFiles,
-      patientNotes: initialPatientNotes,
-      teethByPatient: {},
+      clinicSettings: freshState.clinicSettings,
+      doctors: freshState.doctors,
+      services: freshState.services,
+      cabinets: freshState.cabinets,
+      patients: freshState.patients,
+      appointments: freshState.appointments,
+      medicalRecords: freshState.medicalRecords,
+      treatmentPlans: freshState.treatmentPlans,
+      payments: freshState.payments,
+      invoices: freshState.invoices,
+      workActs: freshState.workActs,
+      actCounter: freshState.actCounter,
+      warehouse: freshState.warehouse,
+      tasks: freshState.tasks,
+      onlineBookings: freshState.onlineBookings,
+      patientFiles: freshState.patientFiles,
+      patientNotes: freshState.patientNotes,
+      teethByPatient: freshState.teethByPatient,
       sidebarOpen: false,
-      documentTemplates: [],
-      clinicExpenses: [],
-      legalDocuments: [],
-      doctorSchedules: [],
-      prepayments: [],
-      userThemePreferences: {},
+      documentTemplates: freshState.documentTemplates,
+      clinicExpenses: freshState.clinicExpenses,
+      legalDocuments: freshState.legalDocuments,
+      doctorSchedules: freshState.doctorSchedules,
+      prepayments: freshState.prepayments,
+      userThemePreferences: freshState.userThemePreferences,
 
       setSessionUser: (user) =>
         set((s) => {
@@ -233,6 +225,7 @@ export const useClinicStore = create<ClinicState>()(
 
       addDoctor: (doctor) =>
         set((s) => {
+          const schedules = s.doctorSchedules ?? [];
           const mk = monthKey();
           const scheduleEntry: DoctorMonthSchedule | null =
             doctor.role === "doctor"
@@ -246,10 +239,12 @@ export const useClinicStore = create<ClinicState>()(
           return {
             doctors: [doctor, ...s.doctors],
             doctorSchedules: scheduleEntry
-              ? [scheduleEntry, ...s.doctorSchedules]
-              : s.doctorSchedules,
+              ? [scheduleEntry, ...schedules]
+              : schedules,
           };
         }),
+
+      setDoctors: (doctors) => set({ doctors }),
 
       updateDoctor: (id, data) =>
         set((s) => ({
@@ -257,9 +252,11 @@ export const useClinicStore = create<ClinicState>()(
         })),
 
       removeDoctor: (id) =>
-        set((s) => ({
-          doctors: s.doctors.filter((d) => d.id !== id),
-          doctorSchedules: s.doctorSchedules.filter((sch) => sch.doctorId !== id),
+        set((s) => {
+          const schedules = s.doctorSchedules ?? [];
+          return {
+            doctors: s.doctors.filter((d) => d.id !== id),
+            doctorSchedules: schedules.filter((sch) => sch.doctorId !== id),
           cabinets: s.cabinets.map((c) => ({
             ...c,
             staffIds: c.staffIds.filter((sid) => sid !== id),
@@ -276,7 +273,8 @@ export const useClinicStore = create<ClinicState>()(
           workActs: s.workActs.map((act) =>
             act.doctorId === id ? { ...act, doctorId: undefined } : act
           ),
-        })),
+          };
+        }),
 
       addCabinet: (cabinet) =>
         set((s) => ({ cabinets: [cabinet, ...s.cabinets] })),
@@ -409,7 +407,8 @@ export const useClinicStore = create<ClinicState>()(
 
       saveDoctorMonthSchedule: (schedule) =>
         set((s) => {
-          const rest = s.doctorSchedules.filter(
+          const schedules = s.doctorSchedules ?? [];
+          const rest = schedules.filter(
             (x) => !(x.doctorId === schedule.doctorId && x.month === schedule.month)
           );
           return { doctorSchedules: [schedule, ...rest] };
@@ -417,11 +416,12 @@ export const useClinicStore = create<ClinicState>()(
 
       addPrepayment: (prepayment) =>
         set((s) => {
+          const prepayments = s.prepayments ?? [];
           const patient = s.patients.find((p) => p.id === prepayment.patientId);
           const debt = prepayment.remainingAmount;
           const newBalance = (patient?.balance ?? 0) - debt;
           return {
-            prepayments: [prepayment, ...s.prepayments],
+            prepayments: [prepayment, ...prepayments],
             patients: s.patients.map((p) =>
               p.id === prepayment.patientId
                 ? {
@@ -527,8 +527,37 @@ export const useClinicStore = create<ClinicState>()(
           ),
         })),
 
+      hydratePersistedState: (data) =>
+        set({
+          doctors: data.doctors ?? [],
+          services: data.services ?? [],
+          cabinets: data.cabinets ?? [],
+          patients: data.patients ?? [],
+          appointments: data.appointments ?? [],
+          medicalRecords: data.medicalRecords ?? [],
+          treatmentPlans: data.treatmentPlans ?? [],
+          payments: data.payments ?? [],
+          invoices: data.invoices ?? [],
+          workActs: data.workActs ?? [],
+          actCounter: data.actCounter ?? 1,
+          warehouse: data.warehouse ?? [],
+          tasks: data.tasks ?? [],
+          onlineBookings: data.onlineBookings ?? [],
+          patientFiles: data.patientFiles ?? [],
+          patientNotes: data.patientNotes ?? [],
+          teethByPatient: data.teethByPatient ?? {},
+          clinicSettings: data.clinicSettings,
+          documentTemplates: data.documentTemplates ?? [],
+          clinicExpenses: data.clinicExpenses ?? [],
+          legalDocuments: data.legalDocuments ?? [],
+          doctorSchedules: data.doctorSchedules ?? [],
+          prepayments: data.prepayments ?? [],
+          userThemePreferences: data.userThemePreferences ?? {},
+        }),
+
       resetAllData: () => {
         const savedThemes = get().userThemePreferences;
+        const fresh = createFreshPersistedState();
         if (typeof window !== "undefined") {
           for (const key of LEGACY_CLINIC_STORAGE_KEYS) {
             localStorage.removeItem(key);
@@ -536,7 +565,7 @@ export const useClinicStore = create<ClinicState>()(
           localStorage.removeItem(CLINIC_STORAGE_KEY);
         }
         set({
-          ...createEmptyClinicData(),
+          ...fresh,
           userThemePreferences: savedThemes,
           sidebarOpen: get().sidebarOpen,
         });
@@ -546,31 +575,7 @@ export const useClinicStore = create<ClinicState>()(
       name: CLINIC_STORAGE_KEY,
       skipHydration: true,
       storage: createJSONStorage(() => createSafeClinicStorage()),
-      partialize: (state) => ({
-        doctors: state.doctors,
-        services: state.services,
-        cabinets: state.cabinets,
-        patients: state.patients,
-        appointments: state.appointments,
-        medicalRecords: state.medicalRecords,
-        treatmentPlans: state.treatmentPlans,
-        payments: state.payments,
-        invoices: state.invoices,
-        workActs: state.workActs,
-        actCounter: state.actCounter,
-        warehouse: state.warehouse,
-        tasks: state.tasks,
-        onlineBookings: state.onlineBookings,
-        patientFiles: state.patientFiles,
-        patientNotes: state.patientNotes,
-        clinicSettings: state.clinicSettings,
-        documentTemplates: state.documentTemplates,
-        clinicExpenses: state.clinicExpenses,
-        legalDocuments: state.legalDocuments,
-        doctorSchedules: state.doctorSchedules,
-        prepayments: state.prepayments,
-        userThemePreferences: state.userThemePreferences,
-      }),
+      partialize: (state) => pickPersistedState(state),
     }
   )
 );
