@@ -10,6 +10,7 @@ import {
   getClinicDataDbWithLegacyStaff,
   saveClinicDataDb,
 } from "@/lib/clinic-data-db.server";
+import { canAccessFullClinicDataSync } from "@/lib/clinic-data-access";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 
@@ -31,6 +32,12 @@ export async function GET() {
   const session = await requireClinicSession();
   if (!session) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+  if (!canAccessFullClinicDataSync(session.role)) {
+    return NextResponse.json(
+      { error: "Синхронизация полного снимка данных доступна только владельцу и администратору" },
+      { status: 403 }
+    );
   }
 
   const record = await getClinicDataDbWithLegacyStaff(session.clinicId);
@@ -59,6 +66,12 @@ export async function PUT(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  if (!canAccessFullClinicDataSync(session.role)) {
+    return NextResponse.json(
+      { error: "Сохранение полного снимка данных доступно только владельцу и администратору" },
+      { status: 403 }
+    );
+  }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_PAYLOAD_BYTES) {
@@ -78,7 +91,18 @@ export async function PUT(request: Request) {
   }
 
   try {
+    const existing = await getClinicDataDbWithLegacyStaff(session.clinicId);
     const saved = await saveClinicDataDb(session.clinicId, parsed);
+
+    if (existing?.data.medicalRecords) {
+      const { maybeAutoQueueMedicalRecords } = await import("@/lib/egisz/queue.server");
+      await maybeAutoQueueMedicalRecords(
+        session.clinicId,
+        existing.data.medicalRecords,
+        parsed.medicalRecords
+      ).catch(() => undefined);
+    }
+
     return NextResponse.json({
       ok: true,
       updatedAt: saved.updatedAt,

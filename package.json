@@ -9,8 +9,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:security": "node --experimental-strip-types --test lib/*.test.ts lib/*.security.test.ts",
     "bootstrap:owner": "node scripts/bootstrap-owner.mjs",
     "db:init": "node scripts/init-db.mjs",
+    "create-superadmin": "node scripts/create-superadmin.mjs",
+    "reset-staff-password": "node scripts/reset-staff-password.mjs",
     "create-clinic": "node scripts/create-clinic.mjs",
     "deploy:quick": "docker compose -f docker-compose.quick.yml up -d --build",
     "setup:odontogram": "node scripts/copy-odontogram.mjs"

@@ -6,8 +6,11 @@ import {
   fetchClinicDataFromServer,
   saveClinicDataToServer,
 } from "@/lib/clinic-data-client";
+import { setClinicServerDatabaseMode } from "@/lib/clinic-client-mode";
+import { canAccessFullClinicDataSync } from "@/lib/clinic-data-access";
 import {
   createFreshPersistedState,
+  hasClinicData,
   pickPersistedState,
 } from "@/lib/clinic-persisted-state";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
@@ -15,9 +18,10 @@ import { useClinicStore } from "@/store/useClinicStore";
 
 const SAVE_DEBOUNCE_MS = 1500;
 
-/** Загрузка данных клиники с сервера и автосохранение при изменениях */
+/** Загрузка данных клиники с сервера и автосохранение (только owner/admin) */
 export function ClinicDataSync() {
   const syncReady = useRef(false);
+  const syncForbidden = useRef(false);
   const saving = useRef(false);
   const lastSavedJson = useRef("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,7 +30,10 @@ export function ClinicDataSync() {
     let cancelled = false;
 
     const flushSave = async () => {
-      if (!syncReady.current || saving.current) return;
+      if (!syncReady.current || syncForbidden.current || saving.current) return;
+      const role = useClinicStore.getState().currentUser.role;
+      if (!canAccessFullClinicDataSync(role)) return;
+
       const snapshot = pickPersistedState(useClinicStore.getState());
       const json = JSON.stringify(snapshot);
       if (json === lastSavedJson.current) return;
@@ -37,13 +44,16 @@ export function ClinicDataSync() {
 
       if (result.ok) {
         lastSavedJson.current = json;
+      } else if (result.forbidden) {
+        syncForbidden.current = true;
+        syncReady.current = false;
       } else if (result.error) {
         toast.error(result.error);
       }
     };
 
     const scheduleSave = () => {
-      if (!syncReady.current) return;
+      if (!syncReady.current || syncForbidden.current) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         void flushSave();
@@ -54,12 +64,21 @@ export function ClinicDataSync() {
       const remote = await fetchClinicDataFromServer();
       if (cancelled) return;
 
-      // Без БД — только localStorage
       if (remote === null || !remote.database) {
+        setClinicServerDatabaseMode(false);
         syncReady.current = true;
         lastSavedJson.current = JSON.stringify(
           pickPersistedState(useClinicStore.getState())
         );
+        return;
+      }
+
+      setClinicServerDatabaseMode(true);
+
+      const role = useClinicStore.getState().currentUser.role;
+      if (remote.forbidden || !canAccessFullClinicDataSync(role)) {
+        syncForbidden.current = true;
+        syncReady.current = false;
         return;
       }
 
@@ -70,7 +89,6 @@ export function ClinicDataSync() {
         return;
       }
 
-      // На сервере ещё нет данных — отправляем локальные (миграция) или пустое состояние
       const hadLocal =
         typeof window !== "undefined" && Boolean(localStorage.getItem(CLINIC_STORAGE_KEY));
       const localSnapshot = hadLocal
@@ -78,13 +96,22 @@ export function ClinicDataSync() {
         : createFreshPersistedState();
 
       useClinicStore.getState().hydratePersistedState(localSnapshot);
-      const saved = await saveClinicDataToServer(localSnapshot);
-      if (cancelled) return;
 
-      if (saved.ok) {
+      if (hasClinicData(localSnapshot)) {
+        const saved = await saveClinicDataToServer(localSnapshot);
+        if (cancelled) return;
+
+        if (saved.ok) {
+          lastSavedJson.current = JSON.stringify(localSnapshot);
+        } else if (saved.forbidden) {
+          syncForbidden.current = true;
+          syncReady.current = false;
+          return;
+        } else if (saved.error) {
+          toast.error(saved.error);
+        }
+      } else {
         lastSavedJson.current = JSON.stringify(localSnapshot);
-      } else if (saved.error) {
-        toast.error(saved.error);
       }
       syncReady.current = true;
     })();
@@ -95,7 +122,7 @@ export function ClinicDataSync() {
       cancelled = true;
       unsub();
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      if (syncReady.current) void flushSave();
+      if (syncReady.current && !syncForbidden.current) void flushSave();
     };
   }, []);
 

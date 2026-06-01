@@ -1,81 +1,74 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import type { UserRole } from "@/lib/types";
+import {
+  AUTH_COOKIE,
+  parseSessionTokenParts,
+  resolveAuthSecret,
+  stringToBase64Url,
+  validateSessionTokenPayload,
+  type SessionTokenPayload,
+} from "@/lib/auth-session-token";
 
-export const AUTH_COOKIE = "dc_session";
+export { AUTH_COOKIE } from "@/lib/auth-session-token";
+export type { SessionTokenPayload as SessionPayload } from "@/lib/auth-session-token";
+export { sessionCookieOptions } from "@/lib/auth-session-middleware";
 
-const DEV_FALLBACK_SECRET = "dentalcloud-mis-dev-secret-change-in-production";
-
-function resolveSecret(): string {
-  const fromEnv = process.env.AUTH_SECRET?.trim();
-  if (fromEnv) return fromEnv;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET is required in production");
-  }
-  return DEV_FALLBACK_SECRET;
-}
-
-export interface SessionPayload {
-  userId: string;
-  staffId?: string;
-  role: UserRole;
-  name: string;
-  email: string;
-  clinicId?: string;
-  clinicSlug?: string;
-  exp: number;
-}
-
-function sign(body: string): string {
-  return createHmac("sha256", resolveSecret()).update(body).digest("base64url");
+function signBody(body: string, secret: string): string {
+  return createHmac("sha256", secret).update(body).digest("base64url");
 }
 
 export function createSessionToken(
-  payload: Omit<SessionPayload, "exp">,
+  payload: Omit<SessionTokenPayload, "exp">,
   maxAgeDays = 7
 ): string {
   const exp = Date.now() + maxAgeDays * 24 * 60 * 60 * 1000;
   const body = JSON.stringify({ ...payload, exp });
-  const bodyB64 = Buffer.from(body, "utf8").toString("base64url");
-  return `${bodyB64}.${sign(body)}`;
+  const bodyB64 = stringToBase64Url(body);
+  return `${bodyB64}.${signBody(body, resolveAuthSecret())}`;
 }
 
-export function verifySessionToken(token: string | undefined | null): SessionPayload | null {
-  if (!token) return null;
-  const dot = token.lastIndexOf(".");
-  if (dot < 1) return null;
-  const bodyB64 = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  let body: string;
+export function verifySessionToken(
+  token: string | undefined | null
+): SessionTokenPayload | null {
+  const parts = parseSessionTokenParts(token);
+  if (!parts) return null;
+
+  let secret: string;
   try {
-    body = Buffer.from(bodyB64, "base64url").toString("utf8");
+    secret = resolveAuthSecret();
   } catch {
     return null;
   }
-  const expected = sign(body);
+
+  const expected = signBody(parts.body, secret);
   try {
-    const a = Buffer.from(sig);
+    const a = Buffer.from(parts.sig);
     const b = Buffer.from(expected);
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   } catch {
     return null;
   }
-  let parsed: SessionPayload;
+
   try {
-    parsed = JSON.parse(body) as SessionPayload;
+    const parsed = JSON.parse(parts.body) as unknown;
+    return validateSessionTokenPayload(parsed);
   } catch {
     return null;
   }
-  if (!parsed.exp || parsed.exp < Date.now()) return null;
-  if (!parsed.userId || !parsed.role || !parsed.name) return null;
-  return parsed;
 }
 
-export function sessionCookieOptions(maxAgeSeconds: number) {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: maxAgeSeconds,
-  };
+/** Перевыпуск cookie с актуальной ролью / именем / email из учётной записи */
+export function createRefreshedSessionToken(
+  session: SessionTokenPayload,
+  patch: { role?: SessionTokenPayload["role"]; name?: string; email?: string }
+): string {
+  return createSessionToken({
+    userId: session.userId,
+    staffId: session.staffId,
+    role: patch.role ?? session.role,
+    name: patch.name ?? session.name,
+    email: patch.email ?? session.email,
+    clinicId: session.clinicId,
+    clinicSlug: session.clinicSlug,
+    isSuperAdmin: session.isSuperAdmin,
+  });
 }

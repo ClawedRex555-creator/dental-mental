@@ -1,43 +1,9 @@
-import type { UserRole } from "@/lib/types";
+import { verifySessionTokenEdge } from "@/lib/auth-session-edge";
+import type { SessionTokenPayload } from "@/lib/auth-session-token";
 
-export const AUTH_COOKIE = "dc_session";
+export { AUTH_COOKIE } from "@/lib/auth-session-token";
 
-export interface MiddlewareSessionPayload {
-  userId: string;
-  staffId?: string;
-  role: UserRole;
-  name: string;
-  email: string;
-  clinicId?: string;
-  clinicSlug?: string;
-  exp: number;
-}
-
-function base64UrlToString(value: string): string {
-  const pad = "=".repeat((4 - (value.length % 4)) % 4);
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + pad;
-  if (typeof atob === "function") {
-    return atob(base64);
-  }
-  return Buffer.from(base64, "base64").toString("utf8");
-}
-
-/** Edge-safe session read for middleware (no Node crypto import). */
-export function readSessionFromCookie(
-  token: string | undefined | null
-): MiddlewareSessionPayload | null {
-  if (!token) return null;
-  const dot = token.lastIndexOf(".");
-  if (dot < 1) return null;
-  try {
-    const parsed = JSON.parse(base64UrlToString(token.slice(0, dot))) as MiddlewareSessionPayload;
-    if (!parsed.exp || parsed.exp < Date.now()) return null;
-    if (!parsed.userId || !parsed.role || !parsed.name) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
+export type MiddlewareSessionPayload = SessionTokenPayload;
 
 export function sessionCookieOptions(maxAgeSeconds: number) {
   return {
@@ -47,4 +13,11 @@ export function sessionCookieOptions(maxAgeSeconds: number) {
     path: "/",
     maxAge: maxAgeSeconds,
   };
+}
+
+/** Edge-safe session read for middleware — requires valid HMAC signature */
+export async function readSessionFromCookie(
+  token: string | undefined | null
+): Promise<MiddlewareSessionPayload | null> {
+  return verifySessionTokenEdge(token);
 }

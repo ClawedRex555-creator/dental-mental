@@ -37,6 +37,7 @@ import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-cl
 import {
   createFreshPersistedState,
   pickPersistedState,
+  pickPersistedStateForStorage,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
@@ -575,7 +576,7 @@ export const useClinicStore = create<ClinicState>()(
       name: CLINIC_STORAGE_KEY,
       skipHydration: true,
       storage: createJSONStorage(() => createSafeClinicStorage()),
-      partialize: (state) => pickPersistedState(state),
+      partialize: (state) => pickPersistedStateForStorage(state),
     }
   )
 );

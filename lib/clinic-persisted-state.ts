@@ -24,7 +24,9 @@ import type {
   WorkAct,
 } from "@/lib/types";
 import { defaultWeeklySchedule } from "@/lib/clinic-schedule";
+import { isClinicServerDatabaseMode } from "@/lib/clinic-client-mode";
 import { clinicSettings as defaultClinicSettings } from "@/lib/mock-data";
+import { isAllowedDataUrl } from "@/lib/safe-data-url";
 
 /** Данные клиники, синхронизируемые между устройствами */
 export interface ClinicPersistedState {
@@ -115,6 +117,48 @@ type PersistPickSource = {
   userThemePreferences: Record<string, ThemeMode>;
 };
 
+/** Только безопасные для localStorage поля (production + DATABASE_URL) */
+export type ClientSafePersistedState = Pick<ClinicPersistedState, "userThemePreferences">;
+
+export function pickClientSafePersistedState(
+  state: PersistPickSource
+): ClientSafePersistedState {
+  return {
+    userThemePreferences: state.userThemePreferences ?? {},
+  };
+}
+
+export function pickPersistedStateForStorage(
+  state: PersistPickSource
+): ClinicPersistedState | ClientSafePersistedState {
+  if (isClinicServerDatabaseMode()) {
+    return pickClientSafePersistedState(state);
+  }
+  return pickPersistedState(state);
+}
+
+function sanitizePatientFiles(files: PatientFile[]): PatientFile[] {
+  return files.map((f) => {
+    if (!f.dataUrl) return f;
+    if (!isAllowedDataUrl(f.dataUrl)) {
+      const { dataUrl: _removed, ...rest } = f;
+      return rest;
+    }
+    return f;
+  });
+}
+
+function sanitizeLegalDocuments(docs: LegalDocument[]): LegalDocument[] {
+  return docs.map((d) => {
+    if (!d.fileDataUrl) return d;
+    if (!isAllowedDataUrl(d.fileDataUrl)) {
+      const { fileDataUrl: _removed, ...rest } = d;
+      return rest;
+    }
+    return d;
+  });
+}
+
 export function pickPersistedState(state: PersistPickSource): ClinicPersistedState {
   return {
     doctors: state.doctors ?? [],
@@ -131,17 +175,41 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     warehouse: state.warehouse ?? [],
     tasks: state.tasks ?? [],
     onlineBookings: state.onlineBookings ?? [],
-    patientFiles: state.patientFiles ?? [],
+    patientFiles: sanitizePatientFiles(state.patientFiles ?? []),
     patientNotes: state.patientNotes ?? [],
     teethByPatient: state.teethByPatient ?? {},
     clinicSettings: state.clinicSettings,
     documentTemplates: state.documentTemplates ?? [],
     clinicExpenses: state.clinicExpenses ?? [],
-    legalDocuments: state.legalDocuments ?? [],
+    legalDocuments: sanitizeLegalDocuments(state.legalDocuments ?? []),
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
   };
+}
+
+/** Есть ли в снимке реальные данные клиники (не пустой шаблон) */
+export function hasClinicData(state: ClinicPersistedState): boolean {
+  return (
+    state.patients.length > 0 ||
+    state.doctors.length > 0 ||
+    state.appointments.length > 0 ||
+    state.workActs.length > 0 ||
+    state.payments.length > 0 ||
+    state.treatmentPlans.length > 0
+  );
+}
+
+/** Подозрительное «обнуление» — защита от случайной перезаписи при синхронизации */
+export function isSuspiciousClinicDataDowngrade(
+  existing: ClinicPersistedState,
+  incoming: ClinicPersistedState
+): boolean {
+  if (!hasClinicData(existing)) return false;
+  if (!hasClinicData(incoming)) return true;
+  if (existing.patients.length > 0 && incoming.patients.length === 0) return true;
+  if (existing.doctors.length > 0 && incoming.doctors.length === 0) return true;
+  return false;
 }
 
 export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | null {
@@ -166,13 +234,13 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     warehouse: (d.warehouse as WarehouseItem[]) ?? [],
     tasks: (d.tasks as Task[]) ?? [],
     onlineBookings: (d.onlineBookings as OnlineBookingRequest[]) ?? [],
-    patientFiles: (d.patientFiles as PatientFile[]) ?? [],
+    patientFiles: sanitizePatientFiles((d.patientFiles as PatientFile[]) ?? []),
     patientNotes: (d.patientNotes as PatientNote[]) ?? [],
     teethByPatient: (d.teethByPatient as Record<string, ToothRecord[]>) ?? {},
     clinicSettings: (d.clinicSettings as ClinicSettings) ?? fresh.clinicSettings,
     documentTemplates: (d.documentTemplates as ClinicDocumentTemplate[]) ?? [],
     clinicExpenses: (d.clinicExpenses as ClinicExpense[]) ?? [],
-    legalDocuments: (d.legalDocuments as LegalDocument[]) ?? [],
+    legalDocuments: sanitizeLegalDocuments((d.legalDocuments as LegalDocument[]) ?? []),
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],
     userThemePreferences: (d.userThemePreferences as Record<string, ThemeMode>) ?? {},

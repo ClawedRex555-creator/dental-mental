@@ -1,15 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  isClinicServerDatabaseMode,
+  setClinicServerDatabaseMode,
+} from "@/lib/clinic-client-mode";
+import { purgePhiFromClinicLocalStorage } from "@/lib/clinic-storage-client";
 import { LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
 import { useClinicStore } from "@/store/useClinicStore";
 
 const WIPE_DONE_KEY = "dentalcloud-mis-wiped-v4";
 
+async function detectServerDatabaseMode(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/clinic/context", { credentials: "same-origin" });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { database?: boolean; mode?: string };
+    return data.mode === "clinic" && data.database === true;
+  } catch {
+    return false;
+  }
+}
+
 export function StoreHydration({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    let unsubPersist: (() => void) | undefined;
+
     const finish = () => {
       if (typeof window !== "undefined") {
         const hadLegacy = LEGACY_CLINIC_STORAGE_KEYS.some((k) => localStorage.getItem(k));
@@ -17,13 +36,28 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
           useClinicStore.getState().resetAllData();
           localStorage.setItem(WIPE_DONE_KEY, "1");
         }
+        if (isClinicServerDatabaseMode()) {
+          purgePhiFromClinicLocalStorage();
+        }
       }
       setReady(true);
     };
 
-    const unsub = useClinicStore.persist.onFinishHydration(finish);
-    void useClinicStore.persist.rehydrate();
-    return unsub;
+    void (async () => {
+      const usesDb = await detectServerDatabaseMode();
+      if (cancelled) return;
+      if (usesDb) {
+        setClinicServerDatabaseMode(true);
+        purgePhiFromClinicLocalStorage();
+      }
+      unsubPersist = useClinicStore.persist.onFinishHydration(finish);
+      void useClinicStore.persist.rehydrate();
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubPersist?.();
+    };
   }, []);
 
   if (!ready) {

@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { parseAllowedDataUrl } from "@/lib/safe-data-url";
 
 /** Открывает файл из data URL (PDF, изображения) в новой вкладке или скачивает */
 export function openStoredFile(dataUrl: string | undefined, fileName = "document"): boolean {
@@ -7,32 +8,52 @@ export function openStoredFile(dataUrl: string | undefined, fileName = "document
     return false;
   }
 
-  try {
-    const isImage = dataUrl.startsWith("data:image/");
-    const isPdf =
-      dataUrl.startsWith("data:application/pdf") ||
-      fileName.toLowerCase().endsWith(".pdf");
+  const parsed = parseAllowedDataUrl(dataUrl);
+  if (!parsed) {
+    toast.error("Неподдерживаемый или небезопасный формат файла");
+    return false;
+  }
 
-    if (isImage || isPdf) {
-      const w = window.open("", "_blank", "noopener,noreferrer");
-      if (!w) {
-        toast.error("Разрешите всплывающие окна в браузере");
-        return downloadDataUrl(dataUrl, fileName);
-      }
-      if (isImage) {
-        w.document.write(
-          `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(fileName)}</title></head><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${dataUrl}" alt="" style="max-width:100%;max-height:100vh"/></body></html>`
-        );
-      } else {
-        w.document.write(
-          `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(fileName)}</title></head><body style="margin:0;height:100vh"><embed src="${dataUrl}" type="application/pdf" width="100%" height="100%"/></body></html>`
-        );
-      }
-      w.document.close();
-      return true;
+  try {
+    const w = window.open("", "_blank", "noopener,noreferrer");
+    if (!w) {
+      toast.error("Разрешите всплывающие окна в браузере");
+      return downloadDataUrl(parsed.dataUrl, fileName);
     }
 
-    return downloadDataUrl(dataUrl, fileName);
+    const doc = w.document;
+    doc.title = fileName;
+    const head = doc.head;
+    const meta = doc.createElement("meta");
+    meta.setAttribute("charset", "utf-8");
+    head.appendChild(meta);
+
+    const body = doc.body;
+    body.style.margin = "0";
+
+    if (parsed.kind === "pdf") {
+      body.style.height = "100vh";
+      const embed = doc.createElement("embed");
+      embed.src = parsed.dataUrl;
+      embed.type = "application/pdf";
+      embed.style.width = "100%";
+      embed.style.height = "100%";
+      body.appendChild(embed);
+    } else {
+      body.style.background = "#111";
+      body.style.display = "flex";
+      body.style.alignItems = "center";
+      body.style.justifyContent = "center";
+      body.style.minHeight = "100vh";
+      const img = doc.createElement("img");
+      img.src = parsed.dataUrl;
+      img.alt = "";
+      img.style.maxWidth = "100%";
+      img.style.maxHeight = "100vh";
+      body.appendChild(img);
+    }
+
+    return true;
   } catch {
     toast.error("Не удалось открыть файл");
     return false;
@@ -51,18 +72,17 @@ function downloadDataUrl(dataUrl: string, fileName: string): boolean {
   return true;
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (!parseAllowedDataUrl(result)) {
+        reject(new Error("unsupported type"));
+        return;
+      }
+      resolve(result);
+    };
     reader.onerror = () => reject(new Error("read failed"));
     reader.readAsDataURL(file);
   });
