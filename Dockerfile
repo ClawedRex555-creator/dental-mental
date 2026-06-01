@@ -7,10 +7,13 @@ RUN npm install --no-audit --no-fund
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_ROOT_DOMAIN=emkaro.ru
+ARG AUTH_SECRET
 ENV APP_ROOT_DOMAIN=$APP_ROOT_DOMAIN
+ENV AUTH_SECRET=$AUTH_SECRET
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+RUN test -n "$AUTH_SECRET" || (echo "ERROR: pass AUTH_SECRET build-arg (from .env) for session signing in middleware" && exit 1)
 RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app

@@ -1,22 +1,29 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { findAccountByLogin, verifyAccountPassword } from "@/lib/auth-accounts-server";
-import {
-  AUTH_COOKIE,
-  createSessionToken,
-  sessionCookieOptions,
-} from "@/lib/auth-session";
+import { AUTH_COOKIE, createSessionToken } from "@/lib/auth-session";
 import { findClinicBySlug } from "@/lib/clinic-db.server";
 import { parseClinicSlugFromHost } from "@/lib/clinic-host";
 import { isDatabaseEnabled } from "@/lib/db";
+import { loginRedirectForRole } from "@/lib/login-redirect";
 import {
   checkLoginRateLimit,
   clearLoginAttempts,
   loginRateLimitKey,
   recordLoginFailure,
 } from "@/lib/login-rate-limit";
+import { safeRedirectPath } from "@/lib/safe-redirect";
+import { buildSessionCookieOptions } from "@/lib/session-cookie.server";
+
+const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 7;
 
 export async function POST(request: Request) {
-  let body: { login?: string; password?: string };
+  let body: {
+    login?: string;
+    password?: string;
+    redirect?: boolean;
+    redirectTo?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -67,7 +74,7 @@ export async function POST(request: Request) {
 
   clearLoginAttempts(rateKey);
 
-  const token = createSessionToken({
+  const token = await createSessionToken({
     userId: account.id,
     staffId: account.staffId,
     role: account.role,
@@ -77,20 +84,35 @@ export async function POST(request: Request) {
     clinicSlug: clinicSlugForSession,
   });
 
+  const cookieOpts = buildSessionCookieOptions(SESSION_MAX_AGE_SEC, request);
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_COOKIE, token, cookieOpts);
+
+  const redirectTo = safeRedirectPath(
+    body.redirectTo ?? loginRedirectForRole(account.role)
+  );
+
+  const userPayload = {
+    id: account.id,
+    name: account.name,
+    email: account.login,
+    role: account.role,
+    staffId: account.staffId,
+    status: "active" as const,
+    clinicId,
+    clinicSlug: clinicSlugForSession,
+  };
+
+  if (body.redirect === true) {
+    const res = NextResponse.redirect(new URL(redirectTo, request.url), 303);
+    res.cookies.set(AUTH_COOKIE, token, cookieOpts);
+    return res;
+  }
+
   const res = NextResponse.json({
-    user: {
-      id: account.id,
-      name: account.name,
-      email: account.login,
-      role: account.role,
-      staffId: account.staffId,
-      status: "active" as const,
-      clinicId,
-      clinicSlug: clinicSlugForSession,
-    },
+    user: userPayload,
+    redirectTo,
   });
-
-  res.cookies.set(AUTH_COOKIE, token, sessionCookieOptions(60 * 60 * 24 * 7));
-
+  res.cookies.set(AUTH_COOKIE, token, cookieOpts);
   return res;
 }

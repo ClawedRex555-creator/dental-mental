@@ -20,12 +20,23 @@ services:
       context: .
       args:
         APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
+        AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
     environment:
       NODE_ENV: production
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       ENABLE_DEMO_ACCOUNTS: "false"
       DATABASE_URL: postgresql://mis:${POSTGRES_PASSWORD}@postgres:5432/dentalcloud
       APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:?set APP_ROOT_DOMAIN in .env}
+      PHI_ENCRYPTION_KEY: ${PHI_ENCRYPTION_KEY:-}
+      SUPERADMIN_LOGIN: ${SUPERADMIN_LOGIN:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      EGISZ_GATEWAY_URL: ${EGISZ_GATEWAY_URL:-}
+      EGISZ_ENV: ${EGISZ_ENV:-test}
+      EGISZ_SYSTEM_ID: ${EGISZ_SYSTEM_ID:-}
+      EGISZ_PRODUCT_NAME: ${EGISZ_PRODUCT_NAME:-Emkaro}
+      EGISZ_N3_STUB: ${EGISZ_N3_STUB:-true}
+      EGISZ_CRON_SECRET: ${EGISZ_CRON_SECRET:-}
+      EGISZ_WEBHOOK_SECRET: ${EGISZ_WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,3 +74,5 @@ volumes:
   app-data:
   caddy-data:
   caddy-config:
+  # ВАЖНО: pg-data — постоянное хранилище PostgreSQL.
+  # Не запускайте `docker compose down -v` — флаг -v удалит volumes и все данные.

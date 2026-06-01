@@ -5,7 +5,11 @@ import {
   readSessionFromCookie,
   sessionCookieOptions,
 } from "@/lib/auth-session-middleware";
-import { parseClinicSlugFromHost, isPlatformHost } from "@/lib/clinic-host";
+import {
+  clinicSlugMismatch,
+  parseClinicSlugFromHost,
+  isPlatformHost,
+} from "@/lib/clinic-host";
 import { canAccessPath, defaultPathForRole } from "@/lib/rbac";
 
 const PUBLIC_CLINIC_PATHS = ["/login"];
@@ -32,13 +36,14 @@ function isPublicApi(pathname: string): boolean {
   return (
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/logout") ||
+    pathname.startsWith("/api/auth/me") ||
     pathname.startsWith("/api/clinic/context") ||
     pathname.startsWith("/api/platform/auth/login") ||
     pathname.startsWith("/api/health")
   );
 }
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host");
   const clinicSlug = parseClinicSlugFromHost(host);
@@ -52,7 +57,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = await readSessionFromCookie(request.cookies.get(AUTH_COOKIE)?.value);
+  const session = readSessionFromCookie(request.cookies.get(AUTH_COOKIE)?.value);
 
   if (platform) {
     if (pathname === "/platform/login") {
@@ -98,13 +103,12 @@ export async function middleware(request: NextRequest) {
 
   if (!platform && clinicSlug) {
     if (session?.isSuperAdmin) {
-      const res = NextResponse.redirect(new URL("/platform/admin", request.url));
-      return res;
+      return NextResponse.redirect(new URL("/platform/admin", request.url));
     }
 
-    if (session?.clinicSlug && session.clinicSlug !== clinicSlug) {
+    if (clinicSlugMismatch(session?.clinicSlug, host)) {
       const res = NextResponse.redirect(new URL("/login", request.url));
-      res.cookies.set(AUTH_COOKIE, "", sessionCookieOptions(0));
+      res.cookies.set(AUTH_COOKIE, "", sessionCookieOptions(0, request));
       return res;
     }
 
