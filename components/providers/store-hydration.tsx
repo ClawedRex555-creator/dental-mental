@@ -6,7 +6,9 @@ import {
   setClinicServerDatabaseMode,
 } from "@/lib/clinic-client-mode";
 import { backupPhiSnapshotBeforeDbMode } from "@/lib/clinic-pending-sync";
+import { createFreshPersistedState } from "@/lib/clinic-persisted-state";
 import { purgePhiFromClinicLocalStorage } from "@/lib/clinic-storage-client";
+import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
 import {
   mergeThemePreferences,
@@ -16,14 +18,25 @@ import { useClinicStore } from "@/store/useClinicStore";
 
 const WIPE_DONE_KEY = "dentalcloud-mis-wiped-v4";
 
-async function detectServerDatabaseMode(): Promise<boolean> {
+async function fetchClinicBootstrap(): Promise<{
+  usesDb: boolean;
+  slug: string | null;
+}> {
   try {
     const res = await fetch("/api/clinic/context", { credentials: "same-origin" });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { database?: boolean; mode?: string };
-    return data.mode === "clinic" && data.database === true;
+    if (!res.ok) return { usesDb: false, slug: null };
+    const data = (await res.json()) as {
+      database?: boolean;
+      mode?: string;
+      slug?: string;
+    };
+    const slug = data.mode === "clinic" && data.slug ? data.slug : null;
+    return {
+      usesDb: data.mode === "clinic" && data.database === true,
+      slug,
+    };
   } catch {
-    return false;
+    return { usesDb: false, slug: null };
   }
 }
 
@@ -58,8 +71,17 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
     };
 
     void (async () => {
-      const usesDb = await detectServerDatabaseMode();
+      const { usesDb, slug } = await fetchClinicBootstrap();
       if (cancelled) return;
+
+      if (slug && !ensureClinicStorageScope(slug)) {
+        const themes = useClinicStore.getState().userThemePreferences;
+        useClinicStore.getState().replacePersistedState({
+          ...createFreshPersistedState(),
+          userThemePreferences: themes,
+        });
+      }
+
       if (usesDb) {
         setClinicServerDatabaseMode(true);
         backupPhiSnapshotBeforeDbMode();

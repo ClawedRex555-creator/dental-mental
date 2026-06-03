@@ -82,6 +82,44 @@ try {
     [userId, clinic.id, email, hashPassword(password), ownerName]
   );
 
+  const emptySnapshot = {
+    doctors: [],
+    services: [],
+    cabinets: [],
+    patients: [],
+    appointments: [],
+    medicalRecords: [],
+    treatmentPlans: [],
+    payments: [],
+    invoices: [],
+    workActs: [],
+    actCounter: 1,
+    warehouse: [],
+    tasks: [],
+    onlineBookings: [],
+    patientFiles: [],
+    patientNotes: [],
+    teethByPatient: {},
+    clinicSettings: {
+      name,
+      weeklySchedule: [],
+    },
+    documentTemplates: [],
+    clinicExpenses: [],
+    legalDocuments: [],
+    doctorSchedules: [],
+    prepayments: [],
+    userThemePreferences: {},
+    _schemaVersion: 1,
+  };
+
+  await client.query(
+    `INSERT INTO clinic_snapshots (clinic_id, data, version, updated_at)
+     VALUES ($1, $2::jsonb, 1, NOW())
+     ON CONFLICT (clinic_id) DO NOTHING`,
+    [clinic.id, JSON.stringify(emptySnapshot)]
+  );
+
   const root = process.env.APP_ROOT_DOMAIN ?? "localhost";
   const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
   const loginUrl =

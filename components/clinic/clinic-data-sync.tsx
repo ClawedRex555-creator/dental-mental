@@ -30,6 +30,7 @@ import {
 } from "@/lib/clinic-pending-sync";
 import { CLINIC_SAVE_RETRY_DELAYS_MS, sleep } from "@/lib/clinic-save-retry";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
+import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { useClinicStore } from "@/store/useClinicStore";
 
 const SAVE_DEBOUNCE_MS = 2000;
@@ -197,6 +198,20 @@ export function ClinicDataSync() {
 
     void (async () => {
       try {
+        let hostSlug: string | null = null;
+        try {
+          const ctxRes = await fetch("/api/clinic/context", { credentials: "include" });
+          if (ctxRes.ok) {
+            const ctx = (await ctxRes.json()) as { slug?: string; mode?: string };
+            if (ctx.mode === "clinic" && ctx.slug) hostSlug = ctx.slug;
+          }
+        } catch {
+          /* scope check best-effort */
+        }
+        if (hostSlug && !ensureClinicStorageScope(hostSlug)) {
+          useClinicStore.getState().replacePersistedState(createFreshPersistedState());
+        }
+
         const remote = await fetchClinicDataFromServer();
         if (cancelled) return;
 
@@ -270,7 +285,8 @@ export function ClinicDataSync() {
 
         const hadLocal =
           typeof window !== "undefined" &&
-          Boolean(localStorage.getItem(CLINIC_STORAGE_KEY));
+          Boolean(localStorage.getItem(CLINIC_STORAGE_KEY)) &&
+          hasClinicData(pickPersistedState(useClinicStore.getState()));
         const localSnapshot = hadLocal
           ? pickPersistedState(useClinicStore.getState())
           : createFreshPersistedState();

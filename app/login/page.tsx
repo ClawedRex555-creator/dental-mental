@@ -8,6 +8,7 @@ import { DEMO_LOGIN_HINTS } from "@/lib/demo-login-hints";
 import { loginRedirectForRole } from "@/lib/login-redirect";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import type { UserRole } from "@/lib/types";
+import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { useClinicStore } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ export default function LoginPage() {
         }
         setClinicName(data.name);
         setClinicSlug(data.slug);
+        if (data.slug) ensureClinicStorageScope(data.slug);
       })
       .catch(() => setClinicError("Не удалось определить клинику"));
   }, []);
