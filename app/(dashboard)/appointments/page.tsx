@@ -78,6 +78,7 @@ export default function AppointmentsPage() {
   const filtered = useMemo(() => {
     const base = isAssistant ? assistantAppointments : appointments;
     return base.filter((a) => {
+      if (a.isOtherClinicVisit) return false;
       if (!isAssistant && doctorFilter !== "all") {
         return a.doctorId === doctorFilter;
       }

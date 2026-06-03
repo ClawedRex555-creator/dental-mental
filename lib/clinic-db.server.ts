@@ -51,6 +51,171 @@ export async function createClinic(input: {
   return created;
 }
 
+export async function findAuthUserByStaffIdDb(
+  clinicId: string,
+  staffId: string
+): Promise<AuthAccountRecord | null> {
+  return (
+    (await withDb(async (client) => {
+      const res = await client.query<{
+        id: string;
+        login: string;
+        password_hash: string;
+        role: UserRole;
+        name: string;
+        staff_id: string | null;
+        clinic_id: string;
+      }>(
+        `SELECT id, login, password_hash, role, name, staff_id, clinic_id
+         FROM auth_users WHERE clinic_id = $1 AND staff_id = $2 LIMIT 1`,
+        [clinicId, staffId]
+      );
+      const row = res.rows[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        clinicId: row.clinic_id,
+        login: row.login,
+        passwordHash: row.password_hash,
+        role: row.role,
+        name: row.name,
+        staffId: row.staff_id ?? undefined,
+      };
+    })) ?? null
+  );
+}
+
+export async function findAuthUserByUserIdDb(
+  clinicId: string,
+  userId: string
+): Promise<AuthAccountRecord | null> {
+  return (
+    (await withDb(async (client) => {
+      const res = await client.query<{
+        id: string;
+        login: string;
+        password_hash: string;
+        role: UserRole;
+        name: string;
+        staff_id: string | null;
+        clinic_id: string;
+      }>(
+        `SELECT id, login, password_hash, role, name, staff_id, clinic_id
+         FROM auth_users WHERE clinic_id = $1 AND id = $2 LIMIT 1`,
+        [clinicId, userId]
+      );
+      const row = res.rows[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        clinicId: row.clinic_id,
+        login: row.login,
+        passwordHash: row.password_hash,
+        role: row.role,
+        name: row.name,
+        staffId: row.staff_id ?? undefined,
+      };
+    })) ?? null
+  );
+}
+
+export async function updateAuthUserProfileDb(input: {
+  clinicId: string;
+  staffId: string;
+  login: string;
+  role: UserRole;
+  name: string;
+}): Promise<AuthAccountRecord | null> {
+  const login = input.login.trim().toLowerCase();
+  const updated = await withDb(async (client) => {
+    const existing = await client.query<{ id: string; password_hash: string }>(
+      `SELECT id, password_hash FROM auth_users
+       WHERE clinic_id = $1 AND staff_id = $2 LIMIT 1`,
+      [input.clinicId, input.staffId]
+    );
+    const row = existing.rows[0];
+    if (!row) return null;
+
+    const conflict = await client.query(
+      `SELECT 1 FROM auth_users
+       WHERE clinic_id = $1 AND login = $2 AND id <> $3 LIMIT 1`,
+      [input.clinicId, login, row.id]
+    );
+    if (conflict.rows.length > 0) {
+      throw new Error("Этот email уже используется другим сотрудником");
+    }
+
+    await client.query(
+      `UPDATE auth_users SET login = $1, role = $2, name = $3
+       WHERE clinic_id = $4 AND staff_id = $5`,
+      [login, input.role, input.name, input.clinicId, input.staffId]
+    );
+
+    return {
+      id: row.id,
+      clinicId: input.clinicId,
+      login,
+      passwordHash: row.password_hash,
+      role: input.role,
+      name: input.name,
+      staffId: input.staffId,
+    };
+  });
+  return updated ?? null;
+}
+
+/** Обновление своего профиля (владелец без staff_id или любой пользователь по id). */
+export async function updateAuthUserProfileByUserIdDb(input: {
+  clinicId: string;
+  userId: string;
+  login: string;
+  name: string;
+  passwordHash?: string;
+}): Promise<AuthAccountRecord | null> {
+  const login = input.login.trim().toLowerCase();
+  const updated = await withDb(async (client) => {
+    const existing = await client.query<{
+      id: string;
+      password_hash: string;
+      role: UserRole;
+      staff_id: string | null;
+    }>(
+      `SELECT id, password_hash, role, staff_id FROM auth_users
+       WHERE clinic_id = $1 AND id = $2 LIMIT 1`,
+      [input.clinicId, input.userId]
+    );
+    const row = existing.rows[0];
+    if (!row) return null;
+
+    const conflict = await client.query(
+      `SELECT 1 FROM auth_users
+       WHERE clinic_id = $1 AND login = $2 AND id <> $3 LIMIT 1`,
+      [input.clinicId, login, row.id]
+    );
+    if (conflict.rows.length > 0) {
+      throw new Error("Этот email уже используется другим пользователем");
+    }
+
+    const passwordHash = input.passwordHash ?? row.password_hash;
+    await client.query(
+      `UPDATE auth_users SET login = $1, name = $2, password_hash = $3
+       WHERE clinic_id = $4 AND id = $5`,
+      [login, input.name, passwordHash, input.clinicId, input.userId]
+    );
+
+    return {
+      id: row.id,
+      clinicId: input.clinicId,
+      login,
+      passwordHash,
+      role: row.role,
+      name: input.name,
+      staffId: row.staff_id ?? undefined,
+    };
+  });
+  return updated ?? null;
+}
+
 export async function findAuthUserByLogin(
   clinicId: string,
   login: string

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { PatientModal } from "@/components/patients/patient-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +12,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PATIENT_STATUS_LABELS, UI } from "@/lib/constants";
 import type { Patient, PatientStatus } from "@/lib/types";
 import { formatCurrency, formatDate, getAge, getFullName } from "@/lib/utils";
+import { canDeletePatients } from "@/lib/rbac";
+import { logAuditClient } from "@/lib/audit-client";
 import { useClinicStore } from "@/store/useClinicStore";
 
 export default function PatientsPage() {
-  const { patients } = useClinicStore();
+  const { patients, currentUser, deletePatient } = useClinicStore();
+  const canDelete = canDeletePatients(currentUser.role);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PatientStatus | "all">("all");
   const [modalOpen, setModalOpen] = useState(false);
@@ -115,16 +119,47 @@ export default function PatientsPage() {
                   </td>
                   <td className="px-4 py-3">{formatDate(p.lastVisitDate)}</td>
                   <td className="px-4 py-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEditing(p);
-                        setModalOpen(true);
-                      }}
-                    >
-                      {UI.edit}
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(p);
+                          setModalOpen(true);
+                        }}
+                      >
+                        {UI.edit}
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => {
+                            const name = getFullName(p.firstName, p.lastName, p.middleName);
+                            if (
+                              !window.confirm(
+                                `Удалить пациента «${name}»?\n\nБудут удалены записи, медкарта, планы, акты, платежи и файлы. Действие нельзя отменить.`
+                              )
+                            ) {
+                              return;
+                            }
+                            if (deletePatient(p.id)) {
+                              logAuditClient({
+                                action: "delete",
+                                resourceType: "patient",
+                                resourceId: p.id,
+                              });
+                              toast.success("Пациент удалён");
+                            } else {
+                              toast.error("Не удалось удалить пациента");
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -2,7 +2,12 @@
 
 import { Moon, Sun } from "lucide-react";
 import type { ThemeMode } from "@/lib/types";
-import { resolveUserTheme } from "@/lib/user-theme";
+import { applyDocumentTheme, resolveUserTheme } from "@/lib/user-theme";
+import {
+  guestThemeKey,
+  mergeThemePreferences,
+  readThemePreferencesFromStorage,
+} from "@/lib/user-theme-storage";
 import { cn } from "@/lib/utils";
 import { useClinicStore } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
@@ -12,18 +17,36 @@ interface ThemeToggleProps {
   /** Показать подписи «Светлая» / «Тёмная» */
   showLabels?: boolean;
   size?: "sm" | "default";
+  /** На экране входа — тема до логина по поддомену клиники */
+  guestScope?: string;
 }
 
-export function ThemeToggle({ className, showLabels = false, size = "default" }: ThemeToggleProps) {
+export function ThemeToggle({
+  className,
+  showLabels = false,
+  size = "default",
+  guestScope,
+}: ThemeToggleProps) {
   const userId = useClinicStore((s) => s.currentUser.id);
   const preferences = useClinicStore((s) => s.userThemePreferences);
-  const legacyClinicTheme = useClinicStore((s) => s.clinicSettings.theme);
+  const setThemePreference = useClinicStore((s) => s.setThemePreference);
   const setUserTheme = useClinicStore((s) => s.setUserTheme);
-  const theme = resolveUserTheme(userId, preferences, legacyClinicTheme);
+  const mergedPreferences = mergeThemePreferences(
+    readThemePreferencesFromStorage(),
+    preferences
+  );
+
+  const accountKey = userId || (guestScope ? guestThemeKey(guestScope) : "");
+  const theme = resolveUserTheme(accountKey || undefined, mergedPreferences);
 
   const apply = (mode: ThemeMode) => {
-    if (!userId) return;
-    setUserTheme(mode);
+    if (!accountKey) return;
+    if (userId) {
+      setUserTheme(mode);
+    } else {
+      setThemePreference(accountKey, mode);
+    }
+    applyDocumentTheme(mode);
   };
 
   const btnSize = size === "sm" ? "sm" : "default";
@@ -40,7 +63,7 @@ export function ThemeToggle({ className, showLabels = false, size = "default" }:
             size={btnSize}
             variant={active ? "default" : "outline"}
             onClick={() => apply(mode)}
-            disabled={!userId}
+            disabled={!accountKey}
             title={mode === "light" ? "Светлая тема" : "Тёмная тема"}
             className="gap-2"
           >

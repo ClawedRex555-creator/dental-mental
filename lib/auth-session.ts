@@ -1,21 +1,24 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac } from "crypto";
 import {
   AUTH_COOKIE,
   parseSessionTokenParts,
   resolveAuthSecret,
   stringToBase64Url,
+  timingSafeEqualString,
   validateSessionTokenPayload,
   type SessionTokenPayload,
-} from "@/lib/auth-session-token";
+} from "./auth-session-token.ts";
 
-export { AUTH_COOKIE } from "@/lib/auth-session-token";
-export type { SessionTokenPayload as SessionPayload } from "@/lib/auth-session-token";
-export { sessionCookieOptions } from "@/lib/auth-session-middleware";
+export { AUTH_COOKIE } from "./auth-session-token.ts";
+export type { SessionTokenPayload as SessionPayload } from "./auth-session-token.ts";
+export { sessionCookieOptions } from "./auth-session-middleware.ts";
+export { readSessionFromCookie } from "./auth-session-middleware.ts";
 
 function signBody(body: string, secret: string): string {
   return createHmac("sha256", secret).update(body).digest("base64url");
 }
 
+/** Подписанная сессия (Node crypto — как до security review) */
 export function createSessionToken(
   payload: Omit<SessionTokenPayload, "exp">,
   maxAgeDays = 7
@@ -40,23 +43,15 @@ export function verifySessionToken(
   }
 
   const expected = signBody(parts.body, secret);
-  try {
-    const a = Buffer.from(parts.sig);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  } catch {
-    return null;
-  }
+  if (!timingSafeEqualString(parts.sig, expected)) return null;
 
   try {
-    const parsed = JSON.parse(parts.body) as unknown;
-    return validateSessionTokenPayload(parsed);
+    return validateSessionTokenPayload(JSON.parse(parts.body) as unknown);
   } catch {
     return null;
   }
 }
 
-/** Перевыпуск cookie с актуальной ролью / именем / email из учётной записи */
 export function createRefreshedSessionToken(
   session: SessionTokenPayload,
   patch: { role?: SessionTokenPayload["role"]; name?: string; email?: string }

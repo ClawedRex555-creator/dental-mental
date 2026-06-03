@@ -36,17 +36,36 @@ import type {
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
 import {
   createFreshPersistedState,
+  mergeByIdPreferLocal,
+  mergeClinicPatients,
   pickPersistedState,
   pickPersistedStateForStorage,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
+  derivePatientVisitFields,
+  syncOtherClinicVisitsInList,
+} from "@/lib/patient-visits";
+import {
+  mergeClinicServices,
+  migrateServices,
+  normalizeServiceFields,
+} from "@/lib/service-categories";
+import {
   clearPersistedClinicData,
   createSafeClinicStorage,
 } from "@/lib/clinic-storage-client";
 import { defaultWeeklySchedule, formatWeeklyScheduleSummary, monthKey } from "@/lib/clinic-schedule";
+import { treatmentPlanNoteId } from "@/lib/treatment-plan-patient-note";
 import { generateId } from "@/lib/utils";
 import { generateDefaultTeeth } from "@/lib/mock-data";
+import { defaultClinicModules, type ClinicModules } from "@/lib/modules";
+import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
+import {
+  mergeThemePreferences,
+  persistThemePreferencesToStorage,
+  readThemePreferencesFromStorage,
+} from "@/lib/user-theme-storage";
 
 const freshState = createFreshPersistedState();
 
@@ -79,12 +98,24 @@ interface ClinicState {
   prepayments: PatientPrepayment[];
   /** Тема интерфейса по id пользователя (сохраняется в localStorage) */
   userThemePreferences: Record<string, ThemeMode>;
+  /** Включённые модули (управляются супер-админом платформы) */
+  enabledModules: ClinicModules;
+  /** Синхронизация снимка с PostgreSQL (ClinicDataSync) */
+  clinicSyncPhase: "loading" | "ready" | "read_only" | "local_only" | "forbidden" | "error";
+  clinicDataUnsaved: boolean;
+  clinicDataSaveError: string | null;
 
   setSessionUser: (user: ClinicUser) => void;
+  setClinicSyncPhase: (phase: ClinicState["clinicSyncPhase"]) => void;
+  setClinicDataUnsaved: (unsaved: boolean) => void;
+  setClinicDataSaveError: (error: string | null) => void;
+  setEnabledModules: (modules: ClinicModules) => void;
   clearSession: () => void;
   updateClinicSettings: (data: Partial<ClinicSettings>) => void;
   updateCurrentUser: (data: Partial<Pick<ClinicUser, "name" | "email">>) => void;
   setUserTheme: (theme: ThemeMode) => void;
+  /** Тема для произвольного ключа (id пользователя или @guest:slug на экране входа) */
+  setThemePreference: (accountKey: string, theme: ThemeMode) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
 
@@ -107,11 +138,17 @@ interface ClinicState {
   removeLegalDocument: (id: string) => void;
   addPatient: (patient: Patient) => void;
   updatePatient: (id: string, data: Partial<Patient>) => void;
+  /** Запись в истории визитов для «был в другой клинике» */
+  syncOtherClinicVisitForPatient: (patient: Patient) => void;
+  /** Удалить пациента и связанные записи; false — не найден */
+  deletePatient: (id: string) => boolean;
   addAppointment: (appointment: Appointment) => void;
   updateAppointment: (id: string, data: Partial<Appointment>) => void;
   addMedicalRecord: (record: MedicalRecord) => void;
   addTreatmentPlan: (plan: TreatmentPlan) => void;
   updateTreatmentPlan: (id: string, data: Partial<TreatmentPlan>) => void;
+  /** Удалить план лечения и связанную заметку; false — не найден */
+  deleteTreatmentPlan: (id: string) => boolean;
   addPayment: (payment: Payment) => void;
   addInvoice: (invoice: Invoice) => void;
   addWorkAct: (act: WorkAct) => void;
@@ -120,15 +157,21 @@ interface ClinicState {
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
   payWorkAct: (actId: string, method?: PaymentMethod) => boolean;
+  /** Удалить акт (ожидает оплаты или оплачен); false — не найден */
+  deleteWorkAct: (actId: string) => boolean;
   getNextActNumber: () => string;
   updateWarehouseItem: (id: string, data: Partial<WarehouseItem>) => void;
   updateTeeth: (patientId: string, teeth: ToothRecord[]) => void;
   getPatientTeeth: (patientId: string) => ToothRecord[];
   addPatientNote: (note: PatientNote) => void;
+  updatePatientNote: (id: string, data: Partial<PatientNote>) => void;
+  deletePatientNote: (id: string) => void;
   addPatientFile: (file: PatientFile) => void;
   updateOnlineBooking: (id: string, data: Partial<OnlineBookingRequest>) => void;
   /** Загрузить данные клиники с сервера (синхронизация между устройствами) */
   hydratePersistedState: (data: ClinicPersistedState) => void;
+  /** Быстрая подстановка снимка с сервера без повторного merge */
+  replacePersistedState: (data: ClinicPersistedState) => void;
   /** Удалить все данные клиники (пациенты, записи, акты, сотрудники и т.д.) */
   resetAllData: () => void;
 }
@@ -169,22 +212,33 @@ export const useClinicStore = create<ClinicState>()(
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
       userThemePreferences: freshState.userThemePreferences,
+      enabledModules: defaultClinicModules(),
+      clinicSyncPhase: "loading",
+      clinicDataUnsaved: false,
+      clinicDataSaveError: null,
+
+      setClinicSyncPhase: (phase) => set({ clinicSyncPhase: phase }),
+      setClinicDataUnsaved: (unsaved) => set({ clinicDataUnsaved: unsaved }),
+      setClinicDataSaveError: (error) => set({ clinicDataSaveError: error }),
 
       setSessionUser: (user) =>
-        set((s) => {
-          const userThemePreferences = { ...s.userThemePreferences };
-          const legacy = s.clinicSettings.theme;
-          if (user.id && !userThemePreferences[user.id] && legacy) {
-            userThemePreferences[user.id] = legacy;
-          }
-          return {
-            currentUser: user,
-            currentRole: user.role,
-            userThemePreferences,
-          };
-        }),
+        set((s) => ({
+          currentUser: user,
+          currentRole: user.role,
+          userThemePreferences: mergeThemePreferences(
+            readThemePreferencesFromStorage(),
+            s.userThemePreferences
+          ),
+        })),
+
+      setEnabledModules: (modules) => set({ enabledModules: modules }),
 
       clearSession: () => {
+        const userThemePreferences = mergeThemePreferences(
+          get().userThemePreferences,
+          readThemePreferencesFromStorage()
+        );
+        persistThemePreferencesToStorage(userThemePreferences);
         clearPersistedClinicData();
         set({
           currentUser: {
@@ -195,6 +249,10 @@ export const useClinicStore = create<ClinicState>()(
             status: "inactive",
           },
           currentRole: "assistant",
+          userThemePreferences,
+          clinicSyncPhase: "loading",
+          clinicDataUnsaved: false,
+          clinicDataSaveError: null,
         });
       },
 
@@ -212,14 +270,22 @@ export const useClinicStore = create<ClinicState>()(
           currentUser: { ...s.currentUser, ...data },
         })),
 
-      setUserTheme: (theme) =>
+      setThemePreference: (accountKey, theme) =>
         set((s) => {
-          const id = s.currentUser.id;
-          if (!id) return s;
-          return {
-            userThemePreferences: { ...s.userThemePreferences, [id]: theme },
+          if (!accountKey) return s;
+          const userThemePreferences = {
+            ...s.userThemePreferences,
+            [accountKey]: theme,
           };
+          persistThemePreferencesToStorage(userThemePreferences);
+          return { userThemePreferences };
         }),
+
+      setUserTheme: (theme) => {
+        const id = get().currentUser.id;
+        if (!id) return;
+        get().setThemePreference(id, theme);
+      },
 
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -337,11 +403,15 @@ export const useClinicStore = create<ClinicState>()(
         })),
 
       addService: (service) =>
-        set((s) => ({ services: [service, ...s.services] })),
+        set((s) => ({
+          services: [normalizeServiceFields(service), ...s.services],
+        })),
 
       updateService: (id, data) =>
         set((s) => ({
-          services: s.services.map((svc) => (svc.id === id ? { ...svc, ...data } : svc)),
+          services: s.services.map((svc) =>
+            svc.id === id ? normalizeServiceFields({ ...svc, ...data }) : svc
+          ),
         })),
 
       removeService: (id) =>
@@ -360,15 +430,72 @@ export const useClinicStore = create<ClinicState>()(
           patients: s.patients.map((p) => (p.id === id ? { ...p, ...data } : p)),
         })),
 
+      syncOtherClinicVisitForPatient: (patient) =>
+        set((s) => {
+          const appointments = syncOtherClinicVisitsInList(s.appointments, patient);
+          const patients = s.patients.some((p) => p.id === patient.id)
+            ? s.patients.map((p) =>
+                p.id === patient.id
+                  ? { ...p, ...derivePatientVisitFields(p, appointments) }
+                  : p
+              )
+            : s.patients;
+          return { appointments, patients };
+        }),
+
+      deletePatient: (id) => {
+        if (!get().patients.some((p) => p.id === id)) return false;
+        set((s) => {
+          const { [id]: _removedTeeth, ...teethByPatient } = s.teethByPatient;
+          void _removedTeeth;
+          return {
+            patients: s.patients.filter((p) => p.id !== id),
+            appointments: s.appointments.filter((a) => a.patientId !== id),
+            medicalRecords: s.medicalRecords.filter((r) => r.patientId !== id),
+            treatmentPlans: s.treatmentPlans.filter((p) => p.patientId !== id),
+            payments: s.payments.filter((p) => p.patientId !== id),
+            invoices: s.invoices.filter((i) => i.patientId !== id),
+            workActs: s.workActs.filter((a) => a.patientId !== id),
+            prepayments: s.prepayments.filter((p) => p.patientId !== id),
+            patientFiles: s.patientFiles.filter((f) => f.patientId !== id),
+            patientNotes: s.patientNotes.filter((n) => n.patientId !== id),
+            teethByPatient,
+          };
+        });
+        return true;
+      },
+
       addAppointment: (appointment) =>
-        set((s) => ({ appointments: [appointment, ...s.appointments] })),
+        set((s) => {
+          const appointments = [appointment, ...s.appointments];
+          const patient = s.patients.find((p) => p.id === appointment.patientId);
+          const patients = patient
+            ? s.patients.map((p) =>
+                p.id === appointment.patientId
+                  ? { ...p, ...derivePatientVisitFields(p, appointments) }
+                  : p
+              )
+            : s.patients;
+          return { appointments, patients };
+        }),
 
       updateAppointment: (id, data) =>
-        set((s) => ({
-          appointments: s.appointments.map((a) =>
+        set((s) => {
+          const appointments = s.appointments.map((a) =>
             a.id === id ? { ...a, ...data } : a
-          ),
-        })),
+          );
+          const updated = appointments.find((a) => a.id === id);
+          const patientId = updated?.patientId ?? data.patientId;
+          const patients =
+            patientId && s.patients.some((p) => p.id === patientId)
+              ? s.patients.map((p) =>
+                  p.id === patientId
+                    ? { ...p, ...derivePatientVisitFields(p, appointments) }
+                    : p
+                )
+              : s.patients;
+          return { appointments, patients };
+        }),
 
       addMedicalRecord: (record) =>
         set((s) => ({ medicalRecords: [record, ...s.medicalRecords] })),
@@ -382,6 +509,18 @@ export const useClinicStore = create<ClinicState>()(
             p.id === id ? { ...p, ...data } : p
           ),
         })),
+
+      deleteTreatmentPlan: (id) => {
+        if (!get().treatmentPlans.some((p) => p.id === id)) return false;
+        const linkedNoteId = treatmentPlanNoteId(id);
+        set((s) => ({
+          treatmentPlans: s.treatmentPlans.filter((p) => p.id !== id),
+          patientNotes: s.patientNotes.filter(
+            (n) => n.sourceTreatmentPlanId !== id && n.id !== linkedNoteId
+          ),
+        }));
+        return true;
+      },
 
       addPayment: (payment) =>
         set((s) => ({ payments: [payment, ...s.payments] })),
@@ -402,9 +541,21 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({ workActs: [act, ...s.workActs] })),
 
       updateWorkAct: (id, data) =>
-        set((s) => ({
-          workActs: s.workActs.map((a) => (a.id === id ? { ...a, ...data } : a)),
-        })),
+        set((s) => {
+          const workActs = s.workActs.map((a) => (a.id === id ? { ...a, ...data } : a));
+          const act = workActs.find((a) => a.id === id);
+          if (!act) return { workActs };
+
+          const linked = findInvoiceForAct(s.invoices, act);
+          if (!linked) return { workActs };
+
+          return {
+            workActs,
+            invoices: s.invoices.map((inv) =>
+              inv.id === linked.id ? patchInvoiceFromWorkAct(inv, act) : inv
+            ),
+          };
+        }),
 
       saveDoctorMonthSchedule: (schedule) =>
         set((s) => {
@@ -498,6 +649,55 @@ export const useClinicStore = create<ClinicState>()(
         return true;
       },
 
+      deleteWorkAct: (actId) => {
+        const state = get();
+        const act = state.workActs.find((a) => a.id === actId);
+        if (!act) return false;
+
+        const paidViaPayments = state.payments
+          .filter((p) => p.workActId === actId && p.status === "paid")
+          .reduce((sum, p) => sum + p.amount, 0);
+        const reverseAmount =
+          paidViaPayments > 0
+            ? paidViaPayments
+            : act.paymentStatus === "paid"
+              ? act.totalAmount
+              : 0;
+
+        set((s) => ({
+          workActs: s.workActs.filter((a) => a.id !== actId),
+          invoices: s.invoices.filter(
+            (inv) => inv.workActId !== actId && inv.id !== act.invoiceId
+          ),
+          payments: s.payments.filter((p) => p.workActId !== actId),
+          patients: s.patients.map((p) => {
+            if (p.id !== act.patientId || reverseAmount <= 0) return p;
+            return {
+              ...p,
+              totalSpent: Math.max(0, p.totalSpent - reverseAmount),
+              balance: p.balance + reverseAmount,
+            };
+          }),
+          medicalRecords: s.medicalRecords.map((r) =>
+            r.workActId === actId ? { ...r, workActId: undefined } : r
+          ),
+          appointments: s.appointments.map((a) => {
+            if (a.workActId !== actId) return a;
+            return {
+              ...a,
+              workActId: undefined,
+              status: a.status === "ready_for_payment" ? ("completed" as const) : a.status,
+            };
+          }),
+          prepayments: (s.prepayments ?? []).map((p) =>
+            p.workActId === actId
+              ? { ...p, workActId: undefined, actNumber: undefined }
+              : p
+          ),
+        }));
+        return true;
+      },
+
       updateWarehouseItem: (id, data) =>
         set((s) => ({
           warehouse: s.warehouse.map((w) =>
@@ -518,6 +718,18 @@ export const useClinicStore = create<ClinicState>()(
       addPatientNote: (note) =>
         set((s) => ({ patientNotes: [note, ...s.patientNotes] })),
 
+      updatePatientNote: (id, data) =>
+        set((s) => ({
+          patientNotes: s.patientNotes.map((n) =>
+            n.id === id ? { ...n, ...data } : n
+          ),
+        })),
+
+      deletePatientNote: (id) =>
+        set((s) => ({
+          patientNotes: s.patientNotes.filter((n) => n.id !== id),
+        })),
+
       addPatientFile: (file) =>
         set((s) => ({ patientFiles: [file, ...s.patientFiles] })),
 
@@ -528,10 +740,10 @@ export const useClinicStore = create<ClinicState>()(
           ),
         })),
 
-      hydratePersistedState: (data) =>
-        set({
+      replacePersistedState: (data) =>
+        set((s) => ({
           doctors: data.doctors ?? [],
-          services: data.services ?? [],
+          services: migrateServices(data.services ?? []),
           cabinets: data.cabinets ?? [],
           patients: data.patients ?? [],
           appointments: data.appointments ?? [],
@@ -553,11 +765,54 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: data.legalDocuments ?? [],
           doctorSchedules: data.doctorSchedules ?? [],
           prepayments: data.prepayments ?? [],
-          userThemePreferences: data.userThemePreferences ?? {},
-        }),
+          userThemePreferences: mergeThemePreferences(
+            data.userThemePreferences,
+            readThemePreferencesFromStorage(),
+            s.userThemePreferences
+          ),
+        })),
+
+      hydratePersistedState: (data) =>
+        set((s) => ({
+          doctors: mergeByIdPreferLocal(data.doctors ?? [], s.doctors),
+          services: mergeClinicServices(data.services ?? [], s.services),
+          cabinets: mergeByIdPreferLocal(data.cabinets ?? [], s.cabinets),
+          patients: mergeClinicPatients(data.patients ?? [], s.patients),
+          appointments: mergeByIdPreferLocal(data.appointments ?? [], s.appointments),
+          medicalRecords: mergeByIdPreferLocal(data.medicalRecords ?? [], s.medicalRecords),
+          treatmentPlans: mergeByIdPreferLocal(data.treatmentPlans ?? [], s.treatmentPlans),
+          payments: mergeByIdPreferLocal(data.payments ?? [], s.payments),
+          invoices: mergeByIdPreferLocal(data.invoices ?? [], s.invoices),
+          workActs: mergeByIdPreferLocal(data.workActs ?? [], s.workActs),
+          actCounter: Math.max(data.actCounter ?? 1, s.actCounter),
+          warehouse: mergeByIdPreferLocal(data.warehouse ?? [], s.warehouse),
+          tasks: mergeByIdPreferLocal(data.tasks ?? [], s.tasks),
+          onlineBookings: mergeByIdPreferLocal(data.onlineBookings ?? [], s.onlineBookings),
+          patientFiles: mergeByIdPreferLocal(data.patientFiles ?? [], s.patientFiles),
+          patientNotes: mergeByIdPreferLocal(data.patientNotes ?? [], s.patientNotes),
+          teethByPatient: { ...s.teethByPatient, ...data.teethByPatient },
+          clinicSettings: data.clinicSettings ?? s.clinicSettings,
+          documentTemplates: mergeByIdPreferLocal(
+            data.documentTemplates ?? [],
+            s.documentTemplates
+          ),
+          clinicExpenses: mergeByIdPreferLocal(data.clinicExpenses ?? [], s.clinicExpenses),
+          legalDocuments: mergeByIdPreferLocal(data.legalDocuments ?? [], s.legalDocuments),
+          doctorSchedules: mergeByIdPreferLocal(data.doctorSchedules ?? [], s.doctorSchedules),
+          prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
+          userThemePreferences: mergeThemePreferences(
+            data.userThemePreferences,
+            readThemePreferencesFromStorage(),
+            s.userThemePreferences
+          ),
+        })),
 
       resetAllData: () => {
-        const savedThemes = get().userThemePreferences;
+        const savedThemes = mergeThemePreferences(
+          get().userThemePreferences,
+          readThemePreferencesFromStorage()
+        );
+        persistThemePreferencesToStorage(savedThemes);
         const fresh = createFreshPersistedState();
         if (typeof window !== "undefined") {
           for (const key of LEGACY_CLINIC_STORAGE_KEYS) {
@@ -577,6 +832,11 @@ export const useClinicStore = create<ClinicState>()(
       skipHydration: true,
       storage: createJSONStorage(() => createSafeClinicStorage()),
       partialize: (state) => pickPersistedStateForStorage(state),
+      onRehydrateStorage: () => (state) => {
+        if (state?.services?.length) {
+          state.services = migrateServices(state.services);
+        }
+      },
     }
   )
 );

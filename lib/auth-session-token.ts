@@ -1,3 +1,4 @@
+import { readAuthSecretEnv } from "./auth-env.ts";
 import type { UserRole } from "./types";
 
 export const AUTH_COOKIE = "dc_session";
@@ -17,7 +18,7 @@ export interface SessionTokenPayload {
 }
 
 export function resolveAuthSecret(): string {
-  const fromEnv = process.env.AUTH_SECRET?.trim();
+  const fromEnv = readAuthSecretEnv();
   if (fromEnv) return fromEnv;
   if (process.env.NODE_ENV === "production") {
     throw new Error("AUTH_SECRET is required in production");
@@ -28,10 +29,17 @@ export function resolveAuthSecret(): string {
 export function base64UrlToString(value: string): string {
   const pad = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + pad;
-  if (typeof atob === "function") {
-    return atob(base64);
+  // Node: Buffer для UTF-8 (atob в Node 18+ ломает кириллицу в имени сессии → HMAC fail)
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(base64, "base64").toString("utf8");
   }
-  return Buffer.from(base64, "base64").toString("utf8");
+  if (typeof atob === "function") {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  throw new Error("base64UrlToString: no decoder available");
 }
 
 export function stringToBase64Url(value: string): string {

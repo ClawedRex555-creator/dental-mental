@@ -32,7 +32,7 @@ const DialogContent = React.forwardRef<
       ref={ref}
       onOpenAutoFocus={(e) => e.preventDefault()}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-lg",
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-[var(--foreground)] shadow-lg",
         className
       )}
       {...props}
@@ -57,7 +57,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-slate-900", className)}
+    className={cn("text-lg font-semibold text-[var(--foreground)]", className)}
     {...props}
   />
 ));

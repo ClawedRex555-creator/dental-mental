@@ -23,6 +23,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: {
+    AUTH_SECRET: process.env.AUTH_SECRET,
+    APP_ROOT_DOMAIN: process.env.APP_ROOT_DOMAIN,
+    DEFAULT_CLINIC_SLUG: process.env.DEFAULT_CLINIC_SLUG,
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

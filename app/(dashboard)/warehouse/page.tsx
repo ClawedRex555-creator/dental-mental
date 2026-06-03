@@ -6,8 +6,8 @@ import { ServiceModal } from "@/components/staff/service-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { SERVICE_CATEGORIES } from "@/lib/catalogs";
-import { formatCurrency } from "@/lib/utils";
+import { groupServicesByCategory } from "@/lib/service-categories";
+import { formatServicePrice, serviceNotes } from "@/lib/utils";
 import type { Service } from "@/lib/types";
 import { useClinicStore } from "@/store/useClinicStore";
 
@@ -19,19 +19,10 @@ export default function ServicesPage() {
 
   const q = search.trim().toLowerCase();
 
-  const filteredByCategory = useMemo(() => {
-    return SERVICE_CATEGORIES.map((category) => ({
-      category,
-      items: services.filter((s) => {
-        if (s.category !== category) return false;
-        if (!q) return true;
-        return (
-          s.name.toLowerCase().includes(q) ||
-          s.category.toLowerCase().includes(q)
-        );
-      }),
-    }));
-  }, [services, q]);
+  const filteredByCategory = useMemo(
+    () => groupServicesByCategory(services, q),
+    [services, q]
+  );
 
   const totalShown = filteredByCategory.reduce((n, g) => n + g.items.length, 0);
 
@@ -76,11 +67,18 @@ export default function ServicesPage() {
         </Card>
       ) : (
         <div className="space-y-8">
-          {filteredByCategory.map(({ category, items }) => {
+          {filteredByCategory.map(({ category, items, isLegacyCategory }) => {
             if (items.length === 0 && q) return null;
             return (
               <section key={category} className="space-y-3">
-                <h2 className="text-lg font-semibold text-slate-900">{category}</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {category}
+                  {isLegacyCategory && (
+                    <span className="ml-2 text-sm font-normal text-amber-700">
+                      (переназначьте категорию в карточке услуги)
+                    </span>
+                  )}
+                </h2>
                 {items.length === 0 ? (
                   <p className="text-sm text-slate-400">Нет услуг в этой категории</p>
                 ) : (
@@ -90,9 +88,12 @@ export default function ServicesPage() {
                         <CardContent className="flex items-center justify-between gap-2 p-4">
                           <div className="min-w-0">
                             <p className="font-medium text-slate-900">{service.name}</p>
-                            <p className="text-sm text-teal-700">
-                              {formatCurrency(service.price)}
-                            </p>
+                            <p className="text-sm text-teal-700">{formatServicePrice(service)}</p>
+                            {serviceNotes(service) && (
+                              <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                                {serviceNotes(service)}
+                              </p>
+                            )}
                           </div>
                           <Button
                             variant="ghost"

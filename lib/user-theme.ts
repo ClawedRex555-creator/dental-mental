@@ -1,13 +1,17 @@
 import type { ThemeMode } from "@/lib/types";
 
-/** Тема интерфейса для конкретного пользователя */
+/** Тема интерфейса для конкретного пользователя (ключ — id учётки или @guest:slug) */
 export function resolveUserTheme(
-  userId: string | undefined,
-  preferences: Record<string, ThemeMode>,
-  legacyClinicTheme?: ThemeMode
+  accountKey: string | undefined,
+  preferences: Record<string, ThemeMode>
 ): ThemeMode {
-  if (userId && preferences[userId]) {
-    return preferences[userId];
+  if (accountKey && preferences[accountKey]) {
+    return preferences[accountKey];
   }
-  return legacyClinicTheme ?? "light";
+  return "light";
+}
+
+export function applyDocumentTheme(theme: ThemeMode): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-theme", theme);
 }

@@ -51,14 +51,14 @@ export function SearchAutocomplete({
   };
 
   const inputClassName = cn(
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20",
+    "w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20",
     multiline && "min-h-[72px] resize-y"
   );
 
   return (
     <div ref={containerRef} className={cn("relative", compact ? "" : "space-y-2")}>
       {!compact && label && (
-        <label className="text-sm font-medium text-slate-700">
+        <label className="text-sm font-medium text-[var(--foreground)]">
           {label}
           {required && " *"}
         </label>
@@ -123,7 +123,7 @@ export function SearchAutocomplete({
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-48 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
         >
           {suggestions.map((item, i) => (
             <li key={item.label}>
@@ -132,8 +132,8 @@ export function SearchAutocomplete({
                 role="option"
                 tabIndex={-1}
                 className={cn(
-                  "w-full px-3 py-2 text-left text-sm hover:bg-teal-50",
-                  i === highlight && "bg-teal-50 text-teal-900"
+                  "w-full px-3 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[var(--nav-hover-bg)] hover:text-[var(--nav-hover-fg)]",
+                  i === highlight && "bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]"
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -147,7 +147,7 @@ export function SearchAutocomplete({
         </ul>
       )}
       {!compact && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-[var(--muted)]">
           Введите ключевое слово — выберите из списка или допишите свой текст
         </p>
       )}

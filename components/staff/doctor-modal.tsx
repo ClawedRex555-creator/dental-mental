@@ -52,6 +52,10 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
   const [diplomaCertificate, setDiplomaCertificate] = useState("");
   const [commissionPercent, setCommissionPercent] = useState("25");
   const [hourlyRate, setHourlyRate] = useState("");
+  const [snils, setSnils] = useState("");
+  const [frmrOid, setFrmrOid] = useState("");
+  const [positionCode, setPositionCode] = useState("34");
+  const [certThumbprint, setCertThumbprint] = useState("");
   const [role, setRole] = useState<UserRole>("doctor");
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
@@ -92,6 +96,10 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setDiplomaCertificate(member.diplomaCertificate ?? "");
       setCommissionPercent(String(member.commissionPercent ?? 25));
       setHourlyRate(member.hourlyRate != null ? String(member.hourlyRate) : "");
+      setSnils(member.snils ?? "");
+      setFrmrOid(member.frmrOid ?? "");
+      setPositionCode(member.positionCode ?? "34");
+      setCertThumbprint(member.certThumbprint ?? "");
       setRole(member.role);
     } else {
       setName("");
@@ -105,6 +113,10 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setDiplomaCertificate("");
       setCommissionPercent("25");
       setHourlyRate("");
+      setSnils("");
+      setFrmrOid("");
+      setPositionCode("34");
+      setCertThumbprint("");
       setRole("doctor");
       setAuthPassword("");
       setAuthPasswordConfirm("");
@@ -167,6 +179,10 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       diplomaCertificate: diplomaCertificate.trim() || undefined,
       commissionPercent: role === "doctor" ? Number(commissionPercent) || 0 : 0,
       hourlyRate: role === "assistant" ? Number(hourlyRate) || 0 : undefined,
+      snils: snils.trim() || undefined,
+      frmrOid: frmrOid.trim() || undefined,
+      positionCode: positionCode.trim() || undefined,
+      certThumbprint: certThumbprint.trim() || undefined,
       role,
     };
 
@@ -190,7 +206,65 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
 
     if (isEdit && member) {
       updateDoctor(member.id, payload);
-      toast.success("Сотрудник обновлён");
+
+      const passwordChange =
+        authPassword.length > 0 || authPasswordConfirm.length > 0;
+      const profileChanged =
+        member.role !== role ||
+        member.email.trim().toLowerCase() !== loginEmail ||
+        member.name.trim() !== name.trim();
+      const needsAuthSync = passwordChange || profileChanged;
+
+      if (needsAuthSync) {
+        if (!loginEmail) {
+          toast.error("Укажите email — он используется как логин для входа");
+          return;
+        }
+        if (passwordChange) {
+          if (authPassword.length < 8) {
+            toast.error("Пароль для входа — не менее 8 символов");
+            return;
+          }
+          if (authPassword !== authPasswordConfirm) {
+            toast.error("Пароли не совпадают");
+            return;
+          }
+        }
+
+        try {
+          setSaving(true);
+          const res = await fetch("/api/auth/accounts", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              staffId: member.id,
+              login: loginEmail,
+              role,
+              name: name.trim(),
+              ...(passwordChange ? { password: authPassword } : {}),
+            }),
+          });
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          if (!res.ok) {
+            toast.error(data.error ?? "Не удалось обновить доступ для входа");
+            return;
+          }
+          toast.success(
+            passwordChange
+              ? "Сотрудник, роль и пароль для входа обновлены"
+              : "Сотрудник и роль для входа обновлены"
+          );
+        } catch {
+          toast.error("Не удалось обновить доступ. Проверьте соединение.");
+          return;
+        } finally {
+          setSaving(false);
+        }
+      } else {
+        toast.success("Сотрудник обновлён");
+      }
+
       onOpenChange(false);
       return;
     }
@@ -249,7 +323,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
           <div className="space-y-2">
             <Label>Роль в клинике</Label>
             <select
-              className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              className="select-field"
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
             >
@@ -262,7 +336,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
           </div>
 
           {role === "doctor" ? (
-            <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+            <div className="form-panel space-y-2">
               <Label>{UI.specialization} (можно несколько)</Label>
               <div className="grid gap-2 sm:grid-cols-2">
                 {DOCTOR_SPECIALIZATIONS.map((s) => (
@@ -297,7 +371,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
               <div className="space-y-2">
                 <Label>{UI.specialization}</Label>
                 <select
-                  className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  className="select-field"
                   value={specializationKey}
                   onChange={(e) => setSpecializationKey(e.target.value)}
                 >
@@ -331,8 +405,11 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
             </div>
             <div className="space-y-2">
               <Label>
-                Email {isEdit ? "" : "(логин для входа)"}{" "}
-                {isEdit && <span className="text-slate-400">({UI.optional})</span>}
+                Email {isEdit ? "(логин для входа)" : "(логин для входа)"}{" "}
+                {!isEdit && null}
+                {isEdit && !email.trim() && (
+                  <span style={{ color: "var(--callout-stub-text)" }}> — обязателен для доступа</span>
+                )}
               </Label>
               <Input
                 type="email"
@@ -345,9 +422,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
           </div>
 
           {!isEdit && (
-            <div className="grid grid-cols-2 gap-3 rounded-lg border border-teal-100 bg-teal-50/50 p-3">
+            <div className="form-panel form-panel-info grid grid-cols-2 gap-3">
               <div className="space-y-2 sm:col-span-2">
-                <p className="text-xs font-medium text-teal-900">Доступ в систему</p>
+                <p className="form-panel-title">Доступ в систему</p>
               </div>
               <div className="space-y-2">
                 <Label>Пароль</Label>
@@ -371,11 +448,41 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
             </div>
           )}
 
+          {isEdit && (
+            <div className="form-panel grid grid-cols-2 gap-3">
+              <div className="space-y-2 sm:col-span-2">
+                <p className="form-panel-title">
+                  Доступ в систему — заполните, чтобы выдать или сменить пароль
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Новый пароль</Label>
+                <Input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  placeholder="Не менять — оставить пустым"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Повтор пароля</Label>
+                <Input
+                  type="password"
+                  value={authPasswordConfirm}
+                  onChange={(e) => setAuthPasswordConfirm(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Кабинет</Label>
               <select
-                className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                className="select-field"
                 value={cabinetId}
                 onChange={(e) => setCabinetId(e.target.value)}
               >
@@ -389,7 +496,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
             </div>
             <div className="space-y-2">
               <Label>
-                {UI.doctorAddress} <span className="text-slate-400">({UI.optional})</span>
+                {UI.doctorAddress} <span className="text-[var(--muted)]">({UI.optional})</span>
               </Label>
               <Input
                 value={address}
@@ -402,7 +509,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
           <div className="space-y-2">
             <Label>
               {UI.diplomaCertificate}{" "}
-              <span className="text-slate-400">({UI.optional})</span>
+              <span className="text-[var(--muted)]">({UI.optional})</span>
             </Label>
             <Input
               value={diplomaCertificate}
@@ -412,6 +519,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
           </div>
 
           {role === "doctor" && (
+            <>
             <div className="space-y-2">
               <Label>Комиссия, %</Label>
               <Input
@@ -422,6 +530,34 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
                 onChange={(e) => setCommissionPercent(e.target.value)}
               />
             </div>
+            <div className="form-panel grid grid-cols-2 gap-3 sm:col-span-2">
+              <p className="form-panel-title sm:col-span-2">ЕГИСЗ / N3 (врач)</p>
+              <div className="space-y-2">
+                <Label>СНИЛС врача</Label>
+                <Input value={snils} onChange={(e) => setSnils(e.target.value)} placeholder="00000000000" />
+              </div>
+              <div className="space-y-2">
+                <Label>OID ФРМР</Label>
+                <Input value={frmrOid} onChange={(e) => setFrmrOid(e.target.value)} placeholder="1.2.643..." />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Код должности (NSI)</Label>
+                <Input value={positionCode} onChange={(e) => setPositionCode(e.target.value)} placeholder="34 — врач-стоматолог" />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Отпечаток КЭП врача (CryptoPro)</Label>
+                <Input
+                  value={certThumbprint}
+                  onChange={(e) => setCertThumbprint(e.target.value)}
+                  placeholder="40 hex-символов, у каждого врача свой"
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-[var(--muted)]">
+                  Личная КЭП врача. Для stub-теста можно не заполнять.
+                </p>
+              </div>
+            </div>
+            </>
           )}
           {role === "assistant" && (
             <div className="space-y-2">

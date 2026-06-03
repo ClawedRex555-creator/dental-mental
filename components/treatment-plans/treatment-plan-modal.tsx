@@ -8,6 +8,9 @@ import type { DiscountType, TreatmentPlan, TreatmentPlanItem, TreatmentPlanStatu
 import { TREATMENT_PLAN_STATUS_LABELS, UI } from "@/lib/constants";
 import { calcPlanTotals } from "@/lib/treatment-plan-utils";
 import { printTreatmentPlan } from "@/lib/treatment-plan-print";
+import { logAuditClient } from "@/lib/audit-client";
+import { canDeleteTreatmentPlans } from "@/lib/rbac";
+import { syncTreatmentPlanCommentToPatientNotes } from "@/lib/treatment-plan-patient-note";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { useClinicStore } from "@/store/useClinicStore";
 import { formatCurrency, generateId } from "@/lib/utils";
@@ -46,8 +49,15 @@ export function TreatmentPlanModal({
     medicalRecords,
     addTreatmentPlan,
     updateTreatmentPlan,
+    deleteTreatmentPlan,
+    patientNotes,
+    addPatientNote,
+    updatePatientNote,
+    deletePatientNote,
+    currentUser,
     clinicSettings,
   } = useClinicStore();
+  const canDeletePlans = canDeleteTreatmentPlans(currentUser.role);
 
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -167,13 +177,36 @@ export function TreatmentPlanModal({
       comment: comment.trim() || undefined,
     };
 
+    const doctorName = doctors.find((d) => d.id === doctorId)?.name ?? "";
+
+    syncTreatmentPlanCommentToPatientNotes({
+      plan: payload,
+      comment,
+      doctorName,
+      patientNotes,
+      currentUser,
+      addPatientNote,
+      updatePatientNote,
+      deletePatientNote,
+    });
+
+    const savedWithComment = Boolean(comment.trim());
     if (plan) {
       updateTreatmentPlan(plan.id, payload);
-      toast.success("План лечения обновлён");
+      toast.success(
+        savedWithComment
+          ? "План сохранён, комментарий — в заметках пациента"
+          : "План лечения обновлён"
+      );
     } else {
       addTreatmentPlan(payload);
-      toast.success("План лечения создан");
+      toast.success(
+        savedWithComment
+          ? "План создан, комментарий — в заметках пациента"
+          : "План лечения создан"
+      );
     }
+
     onOpenChange(false);
   };
 
@@ -365,14 +398,53 @@ export function TreatmentPlanModal({
 
           <div className="space-y-2">
             <Label>Комментарий</Label>
+            <p className="text-xs text-slate-500">
+              Видят только сотрудники клиники (вкладка «Заметки» в карточке пациента). При
+              печати плана комментарий попадает на бланк — пациент увидит его на бумаге.
+            </p>
             <textarea
               className="min-h-[60px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
+              placeholder="Сохранится в заметках пациента с кратким описанием плана"
             />
           </div>
 
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {canDeletePlans && plan ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="border-red-200 text-red-700 hover:bg-red-50"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Удалить план «${plan.title}»?\n\nСвязанная заметка будет удалена. Акты и предоплаты в «Финансы» останутся.`
+                    )
+                  ) {
+                    return;
+                  }
+                  if (deleteTreatmentPlan(plan.id)) {
+                    void logAuditClient({
+                      action: "delete",
+                      resourceType: "treatment_plan",
+                      resourceId: plan.id,
+                      metadata: { title: plan.title, patientId: plan.patientId },
+                    });
+                    toast.success("План лечения удалён");
+                    onOpenChange(false);
+                  } else {
+                    toast.error("Не удалось удалить план");
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Удалить
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {UI.cancel}
             </Button>
@@ -405,6 +477,7 @@ export function TreatmentPlanModal({
               Распечатать
             </Button>
             <Button onClick={handleSave}>{UI.save}</Button>
+            </div>
           </div>
         </div>
       </DialogContent>

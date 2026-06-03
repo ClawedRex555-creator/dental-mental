@@ -47,7 +47,7 @@ export function ClinicWeeklyHoursForm({ value, onChange }: ClinicWeeklyHoursForm
               <Input
                 type="time"
                 disabled={day.closed}
-                value={day.close ?? "20:00"}
+                value={day.close ?? "19:00"}
                 onChange={(e) => setDay(key, { close: e.target.value })}
               />
             </div>

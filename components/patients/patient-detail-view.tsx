@@ -1,10 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarPlus, ClipboardList, CreditCard, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  ArrowLeft,
+  CalendarPlus,
+  ClipboardList,
+  CreditCard,
+  MessageSquare,
+  Pencil,
+  Phone,
+  Trash2,
+} from "lucide-react";
 import type { Patient, PatientFile, TreatmentPlan } from "@/lib/types";
-import { DISABILITY_LABELS, FILE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/constants";
+import {
+  DISABILITY_LABELS,
+  FILE_TYPE_LABELS,
+  OTHER_CLINIC_VISIT_BADGE,
+  PAYMENT_METHOD_LABELS,
+} from "@/lib/constants";
 import { useClinicStore } from "@/store/useClinicStore";
 import { cn, formatCurrency, formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { AppointmentModal } from "@/components/appointments/appointment-modal";
@@ -16,6 +32,18 @@ import { PatientStatusBadge, AppointmentStatusBadge } from "@/components/shared/
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { logAuditClient } from "@/lib/audit-client";
+import { readFileAsDataUrl } from "@/lib/open-stored-file";
+import { canDeletePatients, canDeleteTreatmentPlans } from "@/lib/rbac";
+import {
+  CLINIC_VISIT_STATUSES,
+  countClinicVisits,
+  otherClinicVisitId,
+} from "@/lib/patient-visits";
+import { PatientDebtPanel } from "@/components/patients/patient-debt-panel";
+import { PatientModal } from "@/components/patients/patient-modal";
+import { PatientNotesPanel } from "@/components/patients/patient-notes-panel";
+import { getPatientDebtAmount } from "@/lib/patient-balance";
 
 const TABS = ["overview", "appointments", "records", "teeth", "plans", "finance", "files", "notes"] as const;
 type Tab = (typeof TABS)[number];
@@ -32,11 +60,13 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 export function PatientDetailView({ patient }: { patient: Patient }) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
   const [appointmentOpen, setAppointmentOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [prepayOpen, setPrepayOpen] = useState(false);
+  const [editPatientOpen, setEditPatientOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<TreatmentPlan | null>(null);
   const {
     appointments,
@@ -52,17 +82,73 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
     getPatientTeeth,
     updateTeeth,
     addPatientFile,
+    currentUser,
+    deletePatient,
+    deleteTreatmentPlan,
+    syncOtherClinicVisitForPatient,
   } = useClinicStore();
+  const canDelete = canDeletePatients(currentUser.role);
+  const canDeletePlans = canDeleteTreatmentPlans(currentUser.role);
+  const patientName = getFullName(patient.firstName, patient.lastName, patient.middleName);
+
+  useEffect(() => {
+    logAuditClient({
+      action: "view",
+      resourceType: "patient",
+      resourceId: patient.id,
+    });
+  }, [patient.id]);
+
+  /** Старые карточки: галочка была, а записи в истории ещё нет */
+  useEffect(() => {
+    if (!patient.hadPreviousVisits) return;
+    const visitId = otherClinicVisitId(patient.id);
+    if (appointments.some((a) => a.id === visitId)) return;
+    syncOtherClinicVisitForPatient(patient);
+  }, [
+    patient,
+    patient.hadPreviousVisits,
+    patient.previousVisitsNote,
+    patient.createdAt,
+    appointments,
+    syncOtherClinicVisitForPatient,
+  ]);
+
   const patientActs = workActs.filter((a) => a.patientId === patient.id);
-  const patientAppointments = appointments.filter((a) => a.patientId === patient.id);
+  const patientAppointments = useMemo(
+    () =>
+      appointments
+        .filter((a) => a.patientId === patient.id)
+        .sort((a, b) => {
+          if (a.isOtherClinicVisit && !b.isOtherClinicVisit) return 1;
+          if (!a.isOtherClinicVisit && b.isOtherClinicVisit) return -1;
+          const byDate = b.date.localeCompare(a.date);
+          if (byDate !== 0) return byDate;
+          return b.startTime.localeCompare(a.startTime);
+        }),
+    [appointments, patient.id]
+  );
+  const clinicVisitCount = countClinicVisits(appointments, patient.id);
+  const completedVisits = patientAppointments.filter((a) =>
+    CLINIC_VISIT_STATUSES.includes(a.status)
+  );
   const records = medicalRecords.filter((r) => r.patientId === patient.id);
   const plans = treatmentPlans.filter((p) => p.patientId === patient.id);
   const patientPayments = payments.filter((p) => p.patientId === patient.id);
   const patientPrepayments = prepayments.filter((p) => p.patientId === patient.id);
   const files = patientFiles.filter((f) => f.patientId === patient.id);
   const notes = patientNotes.filter((n) => n.patientId === patient.id);
+  const notesCount = notes.length + (patient.notes?.trim() ? 1 : 0);
+  const latestTeamNote = useMemo(
+    () =>
+      [...notes].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0],
+    [notes]
+  );
   const teeth = getPatientTeeth(patient.id);
   const activePlan = plans.find((p) => ["accepted", "in_progress", "proposed"].includes(p.status));
+  const debtAmount = getPatientDebtAmount(patient.balance);
 
   return (
     <div className="space-y-6">
@@ -78,12 +164,26 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
             </div>
             <p className="mt-2 text-sm text-slate-600">{getAge(patient.birthDate)} лет · {formatPhone(patient.phone)}{patient.email && ` · ${patient.email}`}</p>
             <div className="mt-3 flex flex-wrap gap-4 text-sm">
-              <span>Баланс: <strong className={patient.balance < 0 ? "text-red-600" : "text-slate-900"}>{formatCurrency(patient.balance)}</strong></span>
+              <span>
+                Баланс:{" "}
+                <strong
+                  className={patient.balance < 0 ? "text-red-600" : "text-slate-900"}
+                >
+                  {formatCurrency(patient.balance)}
+                </strong>
+                {debtAmount > 0 && (
+                  <span className="ml-1 text-red-600">(долг {formatCurrency(debtAmount)})</span>
+                )}
+              </span>
               <span>Последний визит: {formatDate(patient.lastVisitDate)}</span>
               <span>Следующий: {formatDate(patient.nextVisitDate)}</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditPatientOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Редактировать
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setAppointmentOpen(true)}>
               <CalendarPlus className="mr-2 h-4 w-4" />Записать
             </Button>
@@ -98,12 +198,59 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               Предоплата
             </Button>
             <Button variant="secondary" size="sm" asChild><a href={`tel:${patient.phone}`}><Phone className="mr-2 h-4 w-4" />Позвонить</a></Button>
+            {canDelete && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-700 hover:bg-red-50"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Удалить пациента «${patientName}»?\n\nБудут удалены все визиты, медкарта, планы, финансы и файлы. Действие нельзя отменить.`
+                    )
+                  ) {
+                    return;
+                  }
+                  if (deletePatient(patient.id)) {
+                    logAuditClient({
+                      action: "delete",
+                      resourceType: "patient",
+                      resourceId: patient.id,
+                    });
+                    toast.success("Пациент удалён");
+                    router.push("/patients");
+                  } else {
+                    toast.error("Не удалось удалить пациента");
+                  }
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Удалить
+              </Button>
+            )}
           </div>
         </div>
       </div>
       <div className="flex flex-wrap gap-1 border-b border-slate-200">
         {TABS.map((t) => (
-          <button key={t} type="button" onClick={() => setTab(t)} className={cn("rounded-t-lg px-4 py-2.5 text-sm font-medium", tab === t ? "border-b-2 border-teal-600 bg-teal-50/50 text-teal-800" : "text-slate-600 hover:bg-slate-50")}>{TAB_LABELS[t]}</button>
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-t-lg px-4 py-2.5 text-sm font-medium",
+              tab === t
+                ? "border-b-2 border-teal-600 bg-teal-50/50 text-teal-800"
+                : "text-slate-600 hover:bg-slate-50"
+            )}
+          >
+            {TAB_LABELS[t]}
+            {t === "notes" && notesCount > 0 && (
+              <span className="rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                {notesCount}
+              </span>
+            )}
+          </button>
         ))}
       </div>
       {tab === "overview" && (
@@ -136,9 +283,15 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                 <span className="font-medium">Аллергии:</span>{" "}
                 {patient.allergies?.length ? patient.allergies.join(", ") : "нет"}
               </p>
+              <p>
+                <span className="font-medium">Приёмы у нас:</span>{" "}
+                {clinicVisitCount > 0
+                  ? `${clinicVisitCount} (${completedVisits.length} с визитом)`
+                  : "пока нет завершённых визитов"}
+              </p>
               {patient.hadPreviousVisits && (
                 <p>
-                  <span className="font-medium">Ранние визиты:</span>{" "}
+                  <span className="font-medium">Другая клиника (до нас):</span>{" "}
                   {patient.previousVisitsNote || "да, без описания"}
                 </p>
               )}
@@ -153,12 +306,76 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               </CardContent>
             </Card>
           )}
+          {(patient.notes?.trim() || notes.length > 0) && (
+            <Card className="md:col-span-2 border-amber-200/60">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <MessageSquare className="h-4 w-4 text-amber-700" />
+                  Заметки
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setTab("notes")}>
+                  Все заметки
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {patient.notes?.trim() && (
+                  <p className="rounded-lg bg-amber-50/80 px-3 py-2 text-slate-800">
+                    <span className="text-xs font-medium text-amber-800">Важно: </span>
+                    {patient.notes}
+                  </p>
+                )}
+                {latestTeamNote && (
+                  <p className="text-slate-600 line-clamp-2">
+                    <span className="text-slate-500">{latestTeamNote.author}: </span>
+                    {latestTeamNote.text}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
       {tab === "appointments" && (
-        <Card><CardContent className="divide-y p-0">{patientAppointments.map((apt) => { const doctor = doctors.find((d) => d.id === apt.doctorId); const service = services.find((s) => s.id === apt.serviceId); return (
-          <div key={apt.id} className="flex justify-between px-4 py-3 text-sm"><div><p className="font-medium">{formatDate(apt.date)} {apt.startTime}</p><p className="text-slate-500">{apt.complaints ?? apt.reason ?? "—"} · {doctor?.name ?? "врач не назначен"}</p></div><div className="flex items-center gap-2"><AppointmentStatusBadge status={apt.status} /></div></div>
-        ); })}</CardContent></Card>
+        <Card>
+          <CardContent className="divide-y p-0">
+            {patientAppointments.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-slate-500">
+                Визитов пока нет
+              </p>
+            ) : (
+              patientAppointments.map((apt) => {
+                const doctor = doctors.find((d) => d.id === apt.doctorId);
+                const isOther = apt.isOtherClinicVisit;
+                return (
+                  <div key={apt.id} className="flex justify-between gap-3 px-4 py-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900">
+                        {isOther ? "Визит в другой клинике (до нас)" : `${formatDate(apt.date)} ${apt.startTime}`}
+                      </p>
+                      <p className="text-slate-500">
+                        {isOther
+                          ? apt.complaints?.trim() || "Без описания"
+                          : `${apt.complaints ?? apt.reason ?? "—"} · ${doctor?.name ?? "врач не назначен"}`}
+                      </p>
+                      {isOther && apt.reason && (
+                        <p className="mt-1 text-xs text-amber-800">{apt.reason}</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {isOther ? (
+                        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                          {OTHER_CLINIC_VISIT_BADGE}
+                        </span>
+                      ) : (
+                        <AppointmentStatusBadge status={apt.status} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
       )}
       {tab === "records" && (
         <div className="space-y-4">
@@ -245,13 +462,48 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                 }}
               >
                 <CardHeader>
-                  <CardTitle>{plan.title}</CardTitle>
-                  <p className="text-sm text-teal-700 font-medium">
-                    {formatCurrency(plan.finalAmount)}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {plan.items.length} услуг · нажмите, чтобы редактировать
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <CardTitle>{plan.title}</CardTitle>
+                      <p className="text-sm font-medium text-teal-700">
+                        {formatCurrency(plan.finalAmount)}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {plan.items.length} услуг · нажмите, чтобы редактировать
+                      </p>
+                    </div>
+                    {canDeletePlans && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Удалить план"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (
+                            !window.confirm(
+                              `Удалить план «${plan.title}»?\n\nСвязанная заметка будет удалена. Акты и предоплаты в «Финансы» останутся.`
+                            )
+                          ) {
+                            return;
+                          }
+                          if (deleteTreatmentPlan(plan.id)) {
+                            void logAuditClient({
+                              action: "delete",
+                              resourceType: "treatment_plan",
+                              resourceId: plan.id,
+                              metadata: { title: plan.title, patientId: plan.patientId },
+                            });
+                            toast.success("План лечения удалён");
+                          } else {
+                            toast.error("Не удалось удалить план");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
               </Card>
             ))
@@ -260,6 +512,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
       )}
       {tab === "finance" && (
         <div className="space-y-4">
+          <PatientDebtPanel patient={patient} />
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setPrepayOpen(true)}>
               <CreditCard className="mr-2 h-4 w-4" />
@@ -339,18 +592,20 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    addPatientFile({
-                      id: `pf_${Date.now()}`,
-                      patientId: patient.id,
-                      name: file.name,
-                      type: file.type.startsWith("image/") ? "photo" : "document",
-                      uploadedAt: new Date().toISOString().slice(0, 10),
-                      dataUrl: reader.result as string,
+                  void readFileAsDataUrl(file)
+                    .then((dataUrl) => {
+                      addPatientFile({
+                        id: `pf_${Date.now()}`,
+                        patientId: patient.id,
+                        name: file.name,
+                        type: file.type.startsWith("image/") ? "photo" : "document",
+                        uploadedAt: new Date().toISOString().slice(0, 10),
+                        dataUrl,
+                      });
+                    })
+                    .catch(() => {
+                      toast.error("Допустимы только PDF, PNG, JPEG или WebP");
                     });
-                  };
-                  reader.readAsDataURL(file);
                   e.target.value = "";
                 }}
               />
@@ -381,7 +636,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
           </CardContent>
         </Card>
       )}
-      {tab === "notes" && <Card><CardContent className="space-y-3 pt-6">{notes.map((n) => <div key={n.id} className="rounded-lg border p-4 text-sm"><p className="font-medium">{n.author}</p><p className="mt-1">{n.text}</p></div>)}</CardContent></Card>}
+      {tab === "notes" && <PatientNotesPanel patient={patient} notes={notes} />}
       <AppointmentModal open={appointmentOpen} onOpenChange={setAppointmentOpen} />
       <MedicalRecordModal
         open={recordOpen}
@@ -401,6 +656,11 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
         open={prepayOpen}
         onOpenChange={setPrepayOpen}
         defaultPatientId={patient.id}
+      />
+      <PatientModal
+        open={editPatientOpen}
+        onOpenChange={setEditPatientOpen}
+        patient={patient}
       />
     </div>
   );

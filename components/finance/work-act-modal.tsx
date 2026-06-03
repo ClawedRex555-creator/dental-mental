@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { DiscountType, WorkAct, WorkActItem } from "@/lib/types";
+import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { calcWorkActAmounts } from "@/lib/work-act-utils";
 import { printWorkAct } from "@/lib/work-act-print";
+import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { formatCurrency, generateId } from "@/lib/utils";
@@ -63,6 +65,8 @@ export function WorkActModal({
     addMedicalRecord,
     updateAppointment,
     getNextActNumber,
+    deleteWorkAct,
+    currentUser,
   } = useClinicStore();
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
   const readOnly = mode === "admin_view";
@@ -70,6 +74,8 @@ export function WorkActModal({
   const existingAct = existingActId
     ? workActs.find((a) => a.id === existingActId)
     : undefined;
+
+  const canDeleteAct = canDeleteWorkActs(currentUser.role) && Boolean(existingAct);
 
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -201,19 +207,13 @@ export function WorkActModal({
 
     if (savedActId) {
       updateWorkAct(actId, act);
+      setSavedActId(actId);
+      return act;
     } else {
       const invoiceId = generateId("inv");
-      addWorkAct({ ...act, invoiceId });
-      addInvoice({
-        id: invoiceId,
-        patientId,
-        workActId: actId,
-        amount: totalAmount,
-        paid: 0,
-        status: "pending",
-        date: actDate,
-        description: `Счёт по акту ${actNumber} от ${actDate}`,
-      });
+      const actWithInvoice = { ...act, invoiceId };
+      addWorkAct(actWithInvoice);
+      addInvoice(createInvoiceFromWorkAct(actWithInvoice, invoiceId));
       const servicesList = filledItems.map((i) => i.serviceName).join("; ");
       addMedicalRecord({
         id: generateId("mr"),
@@ -475,9 +475,21 @@ export function WorkActModal({
             )}
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-4 space-y-3">
+          <div className="rounded-lg bg-[var(--card)] border border-[var(--border)] p-4 space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Итого с учётом скидки</span>
+              <span className="text-[var(--muted)]">Сумма услуг</span>
+              <span>{formatCurrency(afterRowDiscounts)}</span>
+            </div>
+            {discountValue > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--muted)]">
+                  Скидка {discountType === "percent" ? `${discount}%` : formatCurrency(Number(discount) || 0)}
+                </span>
+                <span className="text-teal-600">−{formatCurrency(discountValue)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm border-t border-[var(--border)] pt-2">
+              <span className="text-[var(--muted)]">Итого с учётом скидки</span>
               <span className="text-lg font-bold text-teal-700">
                 {formatCurrency(totalAmount)}
               </span>
@@ -533,6 +545,32 @@ export function WorkActModal({
                 <Button onClick={() => router.push(`/finance?tab=acts&payAct=${existingAct.id}`)}>
                   Перейти к оплате
                 </Button>
+                {canDeleteAct && (
+                  <Button
+                    variant="outline"
+                    className="border-red-200 text-red-700 hover:bg-red-50"
+                    onClick={() => {
+                      const paid = existingAct.paymentStatus === "paid";
+                      if (
+                        !window.confirm(
+                          paid
+                            ? `Удалить оплаченный акт № ${existingAct.actNumber}? Платёж исчезнет из финансов, сумма у пациента пересчитается. Отменить нельзя.`
+                            : `Удалить акт № ${existingAct.actNumber}? Это действие нельзя отменить.`
+                        )
+                      ) {
+                        return;
+                      }
+                      if (deleteWorkAct(existingAct.id)) {
+                        toast.success(paid ? "Оплаченный акт удалён" : "Акт удалён");
+                        onOpenChange(false);
+                      } else {
+                        toast.error("Не удалось удалить акт");
+                      }
+                    }}
+                  >
+                    Удалить акт
+                  </Button>
+                )}
               </>
             )}
             {!readOnly && mode === "doctor" && (

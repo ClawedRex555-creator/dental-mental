@@ -24,6 +24,17 @@
   --nav-hover-fg: #0f172a;
   --nav-active-bg: #f0fdfa;
   --nav-active-fg: #115e59;
+  --callout-info-bg: #f0fdfa;
+  --callout-info-border: #5eead4;
+  --callout-info-title: #115e59;
+  --callout-info-text: #0f766e;
+  --callout-neutral-bg: #f8fafc;
+  --callout-warn-bg: #fffbeb;
+  --callout-warn-border: #fcd34d;
+  --callout-warn-text: #92400e;
+  --callout-success-text: #047857;
+  --callout-stub-text: #b45309;
+  --input-readonly-bg: #f1f5f9;
 }
 
 [data-theme="dark"] {
@@ -49,6 +60,17 @@
   --nav-hover-fg: #f8fafc;
   --nav-active-bg: #134e4a;
   --nav-active-fg: #99f6e4;
+  --callout-info-bg: #134e4a;
+  --callout-info-border: #0f766e;
+  --callout-info-title: #ccfbf1;
+  --callout-info-text: #99f6e4;
+  --callout-neutral-bg: #1e293b;
+  --callout-warn-bg: #422006;
+  --callout-warn-border: #b45309;
+  --callout-warn-text: #fde68a;
+  --callout-success-text: #6ee7b7;
+  --callout-stub-text: #fcd34d;
+  --input-readonly-bg: #334155;
 }
 
 @theme inline {
@@ -72,8 +94,9 @@ body {
   background-color: var(--card) !important;
 }
 
-[data-theme="dark"] .bg-slate-50 {
-  background-color: #1e293b !important;
+[data-theme="dark"] .bg-slate-50,
+[data-theme="dark"] .bg-slate-50\/50 {
+  background-color: var(--callout-neutral-bg) !important;
 }
 
 [data-theme="dark"] .text-slate-900 {
@@ -111,6 +134,15 @@ body {
   background-color: #134e4a !important;
 }
 
+[data-theme="dark"] .text-teal-900 {
+  color: #99f6e4 !important;
+}
+
+[data-theme="dark"] .hover\:bg-teal-50:hover {
+  background-color: var(--nav-hover-bg) !important;
+  color: var(--nav-hover-fg) !important;
+}
+
 .nav-sidebar-link:hover {
   background-color: var(--nav-hover-bg);
   color: var(--nav-hover-fg);
@@ -119,4 +151,44 @@ body {
 .nav-sidebar-link-active {
   background-color: var(--nav-active-bg);
   color: var(--nav-active-fg);
+}
+
+/** Секции форм — читаемы в light/dark */
+.form-panel {
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--callout-neutral-bg);
+  padding: 0.75rem;
+}
+
+.form-panel-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.form-panel-info {
+  border-color: var(--callout-info-border);
+  background: var(--callout-info-bg);
+}
+
+.form-panel-info .form-panel-title {
+  color: var(--callout-info-title);
+}
+
+.select-field {
+  display: flex;
+  height: 2.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+}
+
+[data-theme="dark"] .text-amber-600 {
+  color: var(--callout-stub-text) !important;
 }

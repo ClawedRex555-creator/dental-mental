@@ -1,6 +1,7 @@
 import type {
   AppointmentStatus,
   DisabilityGroup,
+  PatientNoteCategory,
   PatientSource,
   PatientStatus,
   PaymentMethod,
@@ -40,6 +41,17 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   assistant: "Ассистент",
   accountant: "Бухгалтер",
 };
+
+export const PATIENT_NOTE_CATEGORIES: {
+  id: PatientNoteCategory;
+  label: string;
+  hint: string;
+}[] = [
+  { id: "general", label: "Общее", hint: "Любая информация для команды" },
+  { id: "reception", label: "Регистратура", hint: "Звонки, переносы, пожелания" },
+  { id: "clinical", label: "Клиника", hint: "Особенности лечения, согласования" },
+  { id: "billing", label: "Финансы", hint: "Оплата, скидки, договорённости" },
+];
 
 export const PATIENT_STATUS_LABELS: Record<PatientStatus, string> = {
   active: "Активный",
@@ -81,6 +93,8 @@ export const PATIENT_SOURCES: PatientSource[] = [
   "Сайт",
   "Повторный пациент",
 ];
+
+export const OTHER_CLINIC_VISIT_BADGE = "Другая клиника";
 
 export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   scheduled: "Записан",

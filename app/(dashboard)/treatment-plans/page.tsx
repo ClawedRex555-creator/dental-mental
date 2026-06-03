@@ -2,22 +2,54 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Pencil, Plus, Search } from "lucide-react";
+import { CreditCard, Pencil, Plus, Search, Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
 import { TreatmentPlanModal } from "@/components/treatment-plans/treatment-plan-modal";
+import { PrepaymentModal } from "@/components/finance/prepayment-modal";
+import { PayActDialog } from "@/components/finance/pay-act-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { TREATMENT_PLAN_STATUS_LABELS, UI } from "@/lib/constants";
+import { buildWorkActFromTreatmentPlan } from "@/lib/treatment-plan-finance";
 import { formatCurrency, formatDate, getFullName } from "@/lib/utils";
+import { logAuditClient } from "@/lib/audit-client";
+import { canDeleteTreatmentPlans } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
-import type { TreatmentPlan } from "@/lib/types";
+import type { PaymentMethod, TreatmentPlan, WorkAct } from "@/lib/types";
 
 export default function TreatmentPlansPage() {
-  const { treatmentPlans, patients, doctors, medicalRecords } = useClinicStore();
+  const {
+    treatmentPlans,
+    patients,
+    doctors,
+    medicalRecords,
+    addWorkAct,
+    addInvoice,
+    getNextActNumber,
+    payWorkAct,
+    currentUser,
+    deleteTreatmentPlan,
+  } = useClinicStore();
+  const canDeletePlans = canDeleteTreatmentPlans(currentUser.role);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TreatmentPlan | null>(null);
+  const [prepayOpen, setPrepayOpen] = useState(false);
+  const [prepayPlan, setPrepayPlan] = useState<TreatmentPlan | null>(null);
+  const [payAct, setPayAct] = useState<WorkAct | null>(null);
+
+  const handleFullPay = (plan: TreatmentPlan) => {
+    if (plan.items.length === 0) {
+      toast.error("В плане нет услуг");
+      return;
+    }
+    const { act, invoice } = buildWorkActFromTreatmentPlan(plan, getNextActNumber());
+    addWorkAct(act);
+    addInvoice(invoice);
+    setPayAct(act);
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -90,6 +122,7 @@ export default function TreatmentPlansPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      title="Редактировать"
                       onClick={() => {
                         setEditing(plan);
                         setModalOpen(true);
@@ -97,6 +130,40 @@ export default function TreatmentPlansPage() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                    {canDeletePlans && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Удалить план (только владелец)"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Удалить план «${plan.title}»?\n\nСвязанная заметка в карточке пациента будет удалена. Акты и предоплаты в разделе «Финансы» останутся. Отменить нельзя.`
+                            )
+                          ) {
+                            return;
+                          }
+                          if (deleteTreatmentPlan(plan.id)) {
+                            void logAuditClient({
+                              action: "delete",
+                              resourceType: "treatment_plan",
+                              resourceId: plan.id,
+                              metadata: { title: plan.title, patientId: plan.patientId },
+                            });
+                            toast.success("План лечения удалён");
+                            if (editing?.id === plan.id) {
+                              setEditing(null);
+                              setModalOpen(false);
+                            }
+                          } else {
+                            toast.error("Не удалось удалить план");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <p className="text-sm text-slate-500">
@@ -134,6 +201,23 @@ export default function TreatmentPlansPage() {
                     </li>
                   ))}
                 </ul>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPrepayPlan(plan);
+                      setPrepayOpen(true);
+                    }}
+                  >
+                    <Wallet className="h-4 w-4" />
+                    Предоплата
+                  </Button>
+                  <Button size="sm" onClick={() => handleFullPay(plan)}>
+                    <CreditCard className="h-4 w-4" />
+                    Оплатить полностью
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           );
@@ -141,6 +225,27 @@ export default function TreatmentPlansPage() {
       </div>
 
       <TreatmentPlanModal open={modalOpen} onOpenChange={setModalOpen} plan={editing} />
+      <PrepaymentModal
+        open={prepayOpen}
+        onOpenChange={(open) => {
+          setPrepayOpen(open);
+          if (!open) setPrepayPlan(null);
+        }}
+        defaultTreatmentPlan={prepayPlan}
+      />
+      <PayActDialog
+        act={payAct}
+        open={!!payAct}
+        onOpenChange={(open) => !open && setPayAct(null)}
+        onConfirm={(actId, method: PaymentMethod) => {
+          if (payWorkAct(actId, method)) {
+            toast.success("План лечения оплачен полностью");
+            setPayAct(null);
+          } else {
+            toast.error("Не удалось провести оплату");
+          }
+        }}
+      />
     </div>
   );
 }

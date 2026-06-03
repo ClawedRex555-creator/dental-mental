@@ -3,9 +3,16 @@ import "server-only";
 import {
   CLINIC_DATA_SCHEMA_VERSION,
   createFreshPersistedState,
+  hasClinicData,
+  isSuspiciousClinicDataDowngrade,
+  mergeClinicDataForSave,
   parseClinicPersistedState,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import {
+  decryptClinicSnapshotPhi,
+  encryptClinicSnapshotPhi,
+} from "@/lib/phi-crypto.server";
 import { withDb } from "@/lib/db";
 
 export interface ClinicDataRecord {
@@ -26,7 +33,7 @@ export async function getClinicDataDb(clinicId: string): Promise<ClinicDataRecor
       const parsed = parseClinicPersistedState(row.data);
       if (!parsed) return null;
       return {
-        data: parsed,
+        data: decryptClinicSnapshotPhi(parsed),
         updatedAt: row.updated_at.toISOString(),
         version: row.version ?? CLINIC_DATA_SCHEMA_VERSION,
       };
@@ -59,9 +66,25 @@ export async function saveClinicDataDb(
   clinicId: string,
   data: ClinicPersistedState
 ): Promise<ClinicDataRecord> {
+  const existing = await getClinicDataDb(clinicId);
+  if (existing && hasClinicData(existing.data) && !hasClinicData(data)) {
+    throw new Error("Нельзя перезаписать данные клиники пустым снимком");
+  }
+  if (existing && isSuspiciousClinicDataDowngrade(existing.data, data)) {
+    throw new Error(
+      "Отклонено: снимок выглядит повреждённым (подменены пациенты, врачи или услуги). Обновите страницу и повторите."
+    );
+  }
+
+  const toSave =
+    existing && hasClinicData(existing.data)
+      ? mergeClinicDataForSave(existing.data, data)
+      : data;
+
   const saved = await withDb(async (client) => {
+    const encrypted = encryptClinicSnapshotPhi(toSave);
     const payload = {
-      ...data,
+      ...encrypted,
       _schemaVersion: CLINIC_DATA_SCHEMA_VERSION,
     };
     await client.query(
@@ -76,7 +99,7 @@ export async function saveClinicDataDb(
       [clinicId]
     );
     return {
-      data,
+      data: toSave,
       updatedAt: res.rows[0]?.updated_at.toISOString() ?? new Date().toISOString(),
       version: CLINIC_DATA_SCHEMA_VERSION,
     };

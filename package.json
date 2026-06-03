@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:security": "node --experimental-strip-types --test lib/*.test.ts lib/*.security.test.ts lib/clinic-host.test.ts lib/auth-session-middleware.test.ts",
+    "test:security": "node --experimental-strip-types --test lib/*.test.ts lib/*.security.test.ts lib/clinic-host.test.ts lib/auth-session-middleware.test.ts lib/auth-session-roundtrip.test.ts",
     "bootstrap:owner": "node scripts/bootstrap-owner.mjs",
     "db:init": "node scripts/init-db.mjs",
     "create-superadmin": "node scripts/create-superadmin.mjs",

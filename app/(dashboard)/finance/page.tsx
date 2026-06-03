@@ -10,13 +10,14 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { WorkActModal } from "@/components/finance/work-act-modal";
 import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { PayActDialog } from "@/components/finance/pay-act-dialog";
+import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip";
 import type { PaymentMethod, WorkAct } from "@/lib/types";
-import { calcPaymentSplit } from "@/lib/finance-utils";
+import { calcPaymentSplit, calcClinicNetAfterSalaries, computeStaffSalariesForRange, sumPaidPaymentsInRange } from "@/lib/finance-utils";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
 import { printWorkAct } from "@/lib/work-act-print";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { formatCurrency, formatDate, generateId, getFullName } from "@/lib/utils";
+import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
+import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
@@ -46,7 +49,10 @@ export default function FinancePage() {
     clinicExpenses,
     addClinicExpense,
     prepayments,
+    deleteWorkAct,
+    currentUser,
   } = useClinicStore();
+  const canDeleteActs = canDeleteWorkActs(currentUser.role);
   const [tab, setTab] = useState<FinanceTab>("payments");
   const [period, setPeriod] = useState<Period>("day");
   const [manualAssistantHours, setManualAssistantHours] = useState<Record<string, string>>({});
@@ -162,12 +168,60 @@ export default function FinancePage() {
     .filter((p) => p.status === "paid")
     .reduce((s, p) => s + p.amount, 0);
 
-  const periodAppointments = appointments.filter((a) => inPeriod(a.date));
-
   const serviceActs = useMemo(
     () => workActs.filter((a) => a.actType !== "prepayment"),
     [workActs]
   );
+
+  const periodSalaries = useMemo(
+    () =>
+      computeStaffSalariesForRange(
+        doctors,
+        serviceActs,
+        appointments,
+        from,
+        to,
+        manualAssistantHours
+      ),
+    [doctors, serviceActs, appointments, from, to, manualAssistantHours]
+  );
+
+  const periodNetAfterSalaries = calcClinicNetAfterSalaries(
+    periodRevenue,
+    periodSalaries
+  );
+
+  const salaryPeriodRevenue = useMemo(
+    () => sumPaidPaymentsInRange(payments, salaryRangeFrom, salaryRangeTo),
+    [payments, salaryRangeFrom, salaryRangeTo]
+  );
+
+  const salaryPeriodSalaries = useMemo(
+    () =>
+      computeStaffSalariesForRange(
+        doctors,
+        serviceActs,
+        appointments,
+        salaryRangeFrom,
+        salaryRangeTo,
+        manualAssistantHours
+      ),
+    [
+      doctors,
+      serviceActs,
+      appointments,
+      salaryRangeFrom,
+      salaryRangeTo,
+      manualAssistantHours,
+    ]
+  );
+
+  const salaryPeriodNet = calcClinicNetAfterSalaries(
+    salaryPeriodRevenue,
+    salaryPeriodSalaries
+  );
+
+  const periodAppointments = appointments.filter((a) => inPeriod(a.date));
 
   const prepaymentActs = useMemo(
     () => workActs.filter((a) => a.actType === "prepayment"),
@@ -276,34 +330,49 @@ export default function FinancePage() {
       </div>
 
       <Card>
-        <CardContent className="flex flex-wrap items-end gap-3 pt-4">
-          <div className="flex flex-wrap gap-2">
-            {(["day", "week", "month", "custom"] as Period[]).map((p) => (
-              <Button
-                key={p}
-                size="sm"
-                variant={period === p ? "default" : "outline"}
-                onClick={() => setPeriod(p)}
-              >
-                {p === "day"
-                  ? "День"
-                  : p === "week"
-                    ? "Неделя"
-                    : p === "month"
-                      ? "Месяц"
-                      : "Период"}
-              </Button>
-            ))}
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap gap-2">
+              {(["day", "week", "month", "custom"] as Period[]).map((p) => (
+                <Button
+                  key={p}
+                  size="sm"
+                  variant={period === p ? "default" : "outline"}
+                  onClick={() => {
+                  setPeriod(p);
+                  setSalaryPeriod(p);
+                }}
+                >
+                  {p === "day"
+                    ? "День"
+                    : p === "week"
+                      ? "Неделя"
+                      : p === "month"
+                        ? "Месяц"
+                        : "Период"}
+                </Button>
+              ))}
+            </div>
+            {period === "custom" && (
+              <>
+                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+              </>
+            )}
+            <p className="text-xs text-[var(--muted)]">
+              {format(from, "d.MM.yyyy")} — {format(to, "d.MM.yyyy")}
+            </p>
           </div>
-          {period === "custom" && (
-            <>
-              <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-            </>
-          )}
-          <p className="text-sm font-medium text-teal-700">
-            Выручка за период: {formatCurrency(periodRevenue)}
-          </p>
+          <FinanceSummaryStrip
+            revenue={periodRevenue}
+            salaries={periodSalaries}
+            netAfterSalaries={periodNetAfterSalaries}
+            netLabel={
+              period === "day"
+                ? "Клинике за день после зарплат"
+                : "Клинике после зарплат"
+            }
+          />
         </CardContent>
       </Card>
 
@@ -350,8 +419,10 @@ export default function FinancePage() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              tab === t ? "bg-teal-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t
+                ? "bg-teal-600 text-white"
+                : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
             }`}
           >
             {t === "payments"
@@ -373,15 +444,18 @@ export default function FinancePage() {
         <div className="overflow-x-auto">
           {tab === "salaries" ? (
             <div className="space-y-6 p-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-800">Период зарплат</p>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 space-y-4">
+                <p className="text-sm font-semibold text-[var(--foreground)]">Период зарплат</p>
                 <div className="flex flex-wrap items-end gap-2">
                   {(["day", "week", "month", "custom"] as SalaryPeriod[]).map((p) => (
                     <Button
                       key={p}
                       size="sm"
                       variant={salaryPeriod === p ? "default" : "outline"}
-                      onClick={() => setSalaryPeriod(p)}
+                      onClick={() => {
+                        setSalaryPeriod(p);
+                        setPeriod(p);
+                      }}
                     >
                       {p === "day"
                         ? "День"
@@ -413,13 +487,23 @@ export default function FinancePage() {
                     </>
                   )}
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[var(--muted)]">
                   {format(salaryRangeFrom, "d.MM.yyyy")} — {format(salaryRangeTo, "d.MM.yyyy")}
                 </p>
+                <FinanceSummaryStrip
+                  revenue={salaryPeriodRevenue}
+                  salaries={salaryPeriodSalaries}
+                  netAfterSalaries={salaryPeriodNet}
+                  netLabel={
+                    salaryPeriod === "day"
+                      ? "Клинике за день после зарплат"
+                      : "Клинике после зарплат"
+                  }
+                />
               </div>
 
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-slate-800">Врачи (% от актов)</h3>
+                <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">Врачи (% от актов)</h3>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-slate-500">
@@ -438,30 +522,49 @@ export default function FinancePage() {
                         </td>
                       </tr>
                     ) : (
-                      salaryRows.map((row) => (
-                        <tr key={row.doctor.id} className="border-b border-slate-50">
-                          <td className="px-4 py-3 font-medium">
-                            {row.doctor.name} ({row.doctorPercent}%)
-                          </td>
-                          <td className="px-4 py-3 text-right">{row.acts}</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(row.total)}</td>
-                          <td className="px-4 py-3 text-right text-teal-700">
-                            {formatCurrency(row.doctorAmount)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {formatCurrency(row.clinicAmount)}
-                          </td>
-                        </tr>
-                      ))
+                      <>
+                        {salaryRows.map((row) => (
+                          <tr key={row.doctor.id} className="border-b border-[var(--border)]">
+                            <td className="px-4 py-3 font-medium text-[var(--foreground)]">
+                              {row.doctor.name} ({row.doctorPercent}%)
+                            </td>
+                            <td className="px-4 py-3 text-right">{row.acts}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(row.total)}</td>
+                            <td className="px-4 py-3 text-right text-teal-600">
+                              {formatCurrency(row.doctorAmount)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {formatCurrency(row.clinicAmount)}
+                            </td>
+                          </tr>
+                        ))}
+                        {salaryRows.length > 0 && (
+                          <tr className="bg-[var(--card)] font-semibold">
+                            <td className="px-4 py-3 text-[var(--foreground)]">Итого</td>
+                            <td className="px-4 py-3 text-right">
+                              {salaryRows.reduce((s, r) => s + r.acts, 0)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {formatCurrency(salaryRows.reduce((s, r) => s + r.total, 0))}
+                            </td>
+                            <td className="px-4 py-3 text-right text-teal-600">
+                              {formatCurrency(salaryPeriodSalaries.doctorSalary)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {formatCurrency(salaryRows.reduce((s, r) => s + r.clinicAmount, 0))}
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     )}
                   </tbody>
                 </table>
               </div>
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-slate-800">
+                <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">
                   Ассистенты (почасовая оплата)
                 </h3>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-[var(--muted)]">
                   Укажите часы вручную для расчёта зарплаты (или оставьте из приёмов ниже)
                 </p>
                 <table className="w-full text-sm">
@@ -863,6 +966,34 @@ export default function FinancePage() {
                             >
                               Печать
                             </Button>
+                            {canDeleteActs && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-red-200 text-red-700 hover:bg-red-50"
+                                title="Удалить акт (только владелец)"
+                                onClick={() => {
+                                  if (
+                                    !window.confirm(
+                                      isPaid
+                                        ? `Удалить оплаченный акт № ${act.actNumber}? Платёж исчезнет из финансов, сумма у пациента пересчитается. Отменить нельзя.`
+                                        : `Удалить акт № ${act.actNumber} (ожидает оплаты)? Это действие нельзя отменить.`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  if (deleteWorkAct(act.id)) {
+                                    toast.success(
+                                      isPaid ? "Оплаченный акт удалён" : "Акт удалён"
+                                    );
+                                  } else {
+                                    toast.error("Не удалось удалить акт");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -921,6 +1052,10 @@ export default function FinancePage() {
                     })
                   : invoices.map((inv) => {
                       const patient = patients.find((p) => p.id === inv.patientId);
+                      const linkedAct = inv.workActId
+                        ? workActs.find((a) => a.id === inv.workActId)
+                        : undefined;
+                      const display = resolveInvoiceDisplay(inv, linkedAct);
                       return (
                         <tr key={inv.id} className="border-b border-slate-50">
                           <td className="px-4 py-3">{formatDate(inv.date)}</td>
@@ -933,7 +1068,14 @@ export default function FinancePage() {
                                 )
                               : "-"}
                           </td>
-                          <td className="px-4 py-3">{inv.description}</td>
+                          <td className="px-4 py-3">
+                            <p>{inv.description}</p>
+                            {display.actNumber && (
+                              <p className="text-xs text-[var(--muted)]">
+                                Акт № {display.actNumber}
+                              </p>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <Badge
                               variant={
@@ -948,7 +1090,17 @@ export default function FinancePage() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-right font-medium">
-                            {formatCurrency(inv.amount)}
+                            {display.hasDiscount && (
+                              <p className="text-xs font-normal text-[var(--muted)] line-through">
+                                {formatCurrency(display.beforeDocDiscount)}
+                              </p>
+                            )}
+                            <p>{formatCurrency(display.total)}</p>
+                            {display.hasDiscount && (
+                              <p className="text-xs font-normal text-teal-700">
+                                скидка −{formatCurrency(display.discountValue)}
+                              </p>
+                            )}
                           </td>
                         </tr>
                       );

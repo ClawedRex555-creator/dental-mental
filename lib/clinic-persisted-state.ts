@@ -1,3 +1,9 @@
+import { mergeClinicServices, migrateServices } from "@/lib/service-categories";
+import {
+  findOrphanPatientIds,
+  patientsLostButAppointmentsRemain,
+  repairMissingPatientsInSnapshot,
+} from "@/lib/patient-visits";
 import type {
   Appointment,
   Cabinet,
@@ -162,7 +168,7 @@ function sanitizeLegalDocuments(docs: LegalDocument[]): LegalDocument[] {
 export function pickPersistedState(state: PersistPickSource): ClinicPersistedState {
   return {
     doctors: state.doctors ?? [],
-    services: state.services ?? [],
+    services: migrateServices(state.services ?? []),
     cabinets: state.cabinets ?? [],
     patients: state.patients ?? [],
     appointments: state.appointments ?? [],
@@ -200,15 +206,326 @@ export function hasClinicData(state: ClinicPersistedState): boolean {
   );
 }
 
-/** Подозрительное «обнуление» — защита от случайной перезаписи при синхронизации */
+/** Удаления в UI: в снимке только старые id, без подмены справочников */
+export function isDeletionOnlySubset<T extends { id: string }>(
+  existing: T[],
+  incoming: T[]
+): boolean {
+  if (incoming.length > existing.length) return true;
+  const existingIds = new Set(existing.map((x) => x.id));
+  return incoming.every((x) => existingIds.has(x.id));
+}
+
+/** Объединение по id: записи из local (вторая коллекция) перекрывают remote */
+export function mergeByIdPreferLocal<T extends { id: string }>(remote: T[], local: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const x of remote) map.set(x.id, x);
+  for (const x of local) map.set(x.id, x);
+  return Array.from(map.values());
+}
+
+/** Пациенты из текущей сессии не затираются устаревшим remote-снимком */
+export function mergeClinicPatients(remote: Patient[], local: Patient[]): Patient[] {
+  return mergeByIdPreferLocal(remote, local);
+}
+
+const MASS_ENTITY_LOSS_MIN_EXISTING = 4;
+const MASS_ENTITY_LOSS_RATIO = 0.75;
+
+/** Резкое уменьение списка при том же наборе id — чаще битая синхронизация, чем удаление */
+export function isLikelyAccidentalMassEntityLoss<T extends { id: string }>(
+  existing: T[],
+  incoming: T[]
+): boolean {
+  if (!isDeletionOnlySubset(existing, incoming)) return false;
+  if (incoming.length >= existing.length) return false;
+  return (
+    existing.length >= MASS_ENTITY_LOSS_MIN_EXISTING &&
+    incoming.length < existing.length * MASS_ENTITY_LOSS_RATIO
+  );
+}
+
+/** @deprecated */
+export function isLikelyAccidentalMassPatientLoss(
+  existing: Patient[],
+  incoming: Patient[]
+): boolean {
+  return isLikelyAccidentalMassEntityLoss(existing, incoming);
+}
+
+/** После merge с сервером появились локальные записи, которых не было в remote */
+export function hasSnapshotRecoveryFromMerge(
+  remote: ClinicPersistedState,
+  merged: ClinicPersistedState
+): boolean {
+  const countIds = <T extends { id: string }>(items: T[]) => new Set(items.map((x) => x.id));
+  const remotePatientIds = countIds(remote.patients);
+  if (merged.patients.some((p) => !remotePatientIds.has(p.id))) return true;
+
+  const arrays: Array<keyof Pick<
+    ClinicPersistedState,
+    | "appointments"
+    | "medicalRecords"
+    | "treatmentPlans"
+    | "payments"
+    | "workActs"
+    | "patientNotes"
+    | "patientFiles"
+  >> = [
+    "appointments",
+    "medicalRecords",
+    "treatmentPlans",
+    "payments",
+    "workActs",
+    "patientNotes",
+    "patientFiles",
+  ];
+
+  for (const key of arrays) {
+    const remoteIds = countIds(remote[key] as { id: string }[]);
+    const mergedArr = merged[key] as { id: string }[];
+    if (mergedArr.some((x) => !remoteIds.has(x.id))) return true;
+  }
+
+  const remoteTeethKeys = new Set(Object.keys(remote.teethByPatient));
+  if (Object.keys(merged.teethByPatient).some((k) => !remoteTeethKeys.has(k))) return true;
+
+  return false;
+}
+
+/** Быстрое сравнение снимков без полного JSON.stringify (не блокирует UI) */
+export function clinicSnapshotsDifferQuickly(
+  remote: ClinicPersistedState,
+  merged: ClinicPersistedState
+): boolean {
+  const countKeys = [
+    "patients",
+    "appointments",
+    "medicalRecords",
+    "treatmentPlans",
+    "payments",
+    "workActs",
+    "doctors",
+    "services",
+  ] as const;
+  for (const key of countKeys) {
+    if (remote[key].length !== merged[key].length) return true;
+  }
+  if (merged.actCounter !== remote.actCounter) return true;
+  if (
+    Object.keys(merged.teethByPatient).length !== Object.keys(remote.teethByPatient).length
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** @deprecated используйте shouldPushSnapshotAfterServerFetch */
+export function shouldPushMergedSnapshotAfterLoad(
+  remote: ClinicPersistedState,
+  merged: ClinicPersistedState,
+  options?: { hasPendingBuffer?: boolean }
+): boolean {
+  if (options?.hasPendingBuffer) return true;
+  return hasSnapshotRecoveryFromMerge(remote, merged);
+}
+
+function mergeEntityArraysForSave<T extends { id: string }>(
+  existing: T[],
+  incoming: T[],
+  options?: { protectMassLoss?: boolean }
+): T[] {
+  if (!isDeletionOnlySubset(existing, incoming)) {
+    return mergeByIdPreferLocal(existing, incoming);
+  }
+  if (incoming.length > existing.length) return incoming;
+  if (options?.protectMassLoss && isLikelyAccidentalMassEntityLoss(existing, incoming)) {
+    return mergeByIdPreferLocal(existing, incoming);
+  }
+  return incoming;
+}
+
+/** Слияние remote + local перед hydrate (загрузка с сервера) */
+export function mergeClinicSnapshotWithLocal(
+  remote: ClinicPersistedState,
+  local: ClinicPersistedState
+): ClinicPersistedState {
+  const merged: ClinicPersistedState = {
+    ...remote,
+    doctors: mergeByIdPreferLocal(remote.doctors, local.doctors),
+    services: mergeClinicServices(remote.services, local.services),
+    cabinets: mergeByIdPreferLocal(remote.cabinets, local.cabinets),
+    patients: mergeClinicPatients(remote.patients, local.patients),
+    appointments: mergeByIdPreferLocal(remote.appointments, local.appointments),
+    medicalRecords: mergeByIdPreferLocal(remote.medicalRecords, local.medicalRecords),
+    treatmentPlans: mergeByIdPreferLocal(remote.treatmentPlans, local.treatmentPlans),
+    payments: mergeByIdPreferLocal(remote.payments, local.payments),
+    invoices: mergeByIdPreferLocal(remote.invoices, local.invoices),
+    workActs: mergeByIdPreferLocal(remote.workActs, local.workActs),
+    warehouse: mergeByIdPreferLocal(remote.warehouse, local.warehouse),
+    tasks: mergeByIdPreferLocal(remote.tasks, local.tasks),
+    onlineBookings: mergeByIdPreferLocal(remote.onlineBookings, local.onlineBookings),
+    patientFiles: mergeByIdPreferLocal(remote.patientFiles, local.patientFiles),
+    patientNotes: mergeByIdPreferLocal(remote.patientNotes, local.patientNotes),
+    teethByPatient: { ...remote.teethByPatient, ...local.teethByPatient },
+    documentTemplates: mergeByIdPreferLocal(remote.documentTemplates, local.documentTemplates),
+    clinicExpenses: mergeByIdPreferLocal(remote.clinicExpenses, local.clinicExpenses),
+    legalDocuments: mergeByIdPreferLocal(remote.legalDocuments, local.legalDocuments),
+    doctorSchedules: mergeByIdPreferLocal(remote.doctorSchedules, local.doctorSchedules),
+    prepayments: mergeByIdPreferLocal(remote.prepayments, local.prepayments),
+    actCounter: Math.max(remote.actCounter, local.actCounter),
+    clinicSettings: local.clinicSettings ?? remote.clinicSettings,
+    userThemePreferences: {
+      ...remote.userThemePreferences,
+      ...local.userThemePreferences,
+    },
+  };
+  if (!findOrphanPatientIds(merged).length) return merged;
+  return repairMissingPatientsInSnapshot(merged);
+}
+
+/** Перед записью в БД: не терять записи при урезанном снимке без явного удаления */
+export function mergeClinicDataForSave(
+  existing: ClinicPersistedState,
+  incoming: ClinicPersistedState
+): ClinicPersistedState {
+  const mergeArr = <T extends { id: string }>(
+    ex: T[],
+    inc: T[],
+    opts?: { protectMassLoss?: boolean }
+  ) => mergeEntityArraysForSave(ex, inc, opts);
+  const protect = { protectMassLoss: true as const };
+
+  // Если пользователь удалил пациента через UI, вместе с ним легитимно удаляются
+  // связанные сущности (приёмы/акты/платежи/медкарта и т.д.). Такие удаления нельзя
+  // "восстанавливать" защитой от массовой потери — иначе появятся заглушки.
+  const existingPatientIds = new Set(existing.patients.map((p) => p.id));
+  const incomingPatientIds = new Set(incoming.patients.map((p) => p.id));
+  const deletedPatientIds = new Set<string>();
+  for (const id of existingPatientIds) {
+    if (!incomingPatientIds.has(id)) deletedPatientIds.add(id);
+  }
+  const hasPatientDeletion = deletedPatientIds.size > 0;
+
+  const merged: ClinicPersistedState = {
+    ...incoming,
+    doctors: mergeArr(existing.doctors, incoming.doctors, protect),
+    services: mergeArr(existing.services, incoming.services, protect),
+    cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
+    patients: mergeArr(existing.patients, incoming.patients, protect),
+    appointments: mergeArr(
+      existing.appointments,
+      incoming.appointments,
+      hasPatientDeletion ? undefined : protect
+    ),
+    medicalRecords: mergeArr(
+      existing.medicalRecords,
+      incoming.medicalRecords,
+      hasPatientDeletion ? undefined : protect
+    ),
+    treatmentPlans: mergeArr(
+      existing.treatmentPlans,
+      incoming.treatmentPlans,
+      hasPatientDeletion ? undefined : protect
+    ),
+    payments: mergeArr(existing.payments, incoming.payments, hasPatientDeletion ? undefined : protect),
+    invoices: mergeArr(existing.invoices, incoming.invoices, hasPatientDeletion ? undefined : protect),
+    workActs: mergeArr(existing.workActs, incoming.workActs, hasPatientDeletion ? undefined : protect),
+    warehouse: mergeArr(existing.warehouse, incoming.warehouse, protect),
+    tasks: mergeArr(existing.tasks, incoming.tasks, protect),
+    onlineBookings: mergeArr(existing.onlineBookings, incoming.onlineBookings, protect),
+    patientFiles: mergeArr(
+      existing.patientFiles,
+      incoming.patientFiles,
+      hasPatientDeletion ? undefined : protect
+    ),
+    patientNotes: mergeArr(
+      existing.patientNotes,
+      incoming.patientNotes,
+      hasPatientDeletion ? undefined : protect
+    ),
+    documentTemplates: mergeArr(existing.documentTemplates, incoming.documentTemplates, protect),
+    clinicExpenses: mergeArr(existing.clinicExpenses, incoming.clinicExpenses, protect),
+    legalDocuments: mergeArr(existing.legalDocuments, incoming.legalDocuments, protect),
+    doctorSchedules: mergeArr(existing.doctorSchedules, incoming.doctorSchedules, protect),
+    prepayments: mergeArr(
+      existing.prepayments,
+      incoming.prepayments,
+      hasPatientDeletion ? undefined : protect
+    ),
+    teethByPatient: { ...existing.teethByPatient, ...incoming.teethByPatient },
+    actCounter: Math.max(existing.actCounter, incoming.actCounter),
+  };
+
+  if (!hasPatientDeletion) {
+    return repairMissingPatientsInSnapshot(merged);
+  }
+
+  // Жёстко применяем удаление пациента ко всем зависимым сущностям и зубам.
+  const filterByPatient = <T extends { patientId?: string }>(rows: T[]) =>
+    rows.filter((r) => !r.patientId || !deletedPatientIds.has(r.patientId));
+  const { teethByPatient } = merged;
+  const nextTeeth: Record<string, ToothRecord[]> = { ...teethByPatient };
+  for (const id of deletedPatientIds) {
+    delete nextTeeth[id];
+  }
+
+  return repairMissingPatientsInSnapshot({
+    ...merged,
+    appointments: filterByPatient(merged.appointments),
+    medicalRecords: filterByPatient(merged.medicalRecords),
+    treatmentPlans: filterByPatient(merged.treatmentPlans),
+    payments: filterByPatient(merged.payments),
+    invoices: filterByPatient(merged.invoices),
+    workActs: filterByPatient(merged.workActs),
+    prepayments: filterByPatient(merged.prepayments),
+    patientFiles: filterByPatient(merged.patientFiles),
+    patientNotes: filterByPatient(merged.patientNotes),
+    teethByPatient: nextTeeth,
+  });
+}
+
+/**
+ * Защита от случайной перезаписи урезанным снимком (битая синхронизация).
+ * Не мешает удалять пациентов, врачей и отдельные услуги.
+ */
 export function isSuspiciousClinicDataDowngrade(
   existing: ClinicPersistedState,
   incoming: ClinicPersistedState
 ): boolean {
   if (!hasClinicData(existing)) return false;
   if (!hasClinicData(incoming)) return true;
-  if (existing.patients.length > 0 && incoming.patients.length === 0) return true;
-  if (existing.doctors.length > 0 && incoming.doctors.length === 0) return true;
+
+  // Важный кейс: при удалении пациента может пропасть большая доля зависимых сущностей
+  // (приёмы/акты/платежи/медкарта). Это легитимно и не должно блокироваться защитой.
+  const hasPatientDeletion =
+    isDeletionOnlySubset(existing.patients, incoming.patients) &&
+    incoming.patients.length < existing.patients.length;
+
+  const guarded: Array<{
+    existing: { id: string }[];
+    incoming: { id: string }[];
+    protectMassLoss: boolean;
+  }> = [
+    { existing: existing.patients, incoming: incoming.patients, protectMassLoss: true },
+    { existing: existing.doctors, incoming: incoming.doctors, protectMassLoss: true },
+    { existing: existing.services, incoming: incoming.services, protectMassLoss: true },
+
+    // Транзакционные сущности: защищаем от "обнуления" только если пациенты не удалялись.
+    { existing: existing.appointments, incoming: incoming.appointments, protectMassLoss: !hasPatientDeletion },
+    { existing: existing.medicalRecords, incoming: incoming.medicalRecords, protectMassLoss: !hasPatientDeletion },
+    { existing: existing.treatmentPlans, incoming: incoming.treatmentPlans, protectMassLoss: !hasPatientDeletion },
+    { existing: existing.payments, incoming: incoming.payments, protectMassLoss: !hasPatientDeletion },
+    { existing: existing.workActs, incoming: incoming.workActs, protectMassLoss: !hasPatientDeletion },
+  ];
+
+  for (const { existing: ex, incoming: inc, protectMassLoss } of guarded) {
+    if (!isDeletionOnlySubset(ex, inc)) return true;
+    if (protectMassLoss && isLikelyAccidentalMassEntityLoss(ex, inc)) return true;
+  }
+
+  if (patientsLostButAppointmentsRemain(existing, incoming)) return true;
+
   return false;
 }
 
@@ -221,7 +538,7 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     ...fresh,
     ...(d as Partial<ClinicPersistedState>),
     doctors: (d.doctors as Doctor[]) ?? [],
-    services: (d.services as Service[]) ?? [],
+    services: migrateServices((d.services as Service[]) ?? []),
     cabinets: (d.cabinets as Cabinet[]) ?? [],
     patients: (d.patients as Patient[]) ?? [],
     appointments: (d.appointments as Appointment[]) ?? [],

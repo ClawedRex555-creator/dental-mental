@@ -1,14 +1,10 @@
 /** Справочники для автоподбора (поиск по ключевым словам) */
 
-export const SERVICE_CATEGORIES = [
-  "Терапия",
-  "Ортопедия",
-  "Хирургия",
-  "Детская стоматология",
-  "Ортодонтия",
-] as const;
-
-export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
+export {
+  SERVICE_CATEGORIES,
+  type ServiceCategory,
+  normalizeServiceCategory,
+} from "./service-categories";
 
 export interface CatalogItem {
   label: string;

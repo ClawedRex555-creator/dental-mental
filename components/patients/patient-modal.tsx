@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { DisabilityGroup, Gender, Patient, PatientSource, PatientStatus } from "@/lib/types";
@@ -18,6 +19,7 @@ import {
   UI,
 } from "@/lib/constants";
 import {
+  digitsOnly,
   formatPassportNumber,
   formatPassportSeries,
   formatSnils,
@@ -29,7 +31,18 @@ import {
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { useClinicStore } from "@/store/useClinicStore";
-import { generateId } from "@/lib/utils";
+import {
+  getPatientDebtAmount,
+  parseDebtInput,
+  resolveBalanceFromDebt,
+} from "@/lib/patient-balance";
+import { countClinicVisits, derivePatientVisitFields } from "@/lib/patient-visits";
+import {
+  findDuplicatePatient,
+  PATIENT_DUPLICATE_REASON_LABELS,
+  type PatientDuplicateMatch,
+} from "@/lib/patient-duplicate";
+import { formatDate, generateId, getFullName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,8 +60,7 @@ interface PatientModalProps {
   onCreated?: (patient: Patient) => void;
 }
 
-const selectClass =
-  "flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm";
+const selectClass = "select-field";
 
 function emptyAppointmentFields(): PatientAppointmentScheduleFields {
   return {
@@ -85,16 +97,41 @@ function emptyPatientFields() {
 }
 
 export function PatientModal({ open, onOpenChange, patient, onCreated }: PatientModalProps) {
-  const { addPatient, updatePatient, addAppointment, appointments, doctors, cabinets, patients } =
-    useClinicStore();
+  const router = useRouter();
+  const {
+    addPatient,
+    updatePatient,
+    addAppointment,
+    syncOtherClinicVisitForPatient,
+    appointments,
+    doctors,
+    cabinets,
+    patients,
+  } = useClinicStore();
   const [fields, setFields] = useState(emptyPatientFields);
   const [appointmentFields, setAppointmentFields] = useState(emptyAppointmentFields);
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
+  const [withoutDocuments, setWithoutDocuments] = useState(false);
+  const [debtAmount, setDebtAmount] = useState("");
+  const [duplicateMatch, setDuplicateMatch] = useState<PatientDuplicateMatch | null>(null);
+
+  const clinicVisitCount = patient
+    ? countClinicVisits(appointments, patient.id)
+    : 0;
+  const clinicLastVisit = patient
+    ? derivePatientVisitFields(patient, appointments).lastVisitDate
+    : undefined;
 
   useEffect(() => {
     if (!open) return;
     setDocErrors({});
+    setDuplicateMatch(null);
     if (patient) {
+      const hasDocs =
+        Boolean(digitsOnly(patient.snils ?? "")) ||
+        Boolean(digitsOnly(patient.passportSeries ?? "")) ||
+        Boolean(digitsOnly(patient.passportNumber ?? ""));
+      setWithoutDocuments(patient.withoutIdentityDocuments ?? !hasDocs);
       setFields({
         firstName: patient.firstName,
         lastName: patient.lastName,
@@ -114,7 +151,11 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         previousVisitsNote: patient.previousVisitsNote ?? "",
         disability: patient.disability ?? "not_specified",
       });
+      const debt = getPatientDebtAmount(patient.balance);
+      setDebtAmount(debt > 0 ? String(debt) : "");
     } else {
+      setWithoutDocuments(false);
+      setDebtAmount("");
       setFields(emptyPatientFields());
       setAppointmentFields({
         ...emptyAppointmentFields(),
@@ -143,14 +184,16 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
     const phoneCheck = validatePhone(fields.phone);
     if (!phoneCheck.valid) errors.phone = phoneCheck.message!;
 
-    const snilsCheck = validateSnils(fields.snils);
-    if (!snilsCheck.valid) errors.snils = snilsCheck.message!;
+    if (!withoutDocuments) {
+      const snilsCheck = validateSnils(fields.snils);
+      if (!snilsCheck.valid) errors.snils = snilsCheck.message!;
 
-    const seriesCheck = validatePassportSeries(fields.passportSeries);
-    if (!seriesCheck.valid) errors.passportSeries = seriesCheck.message!;
+      const seriesCheck = validatePassportSeries(fields.passportSeries);
+      if (!seriesCheck.valid) errors.passportSeries = seriesCheck.message!;
 
-    const numberCheck = validatePassportNumber(fields.passportNumber);
-    if (!numberCheck.valid) errors.passportNumber = numberCheck.message!;
+      const numberCheck = validatePassportNumber(fields.passportNumber);
+      if (!numberCheck.valid) errors.passportNumber = numberCheck.message!;
+    }
 
     if (Object.keys(errors).length > 0) {
       setDocErrors(errors);
@@ -171,6 +214,18 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       return;
     }
 
+    const previousBalance = patient?.balance ?? 0;
+    const parsedDebt = parseDebtInput(debtAmount);
+    if (fields.status === "debtor" && !patient && parsedDebt <= 0) {
+      toast.error("Укажите сумму долга для статуса «Должник»");
+      return;
+    }
+
+    const { balance, status } =
+      fields.status === "debtor"
+        ? resolveBalanceFromDebt("debtor", parsedDebt, previousBalance)
+        : { balance: previousBalance, status: fields.status };
+
     const payload: Patient = {
       id: patient?.id ?? generateId("pat"),
       firstName: fields.firstName.trim(),
@@ -181,11 +236,16 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       birthDate: fields.birthDate,
       gender: fields.gender,
       source: fields.source,
-      status: fields.status,
+      status,
       address: fields.address.trim() || undefined,
-      snils: formatSnils(fields.snils),
-      passportSeries: formatPassportSeries(fields.passportSeries),
-      passportNumber: formatPassportNumber(fields.passportNumber),
+      withoutIdentityDocuments: withoutDocuments,
+      snils: withoutDocuments ? undefined : formatSnils(fields.snils),
+      passportSeries: withoutDocuments
+        ? undefined
+        : formatPassportSeries(fields.passportSeries),
+      passportNumber: withoutDocuments
+        ? undefined
+        : formatPassportNumber(fields.passportNumber),
       diagnosis: fields.diagnosis.trim() || undefined,
       hadPreviousVisits: fields.hadPreviousVisits,
       previousVisitsNote: fields.hadPreviousVisits
@@ -193,7 +253,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         : undefined,
       disability: fields.disability,
       createdAt: patient?.createdAt ?? format(new Date(), "yyyy-MM-dd"),
-      balance: patient?.balance ?? 0,
+      balance,
       totalSpent: patient?.totalSpent ?? 0,
       allergies: patient?.allergies ?? [],
       chronicDiseases: patient?.chronicDiseases ?? [],
@@ -216,7 +276,26 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
     };
 
     if (patient) {
+      const conflict = findDuplicatePatient(
+        patients,
+        {
+          phone: payload.phone,
+          snils: payload.snils,
+          passportSeries: payload.passportSeries,
+          passportNumber: payload.passportNumber,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          middleName: payload.middleName,
+          birthDate: payload.birthDate,
+        },
+        patient.id
+      );
+      if (conflict) {
+        setDuplicateMatch(conflict);
+        return;
+      }
       updatePatient(patient.id, payload);
+      syncOtherClinicVisitForPatient(payload);
       saveAppointmentFor(patient.id);
       toast.success(
         appointmentFields.enabled
@@ -224,7 +303,22 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
           : "Пациент обновлён"
       );
     } else {
+      const duplicate = findDuplicatePatient(patients, {
+        phone: payload.phone,
+        snils: payload.snils,
+        passportSeries: payload.passportSeries,
+        passportNumber: payload.passportNumber,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        middleName: payload.middleName,
+        birthDate: payload.birthDate,
+      });
+      if (duplicate) {
+        setDuplicateMatch(duplicate);
+        return;
+      }
       addPatient(payload);
+      syncOtherClinicVisitForPatient(payload);
       saveAppointmentFor(payload.id);
       toast.success(
         appointmentFields.enabled
@@ -236,7 +330,24 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
     onOpenChange(false);
   };
 
+  const duplicateName = duplicateMatch
+    ? getFullName(
+        duplicateMatch.patient.firstName,
+        duplicateMatch.patient.lastName,
+        duplicateMatch.patient.middleName
+      )
+    : "";
+
+  const goToDuplicateCard = () => {
+    if (!duplicateMatch) return;
+    const id = duplicateMatch.patient.id;
+    setDuplicateMatch(null);
+    onOpenChange(false);
+    router.push(`/patients/${id}`);
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
@@ -267,8 +378,44 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
             />
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-3">
-            <p className="text-xs font-medium text-slate-600">Документы *</p>
+          <div className="form-panel space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="form-panel-title">
+                Документы{withoutDocuments ? "" : " *"}
+              </p>
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                  checked={withoutDocuments}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setWithoutDocuments(checked);
+                    if (checked) {
+                      setFields((prev) => ({
+                        ...prev,
+                        snils: "",
+                        passportSeries: "",
+                        passportNumber: "",
+                      }));
+                      setDocErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.snils;
+                        delete next.passportSeries;
+                        delete next.passportNumber;
+                        return next;
+                      });
+                    }
+                  }}
+                />
+                Без СНИЛС и паспорта
+              </label>
+            </div>
+            <div
+              className={
+                withoutDocuments ? "pointer-events-none space-y-3 opacity-70" : "space-y-3"
+              }
+            >
             <div className="space-y-2">
               <Label>{UI.snils}</Label>
               <Input
@@ -276,6 +423,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                 onChange={(e) => set("snils", formatSnils(e.target.value))}
                 placeholder="123-456-789 01"
                 inputMode="numeric"
+                disabled={withoutDocuments}
               />
               {docErrors.snils && (
                 <p className="text-xs text-red-600">{docErrors.snils}</p>
@@ -292,6 +440,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                   placeholder="4510"
                   inputMode="numeric"
                   maxLength={4}
+                  disabled={withoutDocuments}
                 />
                 {docErrors.passportSeries && (
                   <p className="text-xs text-red-600">{docErrors.passportSeries}</p>
@@ -307,12 +456,20 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                   placeholder="123456"
                   inputMode="numeric"
                   maxLength={6}
+                  disabled={withoutDocuments}
                 />
                 {docErrors.passportNumber && (
                   <p className="text-xs text-red-600">{docErrors.passportNumber}</p>
                 )}
               </div>
             </div>
+            </div>
+            {withoutDocuments && (
+              <p className="text-xs text-[var(--muted)]">
+                Пациента можно сохранить без документов. Для выгрузки в ЕГИСЗ позже понадобится
+                заполнить СНИЛС и паспорт.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -384,19 +541,27 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
             </select>
           </div>
 
-          <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <div className="form-panel space-y-2">
+            {clinicVisitCount > 0 && (
+              <p className="rounded-md border border-teal-200 bg-teal-50/80 px-3 py-2 text-sm text-teal-900 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-100">
+                В нашей клинике: <strong>{clinicVisitCount}</strong>{" "}
+                {clinicVisitCount === 1 ? "приём" : "приёма"}
+                {clinicLastVisit ? ` · последний визит ${formatDate(clinicLastVisit)}` : ""}.
+                Статусы приёмов обновляют карточку автоматически.
+              </p>
+            )}
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
               <input
                 type="checkbox"
                 checked={fields.hadPreviousVisits}
                 onChange={(e) => set("hadPreviousVisits", e.target.checked)}
-                className="rounded border-slate-300"
+                className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
               />
-              Был на приёме ранее (в другой клинике или у нас)
+              Был на приёме в другой клинике (до нас)
             </label>
             {fields.hadPreviousVisits && (
               <textarea
-                className="mt-2 min-h-[72px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="mt-2 min-h-[72px] w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)]"
                 value={fields.previousVisitsNote}
                 onChange={(e) => set("previousVisitsNote", e.target.value)}
                 placeholder="Когда, где, что делали..."
@@ -432,7 +597,14 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
               <select
                 className={selectClass}
                 value={fields.status}
-                onChange={(e) => set("status", e.target.value as PatientStatus)}
+                onChange={(e) => {
+                  const next = e.target.value as PatientStatus;
+                  set("status", next);
+                  if (next === "debtor" && !debtAmount) {
+                    const existing = patient ? getPatientDebtAmount(patient.balance) : 0;
+                    if (existing > 0) setDebtAmount(String(existing));
+                  }
+                }}
               >
                 {Object.entries(PATIENT_STATUS_LABELS).map(([key, label]) => (
                   <option key={key} value={key}>
@@ -442,6 +614,36 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
               </select>
             </div>
           </div>
+
+          {fields.status === "debtor" && (
+            <div className="form-panel space-y-2">
+              <Label htmlFor="patient-modal-debt">Сумма долга, ₽</Label>
+              <Input
+                id="patient-modal-debt"
+                type="number"
+                min={0}
+                step={100}
+                inputMode="numeric"
+                placeholder="Например, 5000"
+                value={debtAmount}
+                onChange={(e) => setDebtAmount(e.target.value)}
+              />
+              <p className="text-xs text-[var(--muted)]">
+                Отобразится в балансе как отрицательная сумма. Оставьте 0 и сохраните, чтобы
+                погасить долг (статус станет «Активный»).
+              </p>
+              {patient && getPatientDebtAmount(patient.balance) > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDebtAmount("0")}
+                >
+                  Погасить долг
+                </Button>
+              )}
+            </div>
+          )}
 
           <PatientAppointmentScheduleSection
             fields={appointmentFields}
@@ -461,5 +663,37 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         </div>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={duplicateMatch !== null}
+      onOpenChange={(next) => {
+        if (!next) setDuplicateMatch(null);
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Такой пациент уже есть</DialogTitle>
+        </DialogHeader>
+        {duplicateMatch && (
+          <div className="space-y-4 text-sm text-slate-600">
+            <p>
+              В базе уже есть карточка{" "}
+              <strong className="text-slate-900">{duplicateName}</strong> (
+              {PATIENT_DUPLICATE_REASON_LABELS[duplicateMatch.reason]}).
+            </p>
+            <p>Новую запись с теми же данными создавать не нужно — откройте существующую карточку.</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" type="button" onClick={() => setDuplicateMatch(null)}>
+                Изменить данные
+              </Button>
+              <Button type="button" onClick={goToDuplicateCard}>
+                Перейти к карточке
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

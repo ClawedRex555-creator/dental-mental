@@ -36,10 +36,14 @@ CREATE TABLE IF NOT EXISTS staff_members (
 
 CREATE INDEX IF NOT EXISTS idx_staff_members_clinic ON staff_members (clinic_id);
 
--- Полный снимок данных клиники (синхронизация между устройствами)
+-- Полный снимок данных клиники (синхронизация между устройствами).
+-- Структура data: ClinicPersistedState (patients[], appointments[], medicalRecords[], …).
+-- Счётчики для аудита: VIEW clinic_snapshot_stats (миграция 004).
 CREATE TABLE IF NOT EXISTS clinic_snapshots (
   clinic_id UUID PRIMARY KEY REFERENCES clinics(id) ON DELETE CASCADE,
   data JSONB NOT NULL DEFAULT '{}',
   version INT NOT NULL DEFAULT 1,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- См. db/migrations/002-platform-compliance-egisz.sql (platform_admins, audit_logs, egisz, modules)

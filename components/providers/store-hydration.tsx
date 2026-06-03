@@ -5,8 +5,13 @@ import {
   isClinicServerDatabaseMode,
   setClinicServerDatabaseMode,
 } from "@/lib/clinic-client-mode";
+import { backupPhiSnapshotBeforeDbMode } from "@/lib/clinic-pending-sync";
 import { purgePhiFromClinicLocalStorage } from "@/lib/clinic-storage-client";
 import { LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import {
+  mergeThemePreferences,
+  readThemePreferencesFromStorage,
+} from "@/lib/user-theme-storage";
 import { useClinicStore } from "@/store/useClinicStore";
 
 const WIPE_DONE_KEY = "dentalcloud-mis-wiped-v4";
@@ -35,6 +40,15 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
         if (hadLegacy) {
           useClinicStore.getState().resetAllData();
           localStorage.setItem(WIPE_DONE_KEY, "1");
+        } else {
+          const storedThemes = readThemePreferencesFromStorage();
+          const state = useClinicStore.getState();
+          useClinicStore.setState({
+            userThemePreferences: mergeThemePreferences(
+              storedThemes,
+              state.userThemePreferences
+            ),
+          });
         }
         if (isClinicServerDatabaseMode()) {
           purgePhiFromClinicLocalStorage();
@@ -48,6 +62,7 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
       if (usesDb) {
         setClinicServerDatabaseMode(true);
+        backupPhiSnapshotBeforeDbMode();
         purgePhiFromClinicLocalStorage();
       }
       unsubPersist = useClinicStore.persist.onFinishHydration(finish);

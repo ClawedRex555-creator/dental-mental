@@ -9,11 +9,12 @@ import {
 } from "@/lib/constants";
 import {
   formatConditionsList,
+  formatToothBriefSummary,
   getSurfaceConditions,
-  mergeSurfaceConditions,
   normalizeTeethRecords,
   normalizeToothRecord,
   patchToothSurfaces,
+  toggleSurfaceCondition,
   TOOTH_SURFACE_LABELS,
   TOOTH_SURFACE_SHORT,
   TOOTH_SURFACES,
@@ -55,51 +56,13 @@ export function DentalChart({ teeth, onUpdate, readOnly = false }: DentalChartPr
   const [paintConditions, setPaintConditions] = useState<ToothCondition[]>([]);
 
   const selected = normalizedTeeth.find((t) => t.toothNumber === selectedTooth);
-  const canPaint = !readOnly && paintConditions.length > 0;
+  const canPaint = !readOnly && selectedTooth != null && paintConditions.length > 0;
 
   const pushTeeth = (next: ToothRecord[]) => {
     onUpdate(next.map(normalizeToothRecord));
   };
 
-  const togglePaintCondition = (c: ToothCondition) => {
-    setPaintConditions((prev) => {
-      if (c === "healthy") return prev.includes("healthy") ? [] : ["healthy"];
-      const withoutHealthy = prev.filter((x) => x !== "healthy");
-      if (withoutHealthy.includes(c)) {
-        return withoutHealthy.filter((x) => x !== c);
-      }
-      return [...withoutHealthy, c];
-    });
-  };
-
-  const applyPaintToTooth = (toothNumber: number) => {
-    if (paintConditions.length === 0) return;
-    const existing = normalizedTeeth.find((t) => t.toothNumber === toothNumber);
-    const base = existing ?? {
-      toothNumber,
-      condition: "healthy" as const,
-      status: "planned" as const,
-      vestibularConditions: ["healthy"],
-      lingualConditions: [],
-    };
-    const current = getSurfaceConditions(base, paintSurface);
-    const merged = mergeSurfaceConditions(current, paintConditions);
-    const updated = patchToothSurfaces(base, paintSurface, merged);
-    pushTeeth(upsertTooth(normalizedTeeth, updated));
-    toast.success(
-      `Зуб ${toothNumber} (${TOOTH_SURFACE_SHORT[paintSurface]}): ${formatConditionsList(merged)}`
-    );
-  };
-
-  const handleSelectTooth = (num: number) => {
-    if (num !== selectedTooth) {
-      setPaintConditions([]);
-    }
-    if (canPaint) applyPaintToTooth(num);
-    setSelectedTooth(num);
-  };
-
-  const ensureTooth = (toothNumber: number): ToothRecord => {
+  const ensureToothRecord = (toothNumber: number): ToothRecord => {
     return (
       normalizedTeeth.find((t) => t.toothNumber === toothNumber) ?? {
         toothNumber,
@@ -110,6 +73,50 @@ export function DentalChart({ teeth, onUpdate, readOnly = false }: DentalChartPr
       }
     );
   };
+
+  const legendFromSurface = (toothNumber: number, surface: ToothSurface): ToothCondition[] => {
+    const conds = getSurfaceConditions(ensureToothRecord(toothNumber), surface);
+    return conds.includes("healthy") ? [] : conds;
+  };
+
+  const applyPaintToTooth = (toothNumber: number, conditions: ToothCondition[]) => {
+    const base = ensureToothRecord(toothNumber);
+    const updated = patchToothSurfaces(base, paintSurface, conditions);
+    pushTeeth(upsertTooth(normalizedTeeth, updated));
+    toast.success(
+      `Зуб ${toothNumber} (${TOOTH_SURFACE_SHORT[paintSurface]}): ${formatConditionsList(conditions)}`
+    );
+  };
+
+  const togglePaintCondition = (c: ToothCondition) => {
+    if (selectedTooth == null) {
+      toast.error("Сначала выберите зуб на схеме");
+      return;
+    }
+    const base = ensureToothRecord(selectedTooth);
+    const current = getSurfaceConditions(base, paintSurface);
+    const next = toggleSurfaceCondition(current, c);
+    applyPaintToTooth(selectedTooth, next);
+    setPaintConditions(next.includes("healthy") ? [] : next);
+  };
+
+  const handleSelectTooth = (num: number) => {
+    setSelectedTooth(num);
+    setPaintConditions(legendFromSurface(num, paintSurface));
+    const record = normalizeToothRecord(ensureToothRecord(num));
+    toast.info(`Зуб ${num}: ${formatToothBriefSummary(record)}`, { duration: 5000 });
+  };
+
+  const handleSelectSurface = (surface: ToothSurface) => {
+    setPaintSurface(surface);
+    if (selectedTooth != null) {
+      setPaintConditions(legendFromSurface(selectedTooth, surface));
+    } else {
+      setPaintConditions([]);
+    }
+  };
+
+  const ensureTooth = ensureToothRecord;
 
   const saveSurfaces = (surface: ToothSurface, conditions: ToothCondition[]) => {
     if (!selectedTooth) return;
@@ -134,8 +141,8 @@ export function DentalChart({ teeth, onUpdate, readOnly = false }: DentalChartPr
         <CardHeader>
           <CardTitle className="text-base">Зубная формула (FDI)</CardTitle>
           <p className="text-sm text-[var(--muted)]">
-            Выберите сторону и диагнозы в легенде, затем нажмите на зуб. Можно отметить
-            несколько диагнозов на одной поверхности.
+            Выберите зуб, затем сторону и диагнозы — каждый клик по диагнозу сразу меняет
+            выбранную сторону. При смене зуба легенда показывает его текущие отметки.
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -154,12 +161,12 @@ export function DentalChart({ teeth, onUpdate, readOnly = false }: DentalChartPr
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setPaintSurface(s)}
+                    onClick={() => handleSelectSurface(s)}
                     className={cn(
                       "rounded-lg border px-4 py-2.5 text-sm font-medium transition-all",
                       paintSurface === s
-                        ? "border-teal-600 bg-teal-50 text-teal-900 ring-1 ring-teal-500"
-                        : "border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:border-teal-300"
+                        ? "border-teal-500 bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)] ring-1 ring-teal-500/60"
+                        : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-teal-500/50"
                     )}
                   >
                     {TOOTH_SURFACE_LABELS[s]}
@@ -168,9 +175,11 @@ export function DentalChart({ teeth, onUpdate, readOnly = false }: DentalChartPr
               </div>
 
               <p className="text-center text-sm text-[var(--muted)]">
-                {paintConditions.length > 0
-                  ? `К нанесению на ${TOOTH_SURFACE_SHORT[paintSurface].toLowerCase()}: ${paintConditions.map((c) => TOOTH_CONDITION_LABELS[c]).join(", ")}`
-                  : "Легенда: нажмите цвет — можно выбрать несколько, затем кликните зуб"}
+                {!selectedTooth
+                  ? "Сначала выберите зуб на схеме"
+                  : paintConditions.length > 0
+                    ? `Зуб ${selectedTooth}, ${TOOTH_SURFACE_SHORT[paintSurface].toLowerCase()}: ${paintConditions.map((c) => TOOTH_CONDITION_LABELS[c]).join(", ")}`
+                    : `Зуб ${selectedTooth} — нажмите диагноз для ${TOOTH_SURFACE_SHORT[paintSurface].toLowerCase()} стороны`}
               </p>
 
               <div className="flex flex-wrap justify-center gap-2.5">

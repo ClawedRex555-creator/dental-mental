@@ -11,6 +11,9 @@ import { defaultWeeklySchedule } from "@/lib/clinic-schedule";
 import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import type { ClinicSettings } from "@/lib/types";
+import { ComplianceSettingsPanel } from "@/components/settings/compliance-settings-panel";
+import { EgiszSettingsPanel } from "@/components/settings/egisz-settings-panel";
+import { ModuleGuard } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { toast } from "sonner";
 
@@ -36,6 +39,10 @@ export default function SettingsPage() {
   });
   const [userName, setUserName] = useState(currentUser.name);
   const [userEmail, setUserEmail] = useState(currentUser.email);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingAccount, setSavingAccount] = useState(false);
 
   useEffect(() => {
     setClinicForm({
@@ -70,16 +77,74 @@ export default function SettingsPage() {
     toast.success("Настройки клиники сохранены");
   };
 
-  const handleSaveAccount = () => {
+  const handleSaveAccount = async () => {
     if (!userName.trim()) {
       toast.error("Укажите имя");
       return;
     }
-    updateCurrentUser({
-      name: userName.trim(),
-      email: userEmail.trim(),
-    });
-    toast.success("Профиль обновлён");
+    const email = userEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      toast.error("Укажите корректный email для входа");
+      return;
+    }
+    if (newPassword || confirmPassword || currentPassword) {
+      if (!currentPassword) {
+        toast.error("Для смены пароля введите текущий пароль");
+        return;
+      }
+      if (newPassword.length < 8) {
+        toast.error("Новый пароль не менее 8 символов");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast.error("Новый пароль и подтверждение не совпадают");
+        return;
+      }
+    }
+
+    setSavingAccount(true);
+    try {
+      const res = await fetch("/api/auth/me", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: userName.trim(),
+          login: email,
+          ...(newPassword
+            ? { password: newPassword, currentPassword }
+            : {}),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        user?: { name: string; email: string };
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Не удалось сохранить профиль");
+        return;
+      }
+      if (data.user) {
+        updateCurrentUser({
+          name: data.user.name,
+          email: data.user.email,
+        });
+      } else {
+        updateCurrentUser({ name: userName.trim(), email });
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success(
+        newPassword
+          ? "Профиль и пароль сохранены. При следующем входе используйте новый пароль."
+          : "Профиль сохранён — имя отобразится в шапке"
+      );
+    } catch {
+      toast.error("Ошибка сети при сохранении профиля");
+    } finally {
+      setSavingAccount(false);
+    }
   };
 
   return (
@@ -170,11 +235,48 @@ export default function SettingsPage() {
               <Input value={userName} onChange={(e) => setUserName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>{UI.email}</Label>
+              <Label>Email для входа</Label>
               <Input
                 type="email"
                 value={userEmail}
                 onChange={(e) => setUserEmail(e.target.value)}
+                autoComplete="username"
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 border-t border-[var(--border)] pt-4">
+            <div className="space-y-2 sm:col-span-2">
+              <p className="text-sm font-medium text-[var(--foreground)]">Смена пароля</p>
+              <p className="text-xs text-[var(--muted)]">
+                Оставьте пустым, если меняете только имя или email. Для владельца и всех
+                ролей пароль хранится на сервере.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Текущий пароль</Label>
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Новый пароль</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2 max-w-md">
+              <Label>Подтверждение нового пароля</Label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
               />
             </div>
           </div>
@@ -182,16 +284,28 @@ export default function SettingsPage() {
             <Label>Тема интерфейса</Label>
             <ThemeToggle showLabels />
             <p className="text-xs text-[var(--muted)]">
-              Сохраняется отдельно для вашего входа. Другие сотрудники могут выбрать свою тему.
+              Светлая или тёмная — только для вашего входа. У коллег могут быть другие настройки.
+              Сохраняется на этом устройстве и синхронизируется с сервером клиники.
             </p>
           </div>
           <p className="text-sm text-[var(--muted)]">
-            Роль: <strong>{ROLE_LABELS[currentRole]}</strong>. Для смены роли используйте
-            отдельный вход (email и пароль сотрудника).
+            Роль: <strong>{ROLE_LABELS[currentRole]}</strong>. Имя в шапке справа — это поле
+            «Имя» выше. Роль меняет владелец или администратор в «Сотрудники».
           </p>
-          <Button onClick={handleSaveAccount}>{UI.save} профиль</Button>
+          <Button onClick={() => void handleSaveAccount()} disabled={savingAccount}>
+            {savingAccount ? "Сохранение…" : `${UI.save} профиль`}
+          </Button>
         </CardContent>
       </Card>
+
+      {canManageClinic && (
+        <>
+          <ComplianceSettingsPanel />
+          <ModuleGuard module="egisz">
+            <EgiszSettingsPanel />
+          </ModuleGuard>
+        </>
+      )}
 
       {canManageClinic && (
       <Card className="border-red-200">

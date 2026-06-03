@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
+import { signSessionBody } from "./auth-session-crypto.ts";
+import { readAuthSecretEnv } from "./auth-env.ts";
 import { verifySessionTokenEdge } from "./auth-session-edge.ts";
 import {
   stringToBase64Url,
@@ -9,26 +11,26 @@ import {
 
 const TEST_SECRET = "test-secret-for-security-suite";
 
-function createTestToken(payload: {
+async function createTestToken(payload: {
   userId: string;
   role: string;
   name: string;
   email: string;
   exp?: number;
-}): string {
+}): Promise<string> {
+  process.env.AUTH_SECRET = TEST_SECRET;
+  process.env.NODE_ENV = "test";
   const body = JSON.stringify({
     ...payload,
     exp: payload.exp ?? Date.now() + 60_000,
   });
-  const sig = createHmac("sha256", TEST_SECRET).update(body).digest("base64url");
+  const sig = await signSessionBody(body);
   return `${stringToBase64Url(body)}.${sig}`;
 }
 
 describe("auth session HMAC (edge)", () => {
   it("accepts valid signed token", async () => {
-    process.env.AUTH_SECRET = TEST_SECRET;
-    process.env.NODE_ENV = "test";
-    const token = createTestToken({
+    const token = await createTestToken({
       userId: "u1",
       role: "doctor",
       name: "Test",
@@ -67,10 +69,14 @@ describe("auth session HMAC (edge)", () => {
     assert.equal(expired, null);
   });
 
-  it("rejects token without valid signature", async () => {
+  it("reads AUTH_SECRET via dynamic env key", () => {
     process.env.AUTH_SECRET = TEST_SECRET;
-    process.env.NODE_ENV = "test";
-    const token = createTestToken({
+    assert.equal(readAuthSecretEnv(), TEST_SECRET);
+    delete process.env.AUTH_SECRET;
+  });
+
+  it("rejects token without valid signature", async () => {
+    const token = await createTestToken({
       userId: "u1",
       role: "admin",
       name: "A",

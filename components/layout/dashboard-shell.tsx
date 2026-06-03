@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { APP_LOGO_TEXT, APP_NAME, NAV_ITEMS, ROLE_LABELS } from "@/lib/constants";
+import { filterNavByModules } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -50,12 +51,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     toggleSidebar,
     setSidebarOpen,
     clearSession,
+    enabledModules,
   } = useClinicStore();
   const currentRole = currentUser.role;
   const [sidebarHover, setSidebarHover] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const navItems = NAV_ITEMS.filter((item) => item.roles.includes(currentRole));
+  const navItems = filterNavByModules(
+    NAV_ITEMS.filter((item) => item.roles.includes(currentRole)),
+    enabledModules
+  );
   const sidebarExpanded = sidebarHover || (isMobile && sidebarOpen);
 
   useEffect(() => {

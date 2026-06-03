@@ -168,7 +168,7 @@ export function ScheduleGrid({
                           patient.lastName,
                           patient.middleName
                         )
-                      : "—";
+                      : "Карточка не найдена";
                     return (
                       <td
                         key={`${dateStr}-${doc.id}-${slot}`}

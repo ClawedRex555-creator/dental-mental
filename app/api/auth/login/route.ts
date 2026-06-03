@@ -14,6 +14,7 @@ import {
 } from "@/lib/login-rate-limit";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { buildSessionCookieOptions } from "@/lib/session-cookie.server";
+import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
 
 const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 7;
 
@@ -74,7 +75,30 @@ export async function POST(request: Request) {
 
   clearLoginAttempts(rateKey);
 
-  const token = await createSessionToken({
+  // Audit: фиксируем успешный вход на стороне сервера.
+  // Это надёжнее, чем клиентский вызов, и срабатывает даже если UI не успел отрендериться.
+  try {
+    await writeAuditLog(
+      auditFromRequest(request, {
+        clinicId,
+        userId: account.id,
+        userName: account.name,
+        userRole: account.role,
+        action: "login",
+        resourceType: "auth",
+        resourceId: account.id,
+        metadata: {
+          login: account.login,
+          role: account.role,
+          clinicSlug: clinicSlugForSession,
+        },
+      })
+    );
+  } catch {
+    // журнал не должен блокировать вход
+  }
+
+  const token = createSessionToken({
     userId: account.id,
     staffId: account.staffId,
     role: account.role,

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
+import { toast } from "sonner";
 import { useClinicStore } from "@/store/useClinicStore";
 
 type AuthState = "loading" | "authed" | "denied";
@@ -18,9 +19,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
+    const fetchMe = () =>
+      fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+
     const syncSession = async (redirectOnFail: boolean) => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
+        let res = await fetchMe();
+        // Safari иногда не шлёт cookie на первый fetch сразу после login redirect
+        if (!res.ok && res.status === 401 && redirectOnFail) {
+          await new Promise((r) => setTimeout(r, 200));
+          res = await fetchMe();
+        }
         if (cancelled) return;
 
         if (res.ok) {
@@ -36,6 +45,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         }
 
         if (!redirectOnFail) return;
+
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(
+          err.error ??
+            `Сессия не подтверждена (HTTP ${res.status}). Обновите страницу или войдите снова.`
+        );
+
         clearSession();
         clearPersistedClinicData();
         setState("denied");

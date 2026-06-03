@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROLE_LABELS } from "@/lib/constants";
+import { deleteStaffOnServer } from "@/lib/clinic-staff-client";
 import type { Doctor } from "@/lib/types";
 import { useClinicStore } from "@/store/useClinicStore";
 
@@ -32,16 +33,31 @@ export default function StaffPage() {
     setDoctorModalOpen(true);
   };
 
-  const handleRemoveDoctor = (member: Doctor) => {
+  const handleRemoveDoctor = async (member: Doctor) => {
     if (
       !window.confirm(
-        `Удалить сотрудника «${member.name}»? Записи и акты останутся, но без привязки к этому сотруднику.`
+        `Удалить сотрудника «${member.name}»? Записи и акты останутся, но без привязки к этому сотруднику.\n\nВажно: доступ к входу будет отключён.`
       )
     ) {
       return;
     }
+    // 1) отключаем доступ к учётке входа (auth_users)
+    const authRes = await fetch(`/api/auth/accounts?staffId=${encodeURIComponent(member.id)}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
+    if (!authRes.ok) {
+      const data = (await authRes.json().catch(() => ({}))) as { error?: string };
+      toast.error(data.error ?? "Не удалось отключить доступ сотрудника");
+      return;
+    }
+
+    // 2) удаляем запись из staff_members (если используется серверный реестр)
+    await deleteStaffOnServer(member.id);
+
+    // 3) удаляем из текущего снимка клиники (уйдёт в clinic_snapshots)
     removeDoctor(member.id);
-    toast.success("Сотрудник удалён");
+    toast.success("Сотрудник удалён, доступ отключён");
   };
 
   const handleRemoveCabinet = (cabId: string, cabName: string) => {

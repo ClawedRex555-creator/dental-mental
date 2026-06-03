@@ -125,6 +125,56 @@ npm run dev
 # PostgreSQL
 docker compose exec postgres pg_dump -U mis dentalcloud > backup-$(date +%F).sql
 
+# или скрипт
+bash scripts/backup-db.sh
+```
+
+---
+
+## 9.1. Безопасное обновление (данные не теряются)
+
+PostgreSQL хранится в **именованном volume** `pg-data`. Команда `docker compose up -d --build` **не удаляет** базу.
+
+**Можно:**
+```bash
+cd /opt/emkaro
+docker compose up -d --build
+```
+
+**Нельзя** (удалит все данные):
+```bash
+docker compose down -v    # флаг -v стирает volumes!
+docker volume rm emkaro_pg-data
+```
+
+**Рекомендуемый порядок на сервере** (бэкап + обновление):
+
+```bash
+# 1. Загрузить архив на сервер: /opt/emkaro-update.tar.gz
+cd /opt/emkaro
+bash scripts/server-update.sh
+```
+
+Скрипт:
+1. Делает дамп БД в `backups/`
+2. Распаковывает код (`.env` сохраняется)
+3. Пересобирает контейнер `app`
+
+**Важно:** не меняйте `POSTGRES_PASSWORD` в `.env` после первого запуска — иначе приложение не подключится к уже существующей базе (данные останутся в volume, но будут «недоступны»).
+
+Проверка данных после обновления:
+
+```bash
+docker compose exec postgres psql -U mis -d dentalcloud -c \
+  "SELECT c.slug, jsonb_array_length(cs.data->'patients') AS patients
+   FROM clinic_snapshots cs JOIN clinics c ON c.id = cs.clinic_id;"
+```
+
+---
+
+## 9.2. Старый раздел бэкапов (файлы app)
+
+```bash
 # Файлы data/ (если используются)
 docker compose exec app tar -czf - /app/data > data-backup.tar.gz
 ```

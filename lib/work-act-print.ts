@@ -4,6 +4,7 @@ import {
   calcWorkActLine,
   formatActAmount,
   formatActShortDate,
+  formatDocumentDiscount,
   getActDisplayNumber,
   getContractNumber,
   getPatientActName,
@@ -20,6 +21,10 @@ export function printWorkAct(
 ) {
   const totals = resolveWorkActTotals(act);
   const actNo = getActDisplayNumber(act.actNumber, act.actDate);
+  const docDiscountLabel = formatDocumentDiscount(
+    act.discountType ?? "percent",
+    act.discount ?? 0
+  );
   const actDateShort = formatActShortDate(act.actDate);
   const contractNo = getContractNumber(patient.id);
   const contractDate = patient.createdAt
@@ -167,8 +172,16 @@ export function printWorkAct(
     <div class="totals">
       <div class="totals-row">
         <span>Итого:</span>
-        <span>${formatActAmount(totals.subtotalAmount)} руб.</span>
+        <span>${formatActAmount(totals.afterRowDiscounts)} руб.</span>
       </div>
+      ${
+        totals.discountValue > 0
+          ? `<div class="totals-row">
+        <span>Скидка${docDiscountLabel ? ` (${escapeHtml(docDiscountLabel)})` : ""}:</span>
+        <span>−${formatActAmount(totals.discountValue)} руб.</span>
+      </div>`
+          : ""
+      }
       <div class="totals-row">
         <span>Итого с учетом скидки:</span>
         <span>${formatActAmount(totals.totalAmount)} руб.</span>

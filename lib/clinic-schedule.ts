@@ -29,7 +29,7 @@ export const WEEKDAY_LABELS: Record<WeekdayKey, string> = {
 };
 
 export function defaultDayHours(): DayWorkHours {
-  return { closed: false, open: "10:00", close: "20:00" };
+  return { closed: false, open: "10:00", close: "19:00" };
 }
 
 export function defaultWeeklySchedule(): ClinicWeeklySchedule {
@@ -48,7 +48,7 @@ export function formatWeeklyScheduleSummary(schedule: ClinicWeeklySchedule): str
   return WEEKDAY_KEYS.map((key) => {
     const d = schedule[key];
     if (d.closed) return `${WEEKDAY_LABELS[key]}: выходной`;
-    return `${WEEKDAY_LABELS[key]}: ${d.open ?? "10:00"}–${d.close ?? "20:00"}`;
+    return `${WEEKDAY_LABELS[key]}: ${d.open ?? "10:00"}–${d.close ?? "19:00"}`;
   }).join("; ");
 }
 
@@ -73,11 +73,11 @@ export function getClinicHoursForDate(
   dateStr: string,
   schedule?: ClinicWeeklySchedule
 ): { open: string; close: string } | null {
-  if (!schedule) return { open: "10:00", close: "20:00" };
+  if (!schedule) return { open: "10:00", close: "19:00" };
   const key = weekdayKeyFromDate(parseISO(dateStr));
   const day = schedule[key];
   if (day.closed) return null;
-  return { open: day.open ?? "10:00", close: day.close ?? "20:00" };
+  return { open: day.open ?? "10:00", close: day.close ?? "19:00" };
 }
 
 export function monthKey(date = new Date()): string {
@@ -89,7 +89,7 @@ export function nextMonthKey(from = new Date()): string {
 }
 
 const DEFAULT_SHIFT_START = "10:00";
-const DEFAULT_SHIFT_END = "20:00";
+const DEFAULT_SHIFT_END = "19:00";
 
 export function normalizeShiftDay(
   value: boolean | DoctorShiftDay | undefined,

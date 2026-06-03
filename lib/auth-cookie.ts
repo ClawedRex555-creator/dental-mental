@@ -7,7 +7,12 @@ export function readAuthCookieFromHeader(cookieHeader: string | null): string | 
   for (const part of parts) {
     const trimmed = part.trim();
     if (trimmed.startsWith(`${AUTH_COOKIE}=`)) {
-      return decodeURIComponent(trimmed.slice(AUTH_COOKIE.length + 1));
+      const raw = trimmed.slice(AUTH_COOKIE.length + 1);
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
     }
   }
   return undefined;

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
 import { DENTAL_COMPLAINTS } from "@/lib/catalogs";
 import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options";
-import { calcEndTime } from "@/lib/appointment-utils";
+import { calcEndTime, SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/appointment-utils";
 import { validateAppointmentSave } from "@/lib/validate-appointment-save";
 import {
   WorkActModal,
@@ -390,6 +390,8 @@ export function AppointmentModal({
                   <Input
                     type="time"
                     className="h-10"
+                    min={SCHEDULE_DAY_START}
+                    max={SCHEDULE_DAY_END}
                     value={startTime}
                     disabled={formLocked}
                     onChange={(e) => setStartTime(e.target.value)}

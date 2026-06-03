@@ -20,6 +20,28 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+/** Отображение цены услуги: фиксированная или «от N ₽» */
+export function formatServicePrice(service: {
+  price: number;
+  priceIsFrom?: boolean;
+}): string {
+  const value =
+    typeof service.price === "number" && Number.isFinite(service.price)
+      ? service.price
+      : Number(service.price) || 0;
+  const amount = formatCurrency(value);
+  return service.priceIsFrom ? `от ${amount}` : amount;
+}
+
+/** Примечание к услуге (notes или устаревшее description) */
+export function serviceNotes(service: {
+  notes?: string;
+  description?: string;
+}): string | undefined {
+  const text = (service.notes ?? service.description)?.trim();
+  return text || undefined;
+}
+
 export function formatDate(
   date: string | Date | undefined,
   pattern = "dd.MM.yyyy"

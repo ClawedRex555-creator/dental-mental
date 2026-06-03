@@ -39,7 +39,7 @@ export function DoctorScheduleModal({
   const [month, setMonth] = useState(monthKey());
   const [days, setDays] = useState<Record<string, DoctorShiftDay>>({});
   const [defaultStart, setDefaultStart] = useState("10:00");
-  const [defaultEnd, setDefaultEnd] = useState("20:00");
+  const [defaultEnd, setDefaultEnd] = useState("19:00");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const monthDays = useMemo(() => {
@@ -196,9 +196,9 @@ export function DoctorScheduleModal({
                   className={cn(
                     "rounded-lg border px-1 py-2 transition-colors",
                     shift.working
-                      ? "border-teal-400 bg-teal-100 text-teal-900"
-                      : "border-slate-300 bg-slate-200 text-slate-500",
-                    isSelected && "ring-2 ring-teal-600"
+                      ? "border-teal-400 bg-teal-100 text-teal-950 dark:border-teal-700 dark:bg-teal-950/40 dark:text-teal-100"
+                      : "border-slate-300 bg-slate-200 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200",
+                    isSelected && "ring-2 ring-teal-600 dark:ring-teal-400"
                   )}
                   title={format(day, "d MMMM yyyy", { locale: ru })}
                 >

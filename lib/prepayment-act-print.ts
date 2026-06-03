@@ -1,6 +1,6 @@
 import type { ClinicSettings, Patient, PatientPrepayment } from "./types";
 import { formatCurrency, getFullName } from "./utils";
-import { getContractNumber, formatActShortDate } from "./work-act-utils";
+import { formatDocumentDiscount, getContractNumber, formatActShortDate } from "./work-act-utils";
 
 function escapeHtml(text: string): string {
   return text
@@ -24,6 +24,12 @@ export function printPrepaymentAct(
   const actNo = prepayment.actNumber ?? prepayment.id;
   const actDate = formatActShortDate(prepayment.date);
   const contractNo = getContractNumber(patient.id);
+  const finalAmount = prepayment.finalAmount ?? prepayment.totalAmount;
+  const discountValue = Math.max(0, prepayment.totalAmount - finalAmount);
+  const discountLabel = formatDocumentDiscount(
+    prepayment.discountType ?? "percent",
+    prepayment.discount ?? 0
+  );
 
   const rows = prepayment.items
     .map(
@@ -78,7 +84,13 @@ export function printPrepaymentAct(
     <tbody>${rows}</tbody>
   </table>
   <div class="totals">
-    <p><strong>Общая стоимость плана:</strong> ${formatCurrency(prepayment.totalAmount)}</p>
+    <p><strong>Сумма услуг:</strong> ${formatCurrency(prepayment.totalAmount)}</p>
+    ${
+      discountValue > 0
+        ? `<p><strong>Скидка${discountLabel ? ` (${discountLabel})` : ""}:</strong> −${formatCurrency(discountValue)}</p>
+    <p><strong>К оплате по плану:</strong> ${formatCurrency(finalAmount)}</p>`
+        : ""
+    }
     <p><strong>Внесено авансом:</strong> ${formatCurrency(prepayment.paidAmount)}</p>
     <p><strong>Остаток к оплате:</strong> ${formatCurrency(prepayment.remainingAmount)}</p>
   </div>

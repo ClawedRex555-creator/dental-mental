@@ -3,6 +3,7 @@ import { APP_LOGO_TEXT, APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { clinicBaseUrl, getAppRootDomain } from "@/lib/clinic-host";
 import { listClinics } from "@/lib/clinic-db.server";
 import { isDatabaseEnabled } from "@/lib/db";
+import { HiddenAdminLogo } from "@/components/platform/hidden-admin-logo";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,7 @@ export default async function PlatformHomePage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto max-w-3xl px-4 py-16">
         <div className="mb-10 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-600 text-xl font-bold text-white">
-            {APP_LOGO_TEXT}
-          </div>
+          <HiddenAdminLogo>{APP_LOGO_TEXT}</HiddenAdminLogo>
           <h1 className="text-3xl font-bold text-slate-900">{APP_NAME}</h1>
           <p className="mt-2 text-slate-600">{APP_TAGLINE}</p>
         </div>

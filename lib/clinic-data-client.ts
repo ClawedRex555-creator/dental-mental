@@ -2,6 +2,7 @@ import {
   parseClinicPersistedState,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export interface ClinicDataFetchResult {
   data: ClinicPersistedState | null;
@@ -12,7 +13,7 @@ export interface ClinicDataFetchResult {
 }
 
 export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult | null> {
-  const res = await fetch("/api/clinic/data", { credentials: "same-origin" });
+  const res = await fetchWithTimeout("/api/clinic/data", { credentials: "same-origin" });
   if (res.status === 503) return null;
   if (res.status === 403) {
     return { data: null, updatedAt: null, database: true, forbidden: true };
@@ -40,14 +41,23 @@ export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult
 }
 
 export async function saveClinicDataToServer(
-  data: ClinicPersistedState
+  data: ClinicPersistedState,
+  options?: { keepalive?: boolean; expectedUpdatedAt?: string | null }
 ): Promise<{ ok: boolean; error?: string; updatedAt?: string; forbidden?: boolean }> {
-  const res = await fetch("/api/clinic/data", {
+  const res = await fetchWithTimeout(
+    "/api/clinic/data",
+    {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ data }),
-  });
+    keepalive: options?.keepalive ?? false,
+    body: JSON.stringify({
+      data,
+      expectedUpdatedAt: options?.expectedUpdatedAt ?? undefined,
+    }),
+    },
+    options?.keepalive ? 120_000 : 60_000
+  );
   const json = (await res.json().catch(() => ({}))) as {
     error?: string;
     updatedAt?: string;

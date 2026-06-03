@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Service } from "@/lib/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatServicePrice, serviceNotes } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 function filterServices(services: Service[], query: string, limit = 20): Service[] {
@@ -13,7 +13,8 @@ function filterServices(services: Service[], query: string, limit = 20): Service
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.category.toLowerCase().includes(q) ||
-        String(s.price).includes(q)
+        String(s.price).includes(q) ||
+        (serviceNotes(s)?.toLowerCase().includes(q) ?? false)
     )
     .slice(0, limit);
 }
@@ -80,11 +81,11 @@ export function ClinicServiceSearch({
   return (
     <div ref={containerRef} className={cn("relative", compact ? "" : "space-y-1")}>
       {label && !compact && (
-        <label className="text-sm font-medium text-slate-700">{label}</label>
+        <label className="text-sm font-medium text-[var(--foreground)]">{label}</label>
       )}
       <input
         type="text"
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+        className="w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
         value={open ? query : (selected?.name ?? query)}
         placeholder={placeholder}
         onChange={(e) => {
@@ -119,7 +120,7 @@ export function ClinicServiceSearch({
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-56 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
         >
           {suggestions.map((service, i) => (
             <li key={service.id}>
@@ -128,30 +129,40 @@ export function ClinicServiceSearch({
                 role="option"
                 tabIndex={-1}
                 className={cn(
-                  "flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-teal-50",
-                  i === highlight && "bg-teal-50"
+                  "flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-[var(--nav-hover-bg)] hover:text-[var(--nav-hover-fg)]",
+                  i === highlight && "bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]"
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   pick(service);
                 }}
               >
-                <span className="font-medium text-slate-900">{service.name}</span>
-                <span className="text-xs text-slate-500">
-                  {service.category} · {formatCurrency(service.price)}
+                <span className="font-medium">{service.name}</span>
+                <span className={cn("text-xs", i === highlight ? "opacity-80" : "text-[var(--muted)]")}>
+                  {service.category} · {formatServicePrice(service)}
                 </span>
+                {serviceNotes(service) && (
+                  <span
+                    className={cn(
+                      "line-clamp-1 text-xs",
+                      i === highlight ? "opacity-70" : "text-[var(--muted)]"
+                    )}
+                  >
+                    {serviceNotes(service)}
+                  </span>
+                )}
               </button>
             </li>
           ))}
         </ul>
       )}
       {showList && query.trim() && suggestions.length === 0 && (
-        <p className="absolute left-0 right-0 top-full z-[200] mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-lg">
+        <p className="absolute left-0 right-0 top-full z-[200] mt-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--muted)] shadow-lg">
           Ничего не найдено
         </p>
       )}
       {!compact && (
-        <p className="text-xs text-slate-400">Поиск по названию, категории или цене</p>
+        <p className="text-xs text-[var(--muted)]">Поиск по названию, категории или цене</p>
       )}
     </div>
   );

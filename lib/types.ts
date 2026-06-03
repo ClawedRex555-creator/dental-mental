@@ -100,9 +100,11 @@ export interface Patient {
   totalSpent: number;
   lastVisitDate?: string;
   nextVisitDate?: string;
-  snils: string;
-  passportSeries: string;
-  passportNumber: string;
+  snils?: string;
+  passportSeries?: string;
+  passportNumber?: string;
+  /** Пациент заведён без СНИЛС и паспорта */
+  withoutIdentityDocuments?: boolean;
   diagnosis?: string;
   hadPreviousVisits?: boolean;
   previousVisitsNote?: string;
@@ -142,6 +144,14 @@ export interface Doctor {
   specializations?: string[];
   phone: string;
   email: string;
+  /** СНИЛС (для ЕГИСЗ / N3) */
+  snils?: string;
+  /** OID записи врача в ФРМР */
+  frmrOid?: string;
+  /** Код должности по справочнику NSI (1.2.643.5.1.13.13.11.1002) */
+  positionCode?: string;
+  /** Отпечаток личной КЭП врача (CryptoPro), для подписи СЭМД */
+  certThumbprint?: string;
   avatar?: string;
   /** @deprecated текстовое поле — используйте cabinetId */
   cabinet: string;
@@ -169,6 +179,11 @@ export interface Service {
   name: string;
   category: string;
   price: number;
+  /** Примечание к услуге (видно в прайсе и при выборе) */
+  notes?: string;
+  /** true — в прайсе показывается «от N ₽» (минимальная цена) */
+  priceIsFrom?: boolean;
+  /** @deprecated используйте notes */
   description?: string;
   active?: boolean;
   /** @deprecated длительность перенесена на запись */
@@ -196,6 +211,8 @@ export interface Appointment {
   paymentStatus: PaymentStatus;
   /** Акт, заполненный врачом */
   workActId?: string;
+  /** Визит в другой клинике (только история, не расписание) */
+  isOtherClinicVisit?: boolean;
 }
 
 export type ClinicDocumentCategory = "contract" | "consent" | "egisz_refusal";
@@ -336,6 +353,7 @@ export interface PatientPrepayment {
   id: string;
   patientId: string;
   items: { serviceId?: string; serviceName: string; price: number }[];
+  /** Сумма услуг до скидки */
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;
@@ -343,6 +361,10 @@ export interface PatientPrepayment {
   notes?: string;
   workActId?: string;
   actNumber?: string;
+  discountType?: DiscountType;
+  discount?: number;
+  /** Сумма после скидки */
+  finalAmount?: number;
 }
 
 export interface Payment {
@@ -361,7 +383,13 @@ export interface Invoice {
   id: string;
   patientId: string;
   workActId?: string;
+  /** К оплате (с учётом скидок), = totalAmount акта */
   amount: number;
+  /** Сумма до общей скидки по акту (после скидок по строкам) */
+  subtotalAmount?: number;
+  discountType?: DiscountType;
+  discount?: number;
+  discountValue?: number;
   paid: number;
   status: PaymentStatus;
   date: string;
@@ -418,12 +446,18 @@ export interface PatientFile {
   medicalRecordId?: string;
 }
 
+export type PatientNoteCategory = "general" | "reception" | "clinical" | "billing";
+
 export interface PatientNote {
   id: string;
   patientId: string;
   author: string;
+  authorId?: string;
   role: UserRole;
   text: string;
+  category?: PatientNoteCategory;
+  /** Заметка синхронизирована из комментария к плану лечения */
+  sourceTreatmentPlanId?: string;
   createdAt: string;
 }
 

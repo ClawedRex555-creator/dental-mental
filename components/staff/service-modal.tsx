@@ -3,14 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Service } from "@/lib/types";
-import { DENTAL_SERVICE_NAMES, SERVICE_CATEGORIES, type ServiceCategory } from "@/lib/catalogs";
+import { DENTAL_SERVICE_NAMES } from "@/lib/catalogs";
+import {
+  SERVICE_CATEGORIES,
+  normalizeServiceCategory,
+  type ServiceCategory,
+} from "@/lib/service-categories";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { UI } from "@/lib/constants";
 import { useClinicStore } from "@/store/useClinicStore";
-import { generateId } from "@/lib/utils";
+import { generateId, serviceNotes } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +36,8 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ServiceCategory>(SERVICE_CATEGORIES[0]);
   const [price, setPrice] = useState("");
+  const [priceIsFrom, setPriceIsFrom] = useState(false);
+  const [notes, setNotes] = useState("");
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -43,10 +51,14 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
       setName(service.name);
       setCategory(service.category as ServiceCategory);
       setPrice(String(service.price));
+      setPriceIsFrom(Boolean(service.priceIsFrom));
+      setNotes(serviceNotes(service) ?? "");
     } else {
       setName("");
       setCategory(SERVICE_CATEGORIES[0]);
       setPrice("");
+      setPriceIsFrom(false);
+      setNotes("");
     }
   }, [open, service]);
 
@@ -56,10 +68,13 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
       return;
     }
 
+    const trimmedNotes = notes.trim();
     const payload = {
       name: name.trim(),
-      category,
+      category: normalizeServiceCategory(category),
       price: Number(price) || 0,
+      priceIsFrom,
+      notes: trimmedNotes || undefined,
       active: true,
     };
 
@@ -92,7 +107,7 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
             <div className="space-y-2">
               <Label>Категория</Label>
               <select
-                className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
                 value={category}
                 onChange={(e) => setCategory(e.target.value as ServiceCategory)}
               >
@@ -104,9 +119,28 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
               </select>
             </div>
             <div className="space-y-2">
-              <Label>Цена, ₽</Label>
+              <Label>{priceIsFrom ? "Цена от, ₽" : "Цена, ₽"}</Label>
               <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
             </div>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--foreground)]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-[var(--border)]"
+              checked={priceIsFrom}
+              onChange={(e) => setPriceIsFrom(e.target.checked)}
+            />
+            Цена «от» (минимальная, итоговая может быть выше)
+          </label>
+          <div className="space-y-2">
+            <Label>Примечания</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Сроки, материалы, что входит в стоимость..."
+              rows={3}
+              className="resize-y"
+            />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>

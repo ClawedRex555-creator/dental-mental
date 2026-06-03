@@ -3,11 +3,14 @@ import type { Appointment } from "./types";
 
 export const SCHEDULE_SLOT_MINUTES = 30;
 export const SCHEDULE_DAY_START = "10:00";
-export const SCHEDULE_DAY_END = "20:00";
+/** Последний слот записи (отображение «до 19:00») */
+export const SCHEDULE_DAY_END = "19:00";
+/** Верхняя граница для генерации слотов (не включая) */
+export const SCHEDULE_SLOTS_END = "19:30";
 
 export function generateTimeSlots(
   start = SCHEDULE_DAY_START,
-  end = SCHEDULE_DAY_END,
+  end = SCHEDULE_SLOTS_END,
   stepMinutes = SCHEDULE_SLOT_MINUTES
 ): string[] {
   const slots: string[] = [];
@@ -39,8 +42,9 @@ export function getAppointmentEndMinutes(apt: Appointment): number {
   return toMinutes(apt.startTime) + (apt.durationMinutes ?? 30);
 }
 
-/** Активные записи занимают слот (отменённые — нет) */
+/** Активные записи занимают слот (отменённые и «другая клиника» — нет) */
 export function isAppointmentActive(apt: Appointment): boolean {
+  if (apt.isOtherClinicVisit) return false;
   return apt.status !== "cancelled";
 }
 

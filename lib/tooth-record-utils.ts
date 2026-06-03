@@ -1,4 +1,4 @@
-import { TOOTH_CONDITION_LABELS } from "@/lib/constants";
+import { TOOTH_CONDITION_LABELS, TOOTH_TREATMENT_STATUS_LABELS } from "@/lib/constants";
 import type { ToothCondition, ToothRecord, ToothSurface } from "@/lib/types";
 
 export const TOOTH_SURFACES: ToothSurface[] = ["vestibular", "lingual"];
@@ -144,4 +144,21 @@ export function formatConditionsList(conditions: ToothCondition[]): string {
   const active = conditions.filter((c) => c !== "healthy");
   if (!active.length) return TOOTH_CONDITION_LABELS.healthy;
   return active.map((c) => TOOTH_CONDITION_LABELS[c]).join(", ");
+}
+
+/** Краткая сводка по зубу для подсказки при выборе */
+export function formatToothBriefSummary(tooth: ToothRecord): string {
+  const parts: string[] = [];
+  parts.push(
+    `${TOOTH_SURFACE_SHORT.vestibular} ${formatConditionsList(getSurfaceConditions(tooth, "vestibular"))}`
+  );
+  parts.push(
+    `${TOOTH_SURFACE_SHORT.lingual} ${formatConditionsList(getSurfaceConditions(tooth, "lingual"))}`
+  );
+  if (tooth.status && tooth.status !== "planned") {
+    parts.push(TOOTH_TREATMENT_STATUS_LABELS[tooth.status]);
+  }
+  const note = tooth.notes?.trim();
+  if (note) parts.push(note.length > 50 ? `${note.slice(0, 50)}…` : note);
+  return parts.join(" · ");
 }

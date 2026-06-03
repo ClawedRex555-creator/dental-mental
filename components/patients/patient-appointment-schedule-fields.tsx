@@ -4,6 +4,8 @@ import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options
 import {
   calcEndTime,
   findAppointmentConflicts,
+  SCHEDULE_DAY_END,
+  SCHEDULE_DAY_START,
 } from "@/lib/appointment-utils";
 import { getPrimaryScheduleConflict, formatAppointmentConflictMessage } from "@/lib/appointment-schedule-messages";
 import { DENTAL_COMPLAINTS } from "@/lib/catalogs";
@@ -120,6 +122,8 @@ export function PatientAppointmentScheduleSection({
               <Label>Время</Label>
               <Input
                 type="time"
+                min={SCHEDULE_DAY_START}
+                max={SCHEDULE_DAY_END}
                 value={fields.startTime}
                 onChange={(e) => set("startTime", e.target.value)}
               />

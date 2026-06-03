@@ -83,6 +83,14 @@ export function formatActAmount(amount: number): string {
   }).format(amount);
 }
 
+export function formatDocumentDiscount(
+  discountType: DiscountType = "percent",
+  discount = 0
+): string {
+  if (!discount) return "";
+  return discountType === "percent" ? `${discount}%` : `${formatActAmount(discount)} руб.`;
+}
+
 export function resolveWorkActTotals(act: WorkAct) {
   return calcWorkActAmounts(
     act.items,
