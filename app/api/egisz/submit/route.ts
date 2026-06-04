@@ -4,6 +4,7 @@ import { resolveClinicIdForSession } from "@/lib/clinic-session.server";
 import { processEgiszSubmission, queueEgiszSubmission, getEgiszSubmissionById } from "@/lib/egisz/db.server";
 import { queueMedicalRecordEgisz } from "@/lib/egisz/queue.server";
 import { getServerSession } from "@/lib/get-server-session";
+import { assertClinicModule } from "@/lib/module-access.server";
 import type { EgiszDocumentType } from "@/lib/egisz/types";
 
 async function requireStaff(request: Request) {
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
   if (!ctx) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const denied = await assertClinicModule(ctx.clinicId, "egisz");
+  if (denied) return denied;
   if (ctx.session.role !== "owner" && ctx.session.role !== "admin" && ctx.session.role !== "doctor") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }

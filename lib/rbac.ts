@@ -1,11 +1,20 @@
-import { NAV_ITEMS } from "@/lib/constants";
+import { NAV_ITEMS } from "./constants.ts";
 import {
   isModuleEnabled,
   NAV_HREF_TO_MODULE,
   resolvePathModule,
   type ClinicModules,
-} from "@/lib/modules";
-import type { UserRole } from "@/lib/types";
+} from "./modules.ts";
+import type { UserRole } from "./types.ts";
+
+export function isAccountSettingsPath(path: string): boolean {
+  return (
+    path === "/settings" ||
+    path.startsWith("/settings/") ||
+    path === "/profile" ||
+    path.startsWith("/profile/")
+  );
+}
 
 export function canAccessPath(
   role: UserRole,
@@ -14,6 +23,11 @@ export function canAccessPath(
 ): boolean {
   const path = pathname.split("?")[0];
   if (path === "/" || path === "/login") return true;
+
+  if (isAccountSettingsPath(path)) {
+    const settingsNav = NAV_ITEMS.find((nav) => nav.href === "/settings");
+    return settingsNav?.roles.includes(role) ?? false;
+  }
 
   const moduleId = resolvePathModule(path);
   if (modules && moduleId && !isModuleEnabled(modules, moduleId)) {
@@ -33,6 +47,7 @@ export function filterNavByModules<T extends { href: string }>(
 ): T[] {
   if (!modules) return items;
   return items.filter((item) => {
+    if (item.href === "/profile" || item.href === "/settings") return true;
     const moduleId = NAV_HREF_TO_MODULE[item.href];
     if (!moduleId) return true;
     return isModuleEnabled(modules, moduleId);
@@ -59,5 +74,5 @@ export function defaultPathForRole(role: UserRole, modules?: ClinicModules): str
     NAV_ITEMS.filter((nav) => nav.roles.includes(role)),
     modules
   );
-  return items[0]?.href ?? "/appointments";
+  return items[0]?.href ?? "/settings";
 }

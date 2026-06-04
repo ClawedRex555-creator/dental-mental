@@ -44,6 +44,22 @@ export function defaultWeeklySchedule(): ClinicWeeklySchedule {
   };
 }
 
+/** Битый snapshot из БД не должен ронять форму настроек */
+export function normalizeWeeklySchedule(
+  raw?: ClinicWeeklySchedule | null
+): ClinicWeeklySchedule {
+  const base = defaultWeeklySchedule();
+  if (!raw || typeof raw !== "object") return base;
+  const out = { ...base };
+  for (const key of WEEKDAY_KEYS) {
+    const d = raw[key];
+    if (d && typeof d === "object") {
+      out[key] = { ...base[key], ...d };
+    }
+  }
+  return out;
+}
+
 export function formatWeeklyScheduleSummary(schedule: ClinicWeeklySchedule): string {
   return WEEKDAY_KEYS.map((key) => {
     const d = schedule[key];

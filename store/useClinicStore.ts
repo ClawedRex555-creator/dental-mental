@@ -59,7 +59,11 @@ import { defaultWeeklySchedule, formatWeeklyScheduleSummary, monthKey } from "@/
 import { treatmentPlanNoteId } from "@/lib/treatment-plan-patient-note";
 import { generateId } from "@/lib/utils";
 import { generateDefaultTeeth } from "@/lib/mock-data";
-import { defaultClinicModules, type ClinicModules } from "@/lib/modules";
+import {
+  defaultClinicModules,
+  parseClinicModules,
+  type ClinicModules,
+} from "@/lib/modules";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
   mergeThemePreferences,
@@ -104,11 +108,14 @@ interface ClinicState {
   clinicSyncPhase: "loading" | "ready" | "read_only" | "local_only" | "forbidden" | "error";
   clinicDataUnsaved: boolean;
   clinicDataSaveError: string | null;
+  /** Временно не слать PUT (например после удаления сотрудника на сервере) */
+  clinicSavePausedUntil: number;
 
   setSessionUser: (user: ClinicUser) => void;
   setClinicSyncPhase: (phase: ClinicState["clinicSyncPhase"]) => void;
   setClinicDataUnsaved: (unsaved: boolean) => void;
   setClinicDataSaveError: (error: string | null) => void;
+  pauseClinicAutoSave: (ms?: number) => void;
   setEnabledModules: (modules: ClinicModules) => void;
   clearSession: () => void;
   updateClinicSettings: (data: Partial<ClinicSettings>) => void;
@@ -216,10 +223,13 @@ export const useClinicStore = create<ClinicState>()(
       clinicSyncPhase: "loading",
       clinicDataUnsaved: false,
       clinicDataSaveError: null,
+      clinicSavePausedUntil: 0,
 
       setClinicSyncPhase: (phase) => set({ clinicSyncPhase: phase }),
       setClinicDataUnsaved: (unsaved) => set({ clinicDataUnsaved: unsaved }),
       setClinicDataSaveError: (error) => set({ clinicDataSaveError: error }),
+      pauseClinicAutoSave: (ms = 8000) =>
+        set({ clinicSavePausedUntil: Date.now() + ms, clinicDataSaveError: null }),
 
       setSessionUser: (user) =>
         set((s) => ({
@@ -231,7 +241,8 @@ export const useClinicStore = create<ClinicState>()(
           ),
         })),
 
-      setEnabledModules: (modules) => set({ enabledModules: modules }),
+      setEnabledModules: (modules) =>
+        set({ enabledModules: parseClinicModules(modules) }),
 
       clearSession: () => {
         const userThemePreferences = mergeThemePreferences(
@@ -249,6 +260,7 @@ export const useClinicStore = create<ClinicState>()(
             status: "inactive",
           },
           currentRole: "assistant",
+          enabledModules: defaultClinicModules(),
           userThemePreferences,
           clinicSyncPhase: "loading",
           clinicDataUnsaved: false,

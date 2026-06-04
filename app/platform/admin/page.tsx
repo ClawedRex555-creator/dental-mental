@@ -5,8 +5,10 @@ import Link from "next/link";
 import { LogOut, Shield } from "lucide-react";
 import { APP_NAME } from "@/lib/constants";
 import {
+  CONFIGURABLE_MODULE_IDS,
   MODULE_LABELS,
-  SYSTEM_MODULE_IDS,
+  isModuleEnabled,
+  parseClinicModules,
   type ClinicModules,
   type SystemModuleId,
 } from "@/lib/modules";
@@ -87,7 +89,10 @@ export default function PlatformAdminPage() {
   }, [load]);
 
   const toggleModule = async (clinic: ClinicRow, moduleId: SystemModuleId) => {
-    const next = { ...clinic.modules, [moduleId]: !clinic.modules[moduleId] };
+    const next = parseClinicModules({
+      ...clinic.modules,
+      [moduleId]: !isModuleEnabled(clinic.modules, moduleId),
+    });
     setSavingId(clinic.id);
     try {
       const res = await fetch("/api/platform/clinics", {
@@ -153,7 +158,7 @@ export default function PlatformAdminPage() {
                   <code className="rounded bg-slate-100 px-1">{platformEgisz.systemId}</code>
                 ) : (
                   <span className="text-amber-700">
-                    не задан — добавьте EGISZ_SYSTEM_ID в .env после ответа N3
+                    не задан — OID Emkaro в НСИ ЕГИСЗ, затем EGISZ_SYSTEM_ID в .env сервера
                   </span>
                 )}
               </p>
@@ -247,8 +252,12 @@ export default function PlatformAdminPage() {
                   )}
                 </CardHeader>
                 <CardContent>
+                  <p className="mb-3 text-xs text-slate-500">
+                    Раздел «Настройки» (профиль, клиника, тема) всегда доступен и здесь не
+                    отключается. Блок ЕГИСЗ — отдельный модуль.
+                  </p>
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {SYSTEM_MODULE_IDS.map((moduleId) => (
+                    {CONFIGURABLE_MODULE_IDS.map((moduleId) => (
                       <label
                         key={moduleId}
                         className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-sm hover:bg-slate-50"

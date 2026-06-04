@@ -19,6 +19,7 @@ import { signCdaDocument } from "@/lib/egisz/signing/index.server";
 import type { EgiszSubmissionPayload } from "@/lib/egisz/types";
 import { isN3StubMode, resolveGatewayUrl } from "@/lib/egisz/types";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
+import { clinicHasModule } from "@/lib/module-access.server";
 import type { ClinicPersistedState, Doctor, MedicalRecord, Patient } from "@/lib/types";
 
 function findEntities(
@@ -44,6 +45,7 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
   const submission = await getEgiszSubmissionById(submissionId);
   if (!submission) throw new Error("Отправка не найдена");
   if (submission.status !== "queued") return;
+  if (!(await clinicHasModule(submission.clinicId, "egisz"))) return;
 
   const config = await getEgiszConfig(submission.clinicId);
   if (!config.enabled) {

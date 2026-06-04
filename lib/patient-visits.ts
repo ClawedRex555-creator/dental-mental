@@ -173,13 +173,17 @@ export function repairMissingPatientsInSnapshot(
   };
 }
 
-/** Сохранение, при котором пропали пациенты, но остались их приёмы */
+/**
+ * В снимке на сохранение остались приёмы без карточки пациента.
+ * Сверяем только incoming — иначе легитимное удаление пациента блокируется,
+ * если на сервере ещё есть старые приёмы (их снимет mergeClinicDataForSave).
+ */
 export function patientsLostButAppointmentsRemain(
-  existing: ClinicPersistedState,
+  _existing: ClinicPersistedState,
   incoming: ClinicPersistedState
 ): boolean {
   const incomingPatientIds = new Set(incoming.patients.map((p) => p.id));
-  return existing.appointments.some(
+  return incoming.appointments.some(
     (a) => a.patientId && !incomingPatientIds.has(a.patientId)
   );
 }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/legal-categories";
 import { escapeHtml } from "@/lib/escape-html";
 import { openStoredFile } from "@/lib/open-stored-file";
+import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,14 @@ export function AppointmentDocumentsModal({
   onOpenChange,
   onDone,
 }: AppointmentDocumentsModalProps) {
+  const legalEnabled = useIsModuleEnabled("legal");
   const { legalDocuments, addLegalDocument, updateLegalDocument } = useClinicStore();
+
+  useEffect(() => {
+    if (!legalEnabled && open) onOpenChange(false);
+  }, [legalEnabled, open, onOpenChange]);
+
+  if (!legalEnabled) return null;
 
   const { contracts, consents, egiszRefusals } = useMemo(
     () => arrivalDocumentsFromLegal(legalDocuments),

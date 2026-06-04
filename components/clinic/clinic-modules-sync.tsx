@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { parseClinicModules } from "@/lib/modules";
 import { useClinicStore } from "@/store/useClinicStore";
 
 const REFRESH_MS = 30_000;
@@ -23,7 +24,7 @@ export function ClinicModulesSync() {
         });
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (data.modules) setEnabledModules(data.modules);
+        if (data.modules) setEnabledModules(parseClinicModules(data.modules));
       } catch {
         /* ignore */
       }

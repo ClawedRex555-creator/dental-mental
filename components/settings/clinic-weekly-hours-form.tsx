@@ -1,7 +1,11 @@
 "use client";
 
 import type { ClinicWeeklySchedule, DayWorkHours, WeekdayKey } from "@/lib/types";
-import { WEEKDAY_KEYS, WEEKDAY_LABELS } from "@/lib/clinic-schedule";
+import {
+  defaultDayHours,
+  WEEKDAY_KEYS,
+  WEEKDAY_LABELS,
+} from "@/lib/clinic-schedule";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
@@ -23,7 +27,7 @@ export function ClinicWeeklyHoursForm({ value, onChange }: ClinicWeeklyHoursForm
       <p className="text-sm font-medium text-[var(--foreground)]">Режим работы по дням недели</p>
       <div className="grid gap-2">
         {WEEKDAY_KEYS.map((key) => {
-          const day = value[key];
+          const day = value[key] ?? defaultDayHours();
           return (
             <div
               key={key}

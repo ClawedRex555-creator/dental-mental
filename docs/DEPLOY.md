@@ -89,6 +89,19 @@ docker compose exec app node scripts/create-clinic.mjs \
   --password 'AnotherPass123!'
 ```
 
+### Клиника «Эланар»
+
+1. В `deploy/Caddyfile` используется `*.{$APP_ROOT_DOMAIN}` — отдельный блок на каждую клинику не нужен; после деплоя: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+2. Создайте tenant в БД:
+
+```bash
+export ELANAR_OWNER_PASSWORD='YourStrongPass123!'
+export ELANAR_OWNER_EMAIL='owner@elanar.ru'   # по желанию
+bash scripts/create-elanar-clinic.sh
+```
+
+Вход: **https://elanar.emkaro.ru/login** (подставьте свой `APP_ROOT_DOMAIN`).
+
 ---
 
 ## 7. Локальная разработка с поддоменами

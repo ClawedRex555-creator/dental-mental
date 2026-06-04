@@ -16,6 +16,7 @@ import { PatientModal } from "@/components/patients/patient-modal";
 import { AppointmentDocumentsModal } from "@/components/appointments/appointment-documents-modal";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
+import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ export function AppointmentModal({
   const userRole = currentUser.role;
   const isAdmin = userRole === "admin" || userRole === "owner";
   const isDoctor = userRole === "doctor";
+  const legalEnabled = useIsModuleEnabled("legal");
 
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -80,6 +82,10 @@ export function AppointmentModal({
   const [actMode, setActMode] = useState<WorkActModalMode>("standard");
   const [existingActId, setExistingActId] = useState<string | undefined>();
   const [docsModalOpen, setDocsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!legalEnabled && docsModalOpen) setDocsModalOpen(false);
+  }, [legalEnabled, docsModalOpen]);
   const [patientModalOpen, setPatientModalOpen] = useState(false);
   const [savedAppointmentId, setSavedAppointmentId] = useState<string | null>(null);
   const initialized = useRef(false);
@@ -163,7 +169,11 @@ export function AppointmentModal({
   ]);
 
   const handleStatusChange = (next: AppointmentStatus) => {
-    if (next === "arrived" && prevStatus.current !== "arrived") {
+    if (
+      legalEnabled &&
+      next === "arrived" &&
+      prevStatus.current !== "arrived"
+    ) {
       setDocsModalOpen(true);
     }
     setStatus(next);
@@ -474,11 +484,13 @@ export function AppointmentModal({
         onCreated={(p) => setPatientId(p.id)}
       />
 
-      <AppointmentDocumentsModal
-        open={docsModalOpen}
-        onOpenChange={setDocsModalOpen}
-        onDone={() => undefined}
-      />
+      {legalEnabled && (
+        <AppointmentDocumentsModal
+          open={docsModalOpen}
+          onOpenChange={setDocsModalOpen}
+          onDone={() => undefined}
+        />
+      )}
 
       <WorkActModal
         open={actModalOpen}

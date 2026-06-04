@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ROLE_LABELS } from "@/lib/constants";
+import { fetchClinicDataFromServer } from "@/lib/clinic-data-client";
 import { deleteStaffOnServer } from "@/lib/clinic-staff-client";
 import type { Doctor } from "@/lib/types";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -52,11 +53,23 @@ export default function StaffPage() {
       return;
     }
 
-    // 2) удаляем запись из staff_members (если используется серверный реестр)
-    await deleteStaffOnServer(member.id);
+    // 2) clinic_snapshots + staff_members на сервере
+    const staffRes = await deleteStaffOnServer(member.id);
+    if (!staffRes.ok) {
+      toast.error(staffRes.error ?? "Не удалось удалить сотрудника в базе");
+      return;
+    }
 
-    // 3) удаляем из текущего снимка клиники (уйдёт в clinic_snapshots)
+    // 3) локальный UI без гонки с автосохранением
+    useClinicStore.getState().pauseClinicAutoSave();
+    useClinicStore.getState().setClinicDataSaveError(null);
     removeDoctor(member.id);
+
+    const remote = await fetchClinicDataFromServer();
+    if (remote?.data) {
+      useClinicStore.getState().replacePersistedState(remote.data);
+    }
+
     toast.success("Сотрудник удалён, доступ отключён");
   };
 

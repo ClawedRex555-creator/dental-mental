@@ -83,7 +83,7 @@ describe("patient-visits", () => {
     assert.equal(countClinicVisits(list, "p1"), 0);
   });
 
-  it("patientsLostButAppointmentsRemain detects sync damage", () => {
+  it("patientsLostButAppointmentsRemain detects orphan appointments in incoming", () => {
     const existing = createFreshPersistedState();
     existing.patients = [patient("p1")];
     existing.appointments = [apt("p1", "scheduled", "2026-06-10")];
@@ -91,5 +91,18 @@ describe("patient-visits", () => {
 
     const incoming = { ...existing, patients: [] };
     assert.equal(patientsLostButAppointmentsRemain(existing, incoming), true);
+  });
+
+  it("patientsLostButAppointmentsRemain ignores server-only orphan appointments", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [patient("p1"), patient("p2")];
+    existing.appointments = [apt("p2", "scheduled", "2026-06-10")];
+
+    const incoming = {
+      ...existing,
+      patients: [patient("p1")],
+      appointments: [],
+    };
+    assert.equal(patientsLostButAppointmentsRemain(existing, incoming), false);
   });
 });

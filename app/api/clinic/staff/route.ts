@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth-session";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
+import { removeStaffFromClinicSnapshot } from "@/lib/clinic-data-db.server";
 import { deleteStaffDb, listStaffDb, upsertStaffDb } from "@/lib/staff-db.server";
 import type { Doctor } from "@/lib/types";
 
@@ -106,6 +107,13 @@ export async function DELETE(request: Request) {
   }
 
   try {
+    try {
+      await removeStaffFromClinicSnapshot(session.clinicId, staffId);
+    } catch (snapErr) {
+      const message =
+        snapErr instanceof Error ? snapErr.message : "Ошибка обновления снимка клиники";
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
     await deleteStaffDb(session.clinicId, staffId);
     return NextResponse.json({ ok: true });
   } catch (e) {

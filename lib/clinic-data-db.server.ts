@@ -7,8 +7,10 @@ import {
   isSuspiciousClinicDataDowngrade,
   mergeClinicDataForSave,
   parseClinicPersistedState,
+  shouldRejectEmptyClinicOverwrite,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import { listStaffDb } from "@/lib/staff-db.server";
 import {
   decryptClinicSnapshotPhi,
   encryptClinicSnapshotPhi,
@@ -62,24 +64,78 @@ async function mergeLegacyStaff(
   return { ...data, doctors };
 }
 
-export async function saveClinicDataDb(
+function buildSnapshotAfterStaffRemoval(
+  data: ClinicPersistedState,
+  staffId: string
+): ClinicPersistedState {
+  return {
+    ...data,
+    doctors: data.doctors.filter((d) => d.id !== staffId),
+    doctorSchedules: (data.doctorSchedules ?? []).filter((s) => s.doctorId !== staffId),
+    cabinets: data.cabinets.map((c) => ({
+      ...c,
+      staffIds: (c.staffIds ?? []).filter((id) => id !== staffId),
+    })),
+    appointments: data.appointments.map((a) => {
+      if (a.doctorId === staffId) return { ...a, doctorId: undefined };
+      if (a.assistantId === staffId) {
+        return { ...a, assistantId: undefined, assistantHours: undefined };
+      }
+      return a;
+    }),
+    workActs: data.workActs.map((act) =>
+      act.doctorId === staffId ? { ...act, doctorId: undefined } : act
+    ),
+  };
+}
+
+/** Убрать сотрудника из clinic_snapshots (врачи из staff_members учитываются) */
+export async function removeStaffFromClinicSnapshot(
   clinicId: string,
-  data: ClinicPersistedState
-): Promise<ClinicDataRecord> {
-  const existing = await getClinicDataDb(clinicId);
-  if (existing && hasClinicData(existing.data) && !hasClinicData(data)) {
-    throw new Error("Нельзя перезаписать данные клиники пустым снимком");
-  }
-  if (existing && isSuspiciousClinicDataDowngrade(existing.data, data)) {
-    throw new Error(
-      "Отклонено: снимок выглядит повреждённым (подменены пациенты, врачи или услуги). Обновите страницу и повторите."
-    );
+  staffId: string
+): Promise<ClinicDataRecord | null> {
+  const record = await getClinicDataDbWithLegacyStaff(clinicId);
+  let data: ClinicPersistedState;
+
+  if (record) {
+    data = record.data;
+  } else {
+    const staff = await listStaffDb(clinicId);
+    if (!staff.some((s) => s.id === staffId)) return null;
+    data = { ...createFreshPersistedState(), doctors: staff };
   }
 
+  if (!data.doctors.some((d) => d.id === staffId)) {
+    return record;
+  }
+
+  const next = buildSnapshotAfterStaffRemoval(data, staffId);
+  return saveClinicDataDb(clinicId, next, { allowEmptyResult: true });
+}
+
+export async function saveClinicDataDb(
+  clinicId: string,
+  data: ClinicPersistedState,
+  options?: { allowEmptyResult?: boolean }
+): Promise<ClinicDataRecord> {
+  const existing = await getClinicDataDbWithLegacyStaff(clinicId);
   const toSave =
     existing && hasClinicData(existing.data)
       ? mergeClinicDataForSave(existing.data, data)
       : data;
+
+  if (
+    !options?.allowEmptyResult &&
+    existing &&
+    shouldRejectEmptyClinicOverwrite(existing.data, data, toSave)
+  ) {
+    throw new Error("Нельзя перезаписать данные клиники пустым снимком");
+  }
+  if (existing && isSuspiciousClinicDataDowngrade(existing.data, toSave)) {
+    throw new Error(
+      "Отклонено: снимок выглядит повреждённым (подменены пациенты, врачи или услуги). Обновите страницу и повторите."
+    );
+  }
 
   const saved = await withDb(async (client) => {
     const encrypted = encryptClinicSnapshotPhi(toSave);

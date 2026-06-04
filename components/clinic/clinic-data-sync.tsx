@@ -107,7 +107,15 @@ export function ClinicDataSync() {
       }
       if (!initialLoadDone.current) return;
 
-      const snapshot = pickPersistedState(useClinicStore.getState());
+      const storeNow = useClinicStore.getState();
+      if (storeNow.clinicSyncPhase !== "ready") return;
+      if (storeNow.clinicSavePausedUntil > Date.now()) return;
+
+      const snapshot = pickPersistedState(storeNow);
+      if (!hasClinicData(snapshot)) {
+        setClinicDataUnsaved(false);
+        return;
+      }
       const json = JSON.stringify(snapshot);
       if (json === lastSavedJson.current) {
         setClinicDataUnsaved(false);
@@ -329,8 +337,10 @@ export function ClinicDataSync() {
           useClinicStore.getState().clinicSyncPhase === "loading"
         ) {
           syncReady.current = true;
-          finishPhase("ready");
-          armSaveBaseline();
+          finishPhase("error");
+          setClinicDataSaveError(
+            "Данные клиники не загрузились. Обновите страницу (F5) перед изменениями."
+          );
         }
       }
     })();

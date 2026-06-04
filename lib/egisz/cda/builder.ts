@@ -13,6 +13,7 @@ import {
 } from "@/lib/egisz/cda/constants";
 import { mapDoctorAuthorName } from "@/lib/egisz/n3/mappers";
 import type { EgiszClinicConfig } from "@/lib/egisz/types";
+import { resolveSystemId } from "@/lib/egisz/types";
 
 function xmlEscape(value: string): string {
   return value
@@ -37,6 +38,9 @@ export function buildCdaDocument(input: CdaBuildInput): string {
   const now = new Date().toISOString();
   const templateOid = input.config.documentOid ?? CDA_TEMPLATE_OID;
   const orgOid = input.config.organizationOid ?? "1.2.643.5.1.13.13.11.1469";
+  const systemOid = resolveSystemId(input.config);
+  const productName =
+    process.env.EGISZ_PRODUCT_NAME?.trim() || "Emkaro";
   const author = mapDoctorAuthorName(input.doctor);
   const snils = formatSnilsForCda(input.patient.snils ?? "");
   const sex = mapGenderToEgisz(input.patient.gender);
@@ -112,6 +116,19 @@ export function buildCdaDocument(input: CdaBuildInput): string {
       </representedCustodianOrganization>
     </assignedCustodian>
   </custodian>
+  ${
+    systemOid
+      ? `<participant typeCode="DEV">
+    <associatedEntity classCode="RGPR">
+      <id root="${xmlEscape(systemOid)}" extension="${xmlEscape(productName)}"/>
+      <scopingOrganization>
+        <id root="${orgOid}"/>
+        <name>${xmlEscape(productName)}</name>
+      </scopingOrganization>
+    </associatedEntity>
+  </participant>`
+      : ""
+  }
   <component>
     <structuredBody>${sectionXml}
     </structuredBody>

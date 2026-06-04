@@ -10,6 +10,7 @@ import {
 import { getEgiszConfig, listEgiszSubmissions, saveEgiszConfig } from "@/lib/egisz/db.server";
 import { parseEgiszConfig } from "@/lib/egisz/types";
 import { getServerSession } from "@/lib/get-server-session";
+import { assertClinicModule } from "@/lib/module-access.server";
 
 async function requireClinicAdmin(request: Request) {
   const session = await getServerSession();
@@ -25,6 +26,8 @@ export async function GET(request: Request) {
   if (!ctx) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const denied = await assertClinicModule(ctx.clinicId, "egisz");
+  if (denied) return denied;
   const [config, submissions, snapshot] = await Promise.all([
     getEgiszConfig(ctx.clinicId),
     listEgiszSubmissions(ctx.clinicId),
@@ -56,6 +59,8 @@ export async function PUT(request: Request) {
   if (!ctx) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const deniedPut = await assertClinicModule(ctx.clinicId, "egisz");
+  if (deniedPut) return deniedPut;
 
   let body: unknown;
   try {

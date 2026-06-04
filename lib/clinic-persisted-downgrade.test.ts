@@ -6,6 +6,7 @@ import {
   mergeClinicDataForSave,
   mergeClinicSnapshotWithLocal,
   shouldPushMergedSnapshotAfterLoad,
+  shouldRejectEmptyClinicOverwrite,
 } from "./clinic-persisted-state.ts";
 import type { Patient } from "./types.ts";
 
@@ -148,6 +149,129 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     const incoming = { ...existing, patients: existing.patients.slice(0, 3) };
     const saved = mergeClinicDataForSave(existing, incoming);
     assert.equal(saved.patients.length, 8);
+  });
+
+  it("allows patient delete when server still has orphan appointments (incoming is clean)", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [patient("p1"), patient("p2")];
+    existing.doctors = [{ id: "d1", name: "Doc", specialization: "T", phone: "", email: "", cabinet: "—", commissionPercent: 0, status: "active", role: "doctor" }];
+    existing.appointments = [
+      {
+        id: "a1",
+        patientId: "p2",
+        doctorId: "d1",
+        cabinetId: "c1",
+        date: "2026-06-01",
+        startTime: "10:00",
+        endTime: "10:30",
+        durationMinutes: 30,
+        status: "scheduled" as const,
+        price: 0,
+        paymentStatus: "pending" as const,
+      },
+    ];
+
+    const incoming = {
+      ...existing,
+      patients: [patient("p1")],
+      appointments: [],
+    };
+
+    assert.equal(isSuspiciousClinicDataDowngrade(existing, incoming), false);
+  });
+
+  it("allows deleting legal documents without false downgrade", () => {
+    const existing = createFreshPersistedState();
+    existing.legalDocuments = Array.from({ length: 6 }, (_, i) => ({
+      id: `ld${i}`,
+      category: "consent",
+      title: `Doc ${i}`,
+      date: "2026-01-01",
+    }));
+
+    const incoming = {
+      ...existing,
+      legalDocuments: existing.legalDocuments.slice(0, 2),
+    };
+
+    assert.equal(isSuspiciousClinicDataDowngrade(existing, incoming), false);
+  });
+
+  it("shouldRejectEmptyClinicOverwrite blocks blank tab buffer but not staff removal", () => {
+    const existing = createFreshPersistedState();
+    existing.doctors = [
+      {
+        id: "d1",
+        name: "Doc",
+        specialization: "T",
+        phone: "",
+        email: "",
+        cabinet: "—",
+        commissionPercent: 0,
+        status: "active",
+        role: "doctor",
+      },
+    ];
+
+    const blank = createFreshPersistedState();
+    const toSaveBlank = mergeClinicDataForSave(existing, blank);
+    assert.equal(shouldRejectEmptyClinicOverwrite(existing, blank, toSaveBlank), true);
+
+    existing.cabinets = [
+      {
+        id: "c1",
+        name: "Кабинет",
+        number: "1",
+        equipment: [],
+        staffIds: [],
+        status: "active",
+      },
+    ];
+    const afterRemoval = { ...existing, doctors: [] };
+    const toSaveRemoval = mergeClinicDataForSave(existing, afterRemoval);
+    assert.equal(
+      shouldRejectEmptyClinicOverwrite(existing, afterRemoval, toSaveRemoval),
+      false
+    );
+  });
+
+  it("mergeClinicDataForSave keeps doctors when client sends empty shell", () => {
+    const existing = createFreshPersistedState();
+    existing.doctors = Array.from({ length: 5 }, (_, i) => ({
+      id: `d${i}`,
+      name: `Doc ${i}`,
+      specialization: "T",
+      phone: "",
+      email: "",
+      cabinet: "—",
+      commissionPercent: 0,
+      status: "active" as const,
+      role: "doctor" as const,
+    }));
+
+    const incoming = createFreshPersistedState();
+    const saved = mergeClinicDataForSave(existing, incoming);
+    assert.equal(saved.doctors.length, 5);
+  });
+
+  it("allows deleting the last doctor when clinic has no patients", () => {
+    const existing = createFreshPersistedState();
+    existing.doctors = [
+      {
+        id: "d1",
+        name: "Doc",
+        specialization: "T",
+        phone: "",
+        email: "",
+        cabinet: "—",
+        commissionPercent: 0,
+        status: "active",
+        role: "doctor",
+      },
+    ];
+
+    const incoming = { ...existing, doctors: [] };
+    assert.equal(isSuspiciousClinicDataDowngrade(existing, incoming), false);
   });
 
   it("mergeClinicDataForSave allows deleting patient with dependent entities", () => {

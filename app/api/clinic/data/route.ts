@@ -17,6 +17,8 @@ import {
 } from "@/lib/clinic-data-access";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
+import { isModuleEnabled } from "@/lib/modules";
+import { getClinicModules } from "@/lib/platform-modules.server";
 
 const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -107,12 +109,15 @@ export async function PUT(request: Request) {
     const saved = await saveClinicDataDb(session.clinicId, toPersist);
 
     if (existing?.data.medicalRecords) {
-      const { maybeAutoQueueMedicalRecords } = await import("@/lib/egisz/queue.server");
-      await maybeAutoQueueMedicalRecords(
-        session.clinicId,
-        existing.data.medicalRecords,
-        toPersist.medicalRecords
-      ).catch(() => undefined);
+      const modules = await getClinicModules(session.clinicId);
+      if (isModuleEnabled(modules, "egisz")) {
+        const { maybeAutoQueueMedicalRecords } = await import("@/lib/egisz/queue.server");
+        await maybeAutoQueueMedicalRecords(
+          session.clinicId,
+          existing.data.medicalRecords,
+          toPersist.medicalRecords
+        ).catch(() => undefined);
+      }
     }
 
     return NextResponse.json({

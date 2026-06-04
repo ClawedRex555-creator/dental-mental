@@ -194,15 +194,59 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
   };
 }
 
+/** Пустой «шаблон» с вкладки (не осознанное удаление сотрудника/пациента) */
+export function isBlankClientClinicShell(incoming: ClinicPersistedState): boolean {
+  if (hasClinicData(incoming)) return false;
+  return (
+    incoming.cabinets.length === 0 &&
+    incoming.services.length === 0 &&
+    incoming.medicalRecords.length === 0 &&
+    incoming.documentTemplates.length === 0 &&
+    incoming.warehouse.length === 0 &&
+    incoming.clinicExpenses.length === 0 &&
+    incoming.legalDocuments.length === 0 &&
+    incoming.doctorSchedules.length === 0 &&
+    incoming.prepayments.length === 0
+  );
+}
+
+/**
+ * Блокировать запись пустого toSave поверх непустого existing.
+ * Не блокирует удаление последнего врача/пациента (снимок после merge может стать «пустым»).
+ */
+export function shouldRejectEmptyClinicOverwrite(
+  existing: ClinicPersistedState,
+  incoming: ClinicPersistedState,
+  toSave: ClinicPersistedState
+): boolean {
+  if (!hasClinicData(existing) || hasClinicData(toSave)) return false;
+
+  const removedPatients =
+    isDeletionOnlySubset(existing.patients, incoming.patients) &&
+    incoming.patients.length < existing.patients.length;
+  if (removedPatients) return false;
+
+  const removedDoctors =
+    isDeletionOnlySubset(existing.doctors, incoming.doctors) &&
+    incoming.doctors.length < existing.doctors.length;
+  if (removedDoctors && !isBlankClientClinicShell(incoming)) return false;
+
+  if (!isBlankClientClinicShell(incoming)) return false;
+  return true;
+}
+
 /** Есть ли в снимке реальные данные клиники (не пустой шаблон) */
 export function hasClinicData(state: ClinicPersistedState): boolean {
   return (
     state.patients.length > 0 ||
     state.doctors.length > 0 ||
+    state.services.length > 0 ||
+    state.cabinets.length > 0 ||
     state.appointments.length > 0 ||
     state.workActs.length > 0 ||
     state.payments.length > 0 ||
-    state.treatmentPlans.length > 0
+    state.treatmentPlans.length > 0 ||
+    state.medicalRecords.length > 0
   );
 }
 
@@ -406,6 +450,9 @@ export function mergeClinicDataForSave(
     if (!incomingPatientIds.has(id)) deletedPatientIds.add(id);
   }
   const hasPatientDeletion = deletedPatientIds.size > 0;
+  const hasLegalDocumentDeletion =
+    isDeletionOnlySubset(existing.legalDocuments, incoming.legalDocuments) &&
+    incoming.legalDocuments.length < existing.legalDocuments.length;
 
   const merged: ClinicPersistedState = {
     ...incoming,
@@ -446,7 +493,11 @@ export function mergeClinicDataForSave(
     ),
     documentTemplates: mergeArr(existing.documentTemplates, incoming.documentTemplates, protect),
     clinicExpenses: mergeArr(existing.clinicExpenses, incoming.clinicExpenses, protect),
-    legalDocuments: mergeArr(existing.legalDocuments, incoming.legalDocuments, protect),
+    legalDocuments: mergeArr(
+      existing.legalDocuments,
+      incoming.legalDocuments,
+      hasLegalDocumentDeletion ? undefined : protect
+    ),
     doctorSchedules: mergeArr(existing.doctorSchedules, incoming.doctorSchedules, protect),
     prepayments: mergeArr(
       existing.prepayments,
@@ -494,13 +545,22 @@ export function isSuspiciousClinicDataDowngrade(
   incoming: ClinicPersistedState
 ): boolean {
   if (!hasClinicData(existing)) return false;
-  if (!hasClinicData(incoming)) return true;
+  if (!hasClinicData(incoming)) {
+    const hasDoctorDeletion =
+      isDeletionOnlySubset(existing.doctors, incoming.doctors) &&
+      incoming.doctors.length < existing.doctors.length;
+    if (hasDoctorDeletion) return false;
+    return true;
+  }
 
   // Важный кейс: при удалении пациента может пропасть большая доля зависимых сущностей
   // (приёмы/акты/платежи/медкарта). Это легитимно и не должно блокироваться защитой.
   const hasPatientDeletion =
     isDeletionOnlySubset(existing.patients, incoming.patients) &&
     incoming.patients.length < existing.patients.length;
+  const hasLegalDocumentDeletion =
+    isDeletionOnlySubset(existing.legalDocuments, incoming.legalDocuments) &&
+    incoming.legalDocuments.length < existing.legalDocuments.length;
 
   const guarded: Array<{
     existing: { id: string }[];
@@ -517,6 +577,11 @@ export function isSuspiciousClinicDataDowngrade(
     { existing: existing.treatmentPlans, incoming: incoming.treatmentPlans, protectMassLoss: !hasPatientDeletion },
     { existing: existing.payments, incoming: incoming.payments, protectMassLoss: !hasPatientDeletion },
     { existing: existing.workActs, incoming: incoming.workActs, protectMassLoss: !hasPatientDeletion },
+    {
+      existing: existing.legalDocuments,
+      incoming: incoming.legalDocuments,
+      protectMassLoss: !hasLegalDocumentDeletion,
+    },
   ];
 
   for (const { existing: ex, incoming: inc, protectMassLoss } of guarded) {

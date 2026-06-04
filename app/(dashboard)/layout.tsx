@@ -4,7 +4,6 @@ import { ClinicDataSaveBanner } from "@/components/clinic/clinic-data-save-banne
 import { ClinicDataSync } from "@/components/clinic/clinic-data-sync";
 import { ClinicModulesSync } from "@/components/clinic/clinic-modules-sync";
 import { ClinicSyncGate } from "@/components/clinic/clinic-sync-gate";
-import { ModuleGuard } from "@/components/clinic/module-guard";
 import { StoreHydration } from "@/components/providers/store-hydration";
 
 export default function DashboardLayout({
@@ -19,9 +18,7 @@ export default function DashboardLayout({
           <ClinicDataSync />
           <ClinicModulesSync />
           <ClinicDataSaveBanner />
-          <ClinicSyncGate>
-            <ModuleGuard>{children}</ModuleGuard>
-          </ClinicSyncGate>
+          <ClinicSyncGate>{children}</ClinicSyncGate>
         </StoreHydration>
       </DashboardShell>
     </AuthGate>

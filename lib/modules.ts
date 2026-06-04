@@ -34,6 +34,11 @@ export const SYSTEM_MODULE_IDS: SystemModuleId[] = [
   "egisz",
 ];
 
+/** Модули, которые супер-админ может отключать. «Настройки» всегда доступны (профиль, клиника, тема). */
+export const CONFIGURABLE_MODULE_IDS: SystemModuleId[] = SYSTEM_MODULE_IDS.filter(
+  (id) => id !== "settings"
+);
+
 export const MODULE_LABELS: Record<SystemModuleId, string> = {
   appointments: "Расписание",
   patients: "Пациенты",
@@ -65,7 +70,6 @@ export const PATH_TO_MODULE: Record<string, SystemModuleId> = {
   "/legal": "legal",
   "/online-booking": "online_booking",
   "/my-salary": "my_salary",
-  "/settings": "settings",
 };
 
 export const NAV_HREF_TO_MODULE: Record<string, SystemModuleId> = {
@@ -81,7 +85,6 @@ export const NAV_HREF_TO_MODULE: Record<string, SystemModuleId> = {
   "/legal": "legal",
   "/online-booking": "online_booking",
   "/my-salary": "my_salary",
-  "/settings": "settings",
 };
 
 export function defaultClinicModules(): ClinicModules {
@@ -111,8 +114,15 @@ export function parseClinicModules(raw: unknown): ClinicModules {
   for (const id of SYSTEM_MODULE_IDS) {
     if (typeof d[id] === "boolean") out[id] = d[id];
   }
+  out.settings = true;
   return out;
 }
+
+/**
+ * Возможности без отдельного URL (модалки, вкладки настроек):
+ * — печать договоров при «Пациент пришёл» → `legal`
+ * — блок ЕГИСЗ в настройках, API `/api/egisz/*` → `egisz`
+ */
 
 export function resolvePathModule(pathname: string): SystemModuleId | null {
   const path = pathname.split("?")[0];
@@ -126,5 +136,6 @@ export function isModuleEnabled(
   modules: ClinicModules,
   moduleId: SystemModuleId
 ): boolean {
+  if (moduleId === "settings") return true;
   return modules[moduleId] !== false;
 }

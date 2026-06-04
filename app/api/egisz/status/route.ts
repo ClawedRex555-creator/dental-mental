@@ -6,6 +6,7 @@ import { getClinicEgiszReadiness, getPlatformEgiszSettings } from "@/lib/egisz/p
 import { getEgiszConfig } from "@/lib/egisz/db.server";
 import { resolveClinicIdForSession } from "@/lib/clinic-session.server";
 import { getServerSession } from "@/lib/get-server-session";
+import { assertClinicModule } from "@/lib/module-access.server";
 
 export async function GET(request: Request) {
   const phiKey = Boolean(process.env.PHI_ENCRYPTION_KEY?.trim());
@@ -27,6 +28,9 @@ export async function GET(request: Request) {
       message: "Откройте настройки из поддомена клиники — у каждого юр. лица свой контур ЕГИСЗ.",
     });
   }
+
+  const denied = await assertClinicModule(clinicId, "egisz");
+  if (denied) return denied;
 
   const [config, snapshot] = await Promise.all([
     getEgiszConfig(clinicId),

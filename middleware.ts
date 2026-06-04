@@ -10,7 +10,7 @@ import {
   parseClinicSlugFromHost,
   isPlatformHost,
 } from "@/lib/clinic-host";
-import { canAccessPath, defaultPathForRole } from "@/lib/rbac";
+import { canAccessPath, defaultPathForRole, isAccountSettingsPath } from "@/lib/rbac";
 
 const PUBLIC_CLINIC_PATHS = ["/login"];
 const PLATFORM_PUBLIC_PATHS = ["/", "/platform/login"];
@@ -134,8 +134,16 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(defaultPathForRole(session.role), request.url));
     }
 
+    const pathOnly = pathname.split("?")[0];
+    if (isAccountSettingsPath(pathOnly)) {
+      return NextResponse.next();
+    }
+
     if (!canAccessPath(session.role, pathname)) {
-      return NextResponse.redirect(new URL(defaultPathForRole(session.role), request.url));
+      const fallback = defaultPathForRole(session.role);
+      const pathOnly = pathname.split("?")[0];
+      const target = fallback === pathOnly ? "/settings" : fallback;
+      return NextResponse.redirect(new URL(target, request.url));
     }
 
     return NextResponse.next();

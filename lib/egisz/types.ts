@@ -46,7 +46,10 @@ export interface EgiszClinicConfig {
   connectionMode?: EgiszConnectionMode;
   /** OID медицинской организации в ЕГИСЗ */
   organizationOid?: string;
-  /** Идентификатор подключения (ИС); обычно общий для Emkaro, см. EGISZ_SYSTEM_ID */
+  /**
+   * OID информационной системы Emkaro в НСИ ЕГИСЗ (справочник 1.2.643.2.69.1.2).
+   * Задаётся разработчиком платформы через EGISZ_SYSTEM_ID, не выдаётся N3 клинике.
+   */
   systemId?: string;
   /** URL SOAP-шлюза N3 (перекрывает EGISZ_GATEWAY_URL) */
   gatewayUrl?: string;
@@ -102,7 +105,11 @@ export function defaultEgiszConfig(): EgiszClinicConfig {
 }
 
 export function resolveSystemId(config: EgiszClinicConfig): string | undefined {
-  return config.systemId?.trim() || undefined;
+  return (
+    config.systemId?.trim() ||
+    process.env.EGISZ_SYSTEM_ID?.trim() ||
+    undefined
+  );
 }
 
 export function hasCompleteN3Credentials(config: EgiszClinicConfig): boolean {

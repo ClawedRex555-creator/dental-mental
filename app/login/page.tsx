@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { APP_LOGO_TEXT, APP_NAME, ROLE_LABELS } from "@/lib/constants";
+import { notifySessionChanged } from "@/lib/session-sync.client";
 import { DEMO_LOGIN_HINTS } from "@/lib/demo-login-hints";
 import { loginRedirectForRole } from "@/lib/login-redirect";
 import { safeRedirectPath } from "@/lib/safe-redirect";
@@ -25,6 +26,12 @@ export default function LoginPage() {
   const [clinicName, setClinicName] = useState<string | null>(null);
   const [clinicSlug, setClinicSlug] = useState<string | null>(null);
   const [clinicError, setClinicError] = useState<string | null>(null);
+  const [activeSession, setActiveSession] = useState<{
+    name: string;
+    role: UserRole;
+  } | null>(null);
+
+  const switchAccount = searchParams.get("switch") === "1";
 
   useEffect(() => {
     fetch("/api/clinic/context", { credentials: "include" })
@@ -45,20 +52,29 @@ export default function LoginPage() {
       .catch(() => setClinicError("Не удалось определить клинику"));
   }, []);
 
-  /** Уже есть cookie — уходим с /login */
+  /** Уже есть cookie — уходим с /login (кроме ?switch=1 для смены учётки) */
   useEffect(() => {
     const from = searchParams.get("from");
     void fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
       .then(async (res) => {
-        if (!res.ok) return;
-        const data = (await res.json()) as { user?: { role?: UserRole } };
+        if (!res.ok) {
+          setActiveSession(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          user?: { name?: string; role?: UserRole };
+        };
+        if (data.user?.name && data.user.role) {
+          setActiveSession({ name: data.user.name, role: data.user.role });
+        }
+        if (switchAccount) return;
         const role = data.user?.role ?? "assistant";
         window.location.replace(safeRedirectPath(from ?? loginRedirectForRole(role)));
       })
       .catch(() => {
-        /* not logged in */
+        setActiveSession(null);
       });
-  }, [searchParams]);
+  }, [searchParams, switchAccount]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +82,24 @@ export default function LoginPage() {
     try {
       const from = searchParams.get("from");
       const roleFallback = "assistant" as UserRole;
+
+      const meBefore = await fetch("/api/auth/me", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      let existingBefore: { id: string; name: string; role: UserRole } | null = null;
+      if (meBefore.ok) {
+        const meData = (await meBefore.json()) as {
+          user?: { id?: string; name?: string; role?: UserRole };
+        };
+        if (meData.user?.id && meData.user.name && meData.user.role) {
+          existingBefore = {
+            id: meData.user.id,
+            name: meData.user.name,
+            role: meData.user.role,
+          };
+        }
+      }
 
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -96,11 +130,22 @@ export default function LoginPage() {
         return;
       }
 
+      if (existingBefore && existingBefore.id !== data.user.id) {
+        const existingLabel = `${existingBefore.name} (${ROLE_LABELS[existingBefore.role]})`;
+        const nextLabel = `${data.user.name} (${ROLE_LABELS[data.user.role]})`;
+        const ok = window.confirm(
+          `Сейчас в этом браузере открыта сессия: ${existingLabel}.\n\n` +
+            `Войти как ${nextLabel}? Это заменит вход во всех вкладках ${clinicSlug ? `поддомена ${clinicSlug}` : "клиники"}.`
+        );
+        if (!ok) return;
+      }
+
       const target = safeRedirectPath(
         from ?? data.redirectTo ?? loginRedirectForRole(data.user.role ?? roleFallback)
       );
 
       setSessionUser(data.user);
+      notifySessionChanged("login");
       toast.success(`Добро пожаловать, ${data.user.name}`);
 
       // Safari иногда не успевает применить Set-Cookie до fetch /api/auth/me —
@@ -145,6 +190,29 @@ export default function LoginPage() {
           )}
         </CardHeader>
         <CardContent>
+          {activeSession && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <p>
+                Сейчас вы вошли как{" "}
+                <strong>
+                  {activeSession.name} ({ROLE_LABELS[activeSession.role]})
+                </strong>
+                .
+              </p>
+              <p className="mt-1 text-amber-800">
+                Новый вход в этой вкладке заменит сессию во всех вкладках этой клиники в
+                браузере. Для двух ролей одновременно используйте другой браузер или режим
+                инкогнито.
+              </p>
+              {!switchAccount && (
+                <p className="mt-2">
+                  <a href="/login?switch=1" className="font-medium text-teal-800 underline">
+                    Войти под другой учётной записью
+                  </a>
+                </p>
+              )}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="login">Email для входа</Label>

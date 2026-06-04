@@ -49,7 +49,8 @@ lib/egisz/
 ```env
 EGISZ_GATEWAY_URL=https://b2b-demo.n3health.ru/emk/EMKService.svc
 EGISZ_ENV=test
-EGISZ_SYSTEM_ID=...           # один ID информационной системы Emkaro (N3)
+# OID Emkaro в НСИ ЕГИСЗ (справочник 1.2.643.2.69.1.2.*) — НЕ выдаётся N3 клинике
+EGISZ_SYSTEM_ID=1.2.643.2.69.1.2.xxx
 EGISZ_PRODUCT_NAME=Emkaro
 EGISZ_N3_STUB=true              # legacy: не блокирует live у клиник с connectionMode=live
 EGISZ_CRON_SECRET=...           # для POST /api/egisz/process
@@ -57,11 +58,23 @@ EGISZ_WEBHOOK_SECRET=...        # опционально для webhook
 PHI_ENCRYPTION_KEY=...          # СНИЛС пациентов в БД
 ```
 
+### Что такое `EGISZ_SYSTEM_ID`
+
+| Параметр | Кто выдаёт | Пример |
+|----------|------------|--------|
+| **EGISZ_SYSTEM_ID** | Разработчик Emkaro — регистрация МИС в [НСИ ЕГИСЗ](https://nsi.rosminzdrav.ru) (OID ветки `1.2.643.2.69.1.2`) | `1.2.643.2.69.1.2.10` — только пример из документации N3, не копировать |
+| GUID, idLPU, login/password | N3 — ЛК [lk.n3health.ru](https://lk.n3health.ru) | на каждое юр. лицо |
+| OID организации (МО) | ФРМО / ЛК N3 | `1.2.643.5.1.13.13.12.2.61.*` |
+
+N3 в тикете поддержки **не обязаны** выдавать SystemId: это OID **продукта Emkaro**, а не клиники. Клиника заполняет в Emkaro только свои N3-параметры.
+
+Регистрация МИС: [api.n3med.ru](https://api.n3med.ru) → раздел про тестовый контур «МИС–РМИС–ЕГИСЗ».
+
 ### Multi-clinic (разные юр. лица)
 
 | Уровень | Что хранится |
 |---------|----------------|
-| **Платформа** (`.env`) | `EGISZ_SYSTEM_ID` — один ИС для продукта Emkaro |
+| **Платформа** (`.env`) | `EGISZ_SYSTEM_ID` — OID информационной системы Emkaro |
 | **Клиника** (`clinics.egisz_config`) | OID организации, N3 GUID/idLPU/login/password, режим stub/live, КЭП |
 | **Очередь** (`egisz_submissions.clinic_id`) | Отправки изолированы по tenant |
 
@@ -127,14 +140,37 @@ curl -X POST https://emkaro.ru/api/egisz/process \
 
 ## Тестирование с N3
 
-1. Регистрация в ЛК N3, получение GUID, idLPU, login/password
-2. Заполнить настройки в Emkaro, `EGISZ_N3_STUB=false`
-3. Добавить врача с полями ЕГИСЗ
-4. Создать медкарту с диагнозом
-5. `POST /api/egisz/submit` или «Обработать очередь» в настройках
-6. Совместное тестирование с N3
-7. Финальный тест: **реальный** случай + подписанный CDA + заявка в техподдержку N3 из ЛК
-8. Промышленный контур — только после успешного теста
+1. Зарегистрировать **Emkaro** в НСИ → получить `EGISZ_SYSTEM_ID`, прописать в `.env` на сервере, `docker compose up -d --build app`
+2. Регистрация **клиники** в ЛК N3 → GUID, idLPU, login/password
+3. **OpenVPN** из ЛК N3 (например `b2b-makarova-1.ovpn`) — подключить на сервере или на машине, с которой идёт SOAP к demo
+4. Включить модуль `egisz` для клиники: `/platform/admin` → клиника → модуль ЕГИСЗ
+5. `tstom.emkaro.ru` → Настройки → N3 / ЕГИСЗ: live, OID организации, N3 credentials, URL demo
+6. Добавить врача: СНИЛС, OID ФРМР, код должности
+7. Медкарта с диагнозом → «Обработать очередь» или `POST /api/egisz/submit`
+8. Совместное тестирование с N3
+9. Промышленный контур — только после успешного теста на demo
+
+### Пример: ИП Макарова (`tstom`)
+
+Данные из ЛК N3 (проверьте актуальность в ЛК):
+
+| Поле | Значение |
+|------|----------|
+| OID организации | `1.2.643.5.1.13.13.12.2.61.138304` |
+| GUID | `1e5c8739-f89a-68df-40d4-496b29a943aa` |
+| idLPU | `fcf8c67b-a4eb-4317-82d2-ad07fff55033` |
+| SOAP (demo) | `http://b2b-demo.n3health.ru/emk/EMKService.svc` |
+| Login | email из ЛК N3 |
+
+В UI Emkaro: **Live**, контур **Тестовый**, включить интеграцию. `EGISZ_SYSTEM_ID` на сервере — отдельно (см. выше).
+
+Проверка готовности (владелец клиники, залогинен):
+
+```bash
+curl -s "https://tstom.emkaro.ru/api/egisz/status" -b "dc_session=..."
+```
+
+Поле `missingForLive` должно быть пустым для live.
 
 ---
 

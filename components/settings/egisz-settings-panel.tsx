@@ -66,22 +66,26 @@ export function EgiszSettingsPanel() {
   const [processing, setProcessing] = useState(false);
 
   const load = async () => {
-    const [cfgRes, stRes] = await Promise.all([
-      fetch("/api/egisz/config", { credentials: "same-origin" }),
-      fetch("/api/egisz/status", { credentials: "same-origin" }),
-    ]);
-    if (cfgRes.ok) {
-      const data = await cfgRes.json();
-      setConfig(data.config);
-      setSubmissions(data.submissions ?? []);
-      setPlatform(data.platform ?? {});
-      setClinic(data.clinic ?? { name: "", inn: "" });
+    try {
+      const [cfgRes, stRes] = await Promise.all([
+        fetch("/api/egisz/config", { credentials: "same-origin" }),
+        fetch("/api/egisz/status", { credentials: "same-origin" }),
+      ]);
+      if (cfgRes.ok) {
+        const data = await cfgRes.json();
+        setConfig(data.config ?? config);
+        setSubmissions(data.submissions ?? []);
+        setPlatform(data.platform ?? {});
+        setClinic(data.clinic ?? { name: "", inn: "" });
+      }
+      if (stRes.ok) setStatus(await stRes.json());
+    } catch {
+      toast.error("Не удалось загрузить настройки ЕГИСЗ");
     }
-    if (stRes.ok) setStatus(await stRes.json());
   };
 
   useEffect(() => {
-    load().finally(() => setLoading(false));
+    void load().finally(() => setLoading(false));
   }, []);
 
   const save = async () => {
@@ -275,7 +279,8 @@ export function EgiszSettingsPanel() {
               placeholder="Задаётся платформой (EGISZ_SYSTEM_ID)"
             />
             <p className="text-xs text-[var(--muted)]">
-              Общий для продукта Emkaro. Выдаёт N3 после регистрации ИС.
+              OID продукта Emkaro в реестре НСИ ЕГИСЗ (1.2.643.2.69.1.2.*). Задаётся
+              разработчиком платформы в EGISZ_SYSTEM_ID на сервере, не приходит из ЛК N3.
             </p>
           </div>
           <div className="space-y-2">
@@ -288,11 +293,23 @@ export function EgiszSettingsPanel() {
           </div>
         </div>
 
+        <div
+          className="rounded-lg border px-3 py-2 text-xs"
+          style={{
+            borderColor: "var(--callout-warn-border)",
+            backgroundColor: "var(--callout-warn-bg)",
+            color: "var(--callout-warn-text)",
+          }}
+        >
+          Тестовый контур N3 (demo): перед live-отправкой подключите OpenVPN из ЛК N3 (файл
+          .ovpn). Без VPN SOAP к b2b-demo часто недоступен.
+        </div>
+
         <div className="rounded-lg border border-[var(--border)] p-3 space-y-3">
           <p className="text-sm font-medium">Учётные данные N3 этой клиники (ЛК n3health.ru)</p>
           <p className="text-xs text-[var(--muted)]">
-            Регистрирует владелец юр. лица. Credentials одной клиники не используются для других
-            tenant&apos;ов Emkaro.
+            GUID, idLPU, login и password — из личного кабинета N3 для вашего юр. лица. Одна
+            клиника Emkaro — один набор; другие tenant&apos;ы используют свои credentials.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">

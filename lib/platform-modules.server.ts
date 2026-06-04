@@ -43,10 +43,11 @@ export async function updateClinicModules(
   clinicId: string,
   modules: ClinicModules
 ): Promise<void> {
+  const normalized = parseClinicModules(modules);
   await withDb(async (client) => {
     await client.query(`UPDATE clinics SET modules = $2::jsonb WHERE id = $1`, [
       clinicId,
-      JSON.stringify(modules),
+      JSON.stringify(normalized),
     ]);
   });
 }

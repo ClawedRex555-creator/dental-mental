@@ -23,6 +23,7 @@ import { APP_LOGO_TEXT, APP_NAME, NAV_ITEMS, ROLE_LABELS } from "@/lib/constants
 import { filterNavByModules } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
+import { notifySessionChanged } from "@/lib/session-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -57,10 +58,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarHover, setSidebarHover] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const navItems = filterNavByModules(
-    NAV_ITEMS.filter((item) => item.roles.includes(currentRole)),
-    enabledModules
-  );
+  const roleNav = NAV_ITEMS.filter((item) => item.roles.includes(currentRole));
+  const navItems = filterNavByModules(roleNav, enabledModules);
+  const settingsNav = NAV_ITEMS.find((item) => item.href === "/settings");
+  const navWithSettings =
+    settingsNav &&
+    settingsNav.roles.includes(currentRole) &&
+    !navItems.some((item) => item.href === "/settings")
+      ? [...navItems, settingsNav]
+      : navItems;
   const sidebarExpanded = sidebarHover || (isMobile && sidebarOpen);
 
   useEffect(() => {
@@ -112,7 +118,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {navItems.map((item) => {
+          {navWithSettings.map((item) => {
             const Icon = ICON_MAP[item.icon as keyof typeof ICON_MAP];
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
@@ -182,6 +188,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
               clearSession();
               clearPersistedClinicData();
+              notifySessionChanged("logout");
               router.push("/login");
               router.refresh();
             }}

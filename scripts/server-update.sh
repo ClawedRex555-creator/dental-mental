@@ -25,6 +25,16 @@ if [ -f "$ARCHIVE" ]; then
   cp .env /tmp/emkaro.env.bak
   tar -xzf "$ARCHIVE" -C "$ROOT"
   cp /tmp/emkaro.env.bak .env
+  sed -i 's/\r$//' .env 2>/dev/null || true
+
+  # После переноса страниц в app/(dashboard)/(modules)/ старые каталоги в tar не удаляются — дубликаты ломают next build
+  DASH="app/(dashboard)"
+  for dir in appointments patients medical-records treatment-plans finance warehouse dashboard reports staff legal online-booking my-salary; do
+    if [ -d "$ROOT/$DASH/$dir" ] && [ -d "$ROOT/$DASH/(modules)/$dir" ]; then
+      echo ">>> Удаляю устаревший маршрут $DASH/$dir (есть (modules)/$dir)"
+      rm -rf "$ROOT/$DASH/$dir"
+    fi
+  done
 else
   echo ">>> Архив $ARCHIVE не найден — только пересборка контейнеров"
 fi

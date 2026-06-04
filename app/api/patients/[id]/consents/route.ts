@@ -7,6 +7,7 @@ import {
 } from "@/lib/patient-consents.server";
 import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
 import { getServerSession } from "@/lib/get-server-session";
+import { assertClinicModule } from "@/lib/module-access.server";
 
 async function requireStaff() {
   const session = await getServerSession();
@@ -53,6 +54,11 @@ export async function PUT(
 
   if (!body.consentType || typeof body.granted !== "boolean") {
     return NextResponse.json({ error: "Укажите consentType и granted" }, { status: 400 });
+  }
+
+  if (body.consentType === "egisz_transfer") {
+    const denied = await assertClinicModule(session.clinicId!, "egisz");
+    if (denied) return denied;
   }
 
   const { id: patientId } = await params;
