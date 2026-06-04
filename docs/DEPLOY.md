@@ -242,6 +242,40 @@ SSL: `certbot --nginx -d emkaro.ru -d '*.emkaro.ru'` (нужна поддерж�
 
 ---
 
+## 9.3. Очистка сервера (диск и Docker)
+
+Не удаляет PostgreSQL (`pg-data`) и не трогает `.env`.
+
+```bash
+cd /opt/emkaro
+git pull origin main
+
+# Сначала посмотреть, что будет удалено:
+bash scripts/server-clean.sh
+
+# Выполнить очистку:
+bash scripts/server-clean.sh --apply
+
+# Сильнее почистить Docker (старые образы):
+bash scripts/server-clean.sh --apply --aggressive
+```
+
+Скрипт удаляет:
+- дубликаты `app/(dashboard)/…` (если остались после tar-деплоя);
+- `/opt/emkaro-update.tar.gz`;
+- старые SQL-бэкапы (по умолчанию оставляет 14 последних);
+- неиспользуемый Docker build cache и остановленные контейнеры.
+
+После очистки — обновление приложения:
+
+```bash
+bash scripts/server-update.sh
+# или только пересборка:
+docker compose up -d --build
+```
+
+---
+
 ## Полезные команды
 
 ```bash
