@@ -21,7 +21,7 @@ set -euo pipefail
 cd /opt/emkaro
 bash scripts/server-update.sh /opt/emkaro-update.tar.gz
 echo ">>> Миграции БД..."
-docker compose exec -T app node scripts/init-db.mjs --migrations-only
+bash scripts/apply-migrations.sh
 echo ""
 echo ">>> Проверьте .env — при первом деплое compliance добавьте:"
 echo "    PHI_ENCRYPTION_KEY, SUPERADMIN_LOGIN, SUPERADMIN_PASSWORD"

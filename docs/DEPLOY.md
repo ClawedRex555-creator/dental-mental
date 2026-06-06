@@ -270,6 +270,36 @@ bash scripts/server-clean.sh --apply --aggressive   # при нехватке м
 
 ```bash
 bash scripts/server-update.sh /opt/emkaro-update.tar.gz
+bash scripts/apply-migrations.sh
+```
+
+### Миграции БД
+
+На сервере используйте **psql**, не `init-db.mjs` внутри контейнера app (избегает ошибки `08P01 invalid message format`):
+
+```bash
+cd /opt/emkaro
+bash scripts/apply-migrations.sh
+```
+
+Только новая миграция (пример):
+
+```bash
+bash scripts/apply-migrations.sh 005-auth-login-global-unique.sql
+```
+
+Или вручную:
+
+```bash
+docker compose exec -T postgres psql -U mis -d dentalcloud -v ON_ERROR_STOP=1 \
+  -c "CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_users_login_global ON auth_users (login);"
+```
+
+Перед уникальным индексом проверьте дубликаты email:
+
+```bash
+docker compose exec -T postgres psql -U mis -d dentalcloud -c \
+  "SELECT login, COUNT(*) FROM auth_users GROUP BY login HAVING COUNT(*) > 1;"
 ```
 
 ### Если есть git-клон
