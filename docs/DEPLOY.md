@@ -246,18 +246,38 @@ SSL: `certbot --nginx -d emkaro.ru -d '*.emkaro.ru'` (нужна поддерж�
 
 Не удаляет PostgreSQL (`pg-data`) и не трогает `.env`.
 
+### Если на сервере **нет** `.git` (код залит архивом)
+
+Сообщения `fatal: not a git repository` и `server-clean.sh: No such file` — нормальны. Скачайте скрипты с GitHub:
+
+```bash
+cd /opt/emkaro
+mkdir -p scripts
+curl -fsSL -o scripts/fetch-ops-scripts.sh \
+  https://raw.githubusercontent.com/ClawedRex555-creator/dental-mental/main/scripts/fetch-ops-scripts.sh
+bash scripts/fetch-ops-scripts.sh
+```
+
+Дальше:
+
+```bash
+bash scripts/server-clean.sh              # просмотр
+bash scripts/server-clean.sh --apply      # очистка
+bash scripts/server-clean.sh --apply --aggressive   # при нехватке места
+```
+
+Обновление кода без git: с Mac `bash scripts/deploy-to-server.sh` (соберёт tar и зальёт на сервер), затем на сервере:
+
+```bash
+bash scripts/server-update.sh /opt/emkaro-update.tar.gz
+```
+
+### Если есть git-клон
+
 ```bash
 cd /opt/emkaro
 git pull origin main
-
-# Сначала посмотреть, что будет удалено:
-bash scripts/server-clean.sh
-
-# Выполнить очистку:
 bash scripts/server-clean.sh --apply
-
-# Сильнее почистить Docker (старые образы):
-bash scripts/server-clean.sh --apply --aggressive
 ```
 
 Скрипт удаляет:

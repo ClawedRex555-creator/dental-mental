@@ -1,11 +1,13 @@
 #!/bin/bash
 # Безопасная очистка сервера Emkaro (диск + Docker, БД не трогаем)
 #
-# На сервере:
+# На сервере (с git):
 #   cd /opt/emkaro && git pull origin main
-#   bash scripts/server-clean.sh          # посмотреть, что будет удалено
-#   bash scripts/server-clean.sh --apply  # выполнить
-#   bash scripts/server-clean.sh --apply --aggressive  # + старые Docker-образы
+#   bash scripts/server-clean.sh --apply
+#
+# Без git (деплой из tar):
+#   cd /opt/emkaro && bash scripts/fetch-ops-scripts.sh
+#   bash scripts/server-clean.sh --apply
 #
 set -euo pipefail
 
@@ -135,5 +137,5 @@ docker system df 2>/dev/null || true
 echo ""
 echo "============================================"
   echo "  Готово. Для обновления кода:"
-  echo "  git pull origin main && bash scripts/server-update.sh"
+  echo "  bash scripts/server-update.sh   # или deploy-to-server.sh с Mac"
   echo "============================================"

@@ -94,6 +94,11 @@ export async function upsertAuthAccount(input: {
     staffId: input.staffId,
   };
 
+  const all = [...getSeedAuthAccounts(), ...readDynamicAccounts()];
+  if (all.some((a) => a.login === login && a.id !== input.id)) {
+    throw new Error("Этот email уже зарегистрирован в системе. Используйте другой адрес.");
+  }
+
   const dynamic = readDynamicAccounts().filter((a) => a.login !== login && a.id !== input.id);
   dynamic.push(record);
 
@@ -132,8 +137,11 @@ export async function updateAuthAccountProfile(input: {
   if (idx < 0) {
     throw new Error("Учётная запись для входа не найдена. Задайте пароль в карточке сотрудника.");
   }
+  if (getSeedAuthAccounts().some((a) => a.login === login)) {
+    throw new Error("Этот email уже зарегистрирован в системе. Используйте другой адрес.");
+  }
   if (dynamic.some((a, i) => i !== idx && a.login === login)) {
-    throw new Error("Этот email уже используется другим сотрудником");
+    throw new Error("Этот email уже зарегистрирован в системе. Используйте другой адрес.");
   }
 
   const prev = dynamic[idx]!;

@@ -63,6 +63,20 @@ try {
   }
 
   const id = `auth-${staffId}`;
+
+  const conflict = await client.query(
+    `SELECT c.slug FROM auth_users u
+     JOIN clinics c ON c.id = u.clinic_id
+     WHERE u.login = $1 AND u.id <> $2 LIMIT 1`,
+    [login, id]
+  );
+  if (conflict.rows[0]) {
+    console.error(
+      `Этот email уже зарегистрирован в системе (клиника «${conflict.rows[0].slug}»)`
+    );
+    process.exit(1);
+  }
+
   const hash = hashPassword(password);
 
   await client.query(

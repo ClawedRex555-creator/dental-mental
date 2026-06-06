@@ -4,6 +4,44 @@ import type { AuthAccountRecord } from "@/lib/auth-account-types";
 import { withDb } from "@/lib/db";
 import type { UserRole } from "@/lib/types";
 
+export function normalizeAuthLogin(login: string): string {
+  return login.trim().toLowerCase();
+}
+
+export function authLoginTakenError(clinicSlug: string): Error {
+  return new Error(
+    `Этот email уже зарегистрирован в системе (клиника «${clinicSlug}»). Используйте другой адрес.`
+  );
+}
+
+/** Email занят другой учёткой (любая клиника) */
+export async function findAuthLoginConflict(
+  login: string,
+  excludeUserId?: string
+): Promise<{ userId: string; clinicSlug: string } | null> {
+  const key = normalizeAuthLogin(login);
+  return (
+    (await withDb(async (client) => {
+      const res = await client.query<{ id: string; slug: string }>(
+        `SELECT u.id, c.slug
+         FROM auth_users u
+         JOIN clinics c ON c.id = u.clinic_id
+         WHERE u.login = $1 AND ($2::text IS NULL OR u.id <> $2)
+         LIMIT 1`,
+        [key, excludeUserId ?? null]
+      );
+      const row = res.rows[0];
+      if (!row) return null;
+      return { userId: row.id, clinicSlug: row.slug };
+    })) ?? null
+  );
+}
+
+async function assertAuthLoginAvailable(login: string, excludeUserId?: string): Promise<void> {
+  const conflict = await findAuthLoginConflict(login, excludeUserId);
+  if (conflict) throw authLoginTakenError(conflict.clinicSlug);
+}
+
 export interface ClinicRecord {
   id: string;
   slug: string;
@@ -126,7 +164,7 @@ export async function updateAuthUserProfileDb(input: {
   role: UserRole;
   name: string;
 }): Promise<AuthAccountRecord | null> {
-  const login = input.login.trim().toLowerCase();
+  const login = normalizeAuthLogin(input.login);
   const updated = await withDb(async (client) => {
     const existing = await client.query<{ id: string; password_hash: string }>(
       `SELECT id, password_hash FROM auth_users
@@ -136,14 +174,7 @@ export async function updateAuthUserProfileDb(input: {
     const row = existing.rows[0];
     if (!row) return null;
 
-    const conflict = await client.query(
-      `SELECT 1 FROM auth_users
-       WHERE clinic_id = $1 AND login = $2 AND id <> $3 LIMIT 1`,
-      [input.clinicId, login, row.id]
-    );
-    if (conflict.rows.length > 0) {
-      throw new Error("Этот email уже используется другим сотрудником");
-    }
+    await assertAuthLoginAvailable(login, row.id);
 
     await client.query(
       `UPDATE auth_users SET login = $1, role = $2, name = $3
@@ -172,7 +203,7 @@ export async function updateAuthUserProfileByUserIdDb(input: {
   name: string;
   passwordHash?: string;
 }): Promise<AuthAccountRecord | null> {
-  const login = input.login.trim().toLowerCase();
+  const login = normalizeAuthLogin(input.login);
   const updated = await withDb(async (client) => {
     const existing = await client.query<{
       id: string;
@@ -187,14 +218,7 @@ export async function updateAuthUserProfileByUserIdDb(input: {
     const row = existing.rows[0];
     if (!row) return null;
 
-    const conflict = await client.query(
-      `SELECT 1 FROM auth_users
-       WHERE clinic_id = $1 AND login = $2 AND id <> $3 LIMIT 1`,
-      [input.clinicId, login, row.id]
-    );
-    if (conflict.rows.length > 0) {
-      throw new Error("Этот email уже используется другим пользователем");
-    }
+    await assertAuthLoginAvailable(login, row.id);
 
     const passwordHash = input.passwordHash ?? row.password_hash;
     await client.query(
@@ -260,7 +284,8 @@ export async function upsertAuthUserDb(input: {
   name: string;
   staffId?: string;
 }): Promise<AuthAccountRecord> {
-  const login = input.login.trim().toLowerCase();
+  const login = normalizeAuthLogin(input.login);
+  await assertAuthLoginAvailable(login, input.id);
   const saved = await withDb(async (client) => {
     await client.query(
       `DELETE FROM auth_users WHERE clinic_id = $1 AND (login = $2 OR id = $3)`,

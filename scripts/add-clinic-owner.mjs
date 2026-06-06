@@ -70,11 +70,15 @@ try {
   }
 
   const conflict = await client.query(
-    `SELECT id FROM auth_users WHERE clinic_id = $1 AND login = $2`,
-    [clinic.id, login]
+    `SELECT c.slug FROM auth_users u
+     JOIN clinics c ON c.id = u.clinic_id
+     WHERE u.login = $1 LIMIT 1`,
+    [login]
   );
-  if (conflict.rows.length > 0) {
-    console.error("Этот email уже занят в этой клинике");
+  if (conflict.rows[0]) {
+    console.error(
+      `Этот email уже зарегистрирован в системе (клиника «${conflict.rows[0].slug}»)`
+    );
     process.exit(1);
   }
 

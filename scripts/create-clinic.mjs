@@ -74,6 +74,19 @@ try {
   );
   const clinic = clinicRes.rows[0];
 
+  const taken = await client.query(
+    `SELECT c.slug FROM auth_users u
+     JOIN clinics c ON c.id = u.clinic_id
+     WHERE u.login = $1 LIMIT 1`,
+    [email]
+  );
+  if (taken.rows[0]) {
+    console.error(
+      `Этот email уже зарегистрирован в системе (клиника «${taken.rows[0].slug}»)`
+    );
+    process.exit(1);
+  }
+
   const userId = `auth-owner-${createHash("sha256").update(`${clinic.id}:${email}`).digest("hex").slice(0, 12)}`;
 
   await client.query(

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS auth_users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_users_clinic_login ON auth_users (clinic_id, login);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_users_login_global ON auth_users (login);
 CREATE INDEX IF NOT EXISTS idx_clinics_slug ON clinics (slug);
 
 -- Сотрудники клиники (синхронизация между устройствами)
