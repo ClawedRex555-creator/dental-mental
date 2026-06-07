@@ -126,7 +126,7 @@ export async function PUT(request: Request) {
       version: saved.version,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Не удалось сохранить";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[clinic/data] save failed", e);
+    return NextResponse.json({ error: "Не удалось сохранить данные" }, { status: 500 });
   }
 }

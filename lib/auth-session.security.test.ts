@@ -86,4 +86,20 @@ describe("auth session HMAC (edge)", () => {
     assert.equal(await verifySessionTokenEdge(tampered), null);
     delete process.env.AUTH_SECRET;
   });
+
+  it("rejects fully forged owner payload (middleware must not trust structure-only parse)", async () => {
+    process.env.AUTH_SECRET = TEST_SECRET;
+    process.env.NODE_ENV = "test";
+    const body = JSON.stringify({
+      userId: "forged",
+      role: "owner",
+      name: "Attacker",
+      email: "evil@evil.ru",
+      clinicSlug: "victim",
+      exp: Date.now() + 60_000,
+    });
+    const forged = `${stringToBase64Url(body)}.invalid-signature`;
+    assert.equal(await verifySessionTokenEdge(forged), null);
+    delete process.env.AUTH_SECRET;
+  });
 });

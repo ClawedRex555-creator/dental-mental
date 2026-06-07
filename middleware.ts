@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
   AUTH_COOKIE,
-  readSessionFromCookie,
   sessionCookieOptions,
 } from "@/lib/auth-session-middleware";
+import { verifySessionTokenEdge } from "@/lib/auth-session-edge";
 import {
   clinicSlugMismatch,
   parseClinicSlugFromHost,
@@ -43,7 +43,15 @@ function isPublicApi(pathname: string): boolean {
   );
 }
 
-export function middleware(request: NextRequest) {
+/** Внешние колбэки / cron — без cookie-сессии, со своей авторизацией в route handler */
+function isServiceApi(pathname: string): boolean {
+  return (
+    pathname.startsWith("/api/egisz/webhook") ||
+    pathname.startsWith("/api/egisz/process")
+  );
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host");
   const clinicSlug = parseClinicSlugFromHost(host);
@@ -53,11 +61,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isPublicApi(pathname)) {
+  if (isPublicApi(pathname) || isServiceApi(pathname)) {
     return NextResponse.next();
   }
 
-  const session = readSessionFromCookie(request.cookies.get(AUTH_COOKIE)?.value);
+  const session = await verifySessionTokenEdge(request.cookies.get(AUTH_COOKIE)?.value);
 
   if (platform) {
     if (pathname === "/platform/login") {

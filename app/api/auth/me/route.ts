@@ -5,8 +5,6 @@ import { readAuthCookieFromHeader } from "@/lib/auth-cookie";
 import {
   AUTH_COOKIE,
   createRefreshedSessionToken,
-  createSessionToken,
-  readSessionFromCookie,
   sessionCookieOptions,
   verifySessionToken,
 } from "@/lib/auth-session";
@@ -26,31 +24,14 @@ function readToken(request: Request, cookieStore: Awaited<ReturnType<typeof cook
   );
 }
 
-/** Если HMAC не сошёлся (старый билд / Web Crypto), но payload валиден — перевыпускаем cookie */
-function sessionFromTokenWithHeal(
-  token: string | undefined
-): { session: NonNullable<ReturnType<typeof verifySessionToken>>; healed: boolean } | null {
-  if (!token) return null;
-
-  let session = verifySessionToken(token);
-  if (session) return { session, healed: false };
-
-  const parsed = readSessionFromCookie(token);
-  if (!parsed) return null;
-
-  return { session: parsed, healed: true };
-}
-
 export async function GET(request: Request) {
   const cookieStore = await cookies();
   const token = readToken(request, cookieStore);
-  const resolved = sessionFromTokenWithHeal(token);
+  const session = verifySessionToken(token);
 
-  if (!resolved) {
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const { session, healed } = resolved;
   const host = request.headers.get("host");
 
   if (session.isSuperAdmin) {
@@ -65,22 +46,6 @@ export async function GET(request: Request) {
   }
 
   const cookieOpts = buildSessionCookieOptions(SESSION_MAX_AGE_SEC, request);
-
-  const setHealedCookie = (res: NextResponse) => {
-    if (!healed) return;
-    const refreshed = createSessionToken({
-      userId: session.userId,
-      staffId: session.staffId,
-      role: session.role,
-      name: session.name,
-      email: session.email,
-      clinicId: session.clinicId,
-      clinicSlug: session.clinicSlug,
-      isSuperAdmin: session.isSuperAdmin,
-    });
-    cookieStore.set(AUTH_COOKIE, refreshed, cookieOpts);
-    res.cookies.set(AUTH_COOKIE, refreshed, cookieOpts);
-  };
 
   try {
     const { user, sessionPatch, found } = await resolveAuthUserFromSession(session);
@@ -103,8 +68,6 @@ export async function GET(request: Request) {
       },
     });
 
-    setHealedCookie(res);
-
     if (sessionPatch) {
       const refreshed = createRefreshedSessionToken(session, sessionPatch);
       cookieStore.set(AUTH_COOKIE, refreshed, cookieOpts);
@@ -114,7 +77,7 @@ export async function GET(request: Request) {
     return res;
   } catch (err) {
     console.error("[auth/me] resolve user failed", err);
-    const res = NextResponse.json({
+    return NextResponse.json({
       user: {
         id: session.userId,
         name: session.name,
@@ -126,8 +89,6 @@ export async function GET(request: Request) {
         clinicSlug: session.clinicSlug,
       },
     });
-    setHealedCookie(res);
-    return res;
   }
 }
 
@@ -138,12 +99,10 @@ export async function PATCH(request: Request) {
 
   const cookieStore = await cookies();
   const token = readToken(request, cookieStore);
-  const resolved = sessionFromTokenWithHeal(token);
-  if (!resolved) {
+  const session = verifySessionToken(token);
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const { session } = resolved;
   if (session.isSuperAdmin) {
     return NextResponse.json({ error: "Используйте /platform/admin" }, { status: 403 });
   }

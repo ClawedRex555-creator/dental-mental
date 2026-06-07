@@ -13,11 +13,16 @@ function mapWebhookStatus(raw: unknown): EgiszSubmissionStatus | null {
 /** Колбэки N3 (если настроены в ЛК) */
 export async function POST(request: Request) {
   const webhookSecret = process.env.EGISZ_WEBHOOK_SECRET?.trim();
-  if (webhookSecret) {
-    const token = request.headers.get("x-egisz-webhook-token");
-    if (token !== webhookSecret) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!webhookSecret) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
     }
+    return NextResponse.json({ error: "EGISZ_WEBHOOK_SECRET required" }, { status: 403 });
+  }
+
+  const token = request.headers.get("x-egisz-webhook-token");
+  if (token !== webhookSecret) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let body: {

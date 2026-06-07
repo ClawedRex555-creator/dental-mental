@@ -28,11 +28,8 @@ export function sessionCookieOptions(
 }
 
 /**
- * Middleware: структура + срок действия (как до security review).
- * HMAC проверяется на API routes через verifySessionToken() — там Node/runtime AUTH_SECRET.
- *
- * Edge HMAC здесь ломал вход: бандл middleware не всегда видит AUTH_SECRET,
- * session=null → 401 на /api/auth/me и редирект на /login при живой cookie.
+ * Структурная проверка cookie (без HMAC) — только для legacy helpers.
+ * Middleware и API routes должны использовать verifySessionTokenEdge / verifySessionToken.
  */
 export function readSessionFromCookie(
   token: string | undefined | null

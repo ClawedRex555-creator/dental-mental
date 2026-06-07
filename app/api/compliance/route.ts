@@ -7,6 +7,14 @@ import { isPhiEncryptionEnabled } from "@/lib/phi-crypto.server";
 import { isDatabaseEnabled } from "@/lib/db";
 
 export async function GET() {
+  const session = await getServerSession();
+  if (!session?.clinicId || session.isSuperAdmin) {
+    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+  if (session.role !== "owner" && session.role !== "admin") {
+    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+
   return NextResponse.json({
     phiEncryption: isPhiEncryptionEnabled(),
     database: isDatabaseEnabled(),

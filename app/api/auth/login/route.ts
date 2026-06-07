@@ -15,10 +15,15 @@ import {
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { buildSessionCookieOptions } from "@/lib/session-cookie.server";
 import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
+import { verifySameOrigin } from "@/lib/csrf-origin";
 
 const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 7;
 
 export async function POST(request: Request) {
+  if (!verifySameOrigin(request)) {
+    return NextResponse.json({ error: "Запрос отклонён" }, { status: 403 });
+  }
+
   let body: {
     login?: string;
     password?: string;
