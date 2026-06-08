@@ -1,5 +1,5 @@
-import type { DiscountType, WorkAct, WorkActItem } from "./types";
-import { calcDiscountTotals } from "./discount-utils";
+import type { DiscountType, WorkAct, WorkActItem } from "./types.ts";
+import { calcDiscountTotals } from "./discount-utils.ts";
 
 export interface WorkActLineCalc {
   sum: number;

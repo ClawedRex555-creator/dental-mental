@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 import {
   createSessionToken,
   verifySessionToken,
-} from "./auth-session";
-import { setTestEnv } from "./test-env";
+} from "./auth-session.ts";
+import { setTestEnv } from "./test-env.ts";
 
 const SECRET = "roundtrip-test-secret";
 

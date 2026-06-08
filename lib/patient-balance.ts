@@ -1,4 +1,4 @@
-import type { PatientStatus } from "./types";
+import type { PatientStatus } from "./types.ts";
 
 /** Сумма долга (положительное число) из баланса: отрицательный баланс = долг. */
 export function getPatientDebtAmount(balance: number): number {

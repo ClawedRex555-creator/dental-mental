@@ -19,9 +19,9 @@ import type {
   ToothRecord,
   TreatmentPlan,
   WarehouseItem,
-} from "./types";
-import { ALL_TEETH } from "./constants";
-import { defaultWeeklySchedule, formatWeeklyScheduleSummary } from "./clinic-schedule";
+} from "./types.ts";
+import { ALL_TEETH } from "./constants.ts";
+import { defaultWeeklySchedule, formatWeeklyScheduleSummary } from "./clinic-schedule.ts";
 
 const defaultSchedule = defaultWeeklySchedule();
 

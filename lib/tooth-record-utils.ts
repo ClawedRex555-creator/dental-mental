@@ -74,7 +74,7 @@ export function primaryCondition(
 ): ToothCondition {
   const all = [...vestibular, ...lingual].filter((c) => c !== "healthy");
   if (all.length === 0) return fallback ?? "healthy";
-  const priority: ToothCondition[] = [
+  const priority = [
     "extraction_needed",
     "missing",
     "implant",
@@ -82,8 +82,7 @@ export function primaryCondition(
     "root_treatment",
     "caries",
     "filled",
-    "healthy",
-  ];
+  ] as const satisfies readonly ToothCondition[];
   for (const p of priority) {
     if (all.includes(p)) return p;
   }

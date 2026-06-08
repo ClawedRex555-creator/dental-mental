@@ -12,7 +12,15 @@ const eslintConfig = defineConfig([
     files: [
       "components/**/*-modal.tsx",
       "components/shared/clinic-service-search.tsx",
+      "components/shared/search-autocomplete.tsx",
       "components/auth/auth-gate.tsx",
+      "components/patients/patient-debt-panel.tsx",
+      "components/patients/patient-notes-panel.tsx",
+      "components/settings/account-settings-page.tsx",
+      "components/settings/egisz-settings-panel.tsx",
+      "app/(dashboard)/(modules)/finance/page.tsx",
+      "app/platform/admin/page.tsx",
+      "components/medical-records/odontogram-image.tsx",
     ],
   },
   // Override default ignores of eslint-config-next.

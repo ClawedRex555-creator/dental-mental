@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ODONTOGRAM_HOTSPOTS, type ToothHotspot } from "@/lib/odontogram-layout";
 import type { ToothCondition } from "@/lib/types";
 import {
@@ -113,11 +113,6 @@ export function OdontogramImage({
   const [srcIndex, setSrcIndex] = useState(0);
   const [imgOk, setImgOk] = useState(true);
   const canPaint = !readOnly && paintConditions.length > 0;
-
-  useEffect(() => {
-    setSrcIndex(0);
-    setImgOk(true);
-  }, []);
 
   const handleImgError = () => {
     if (srcIndex < sources.length - 1) {

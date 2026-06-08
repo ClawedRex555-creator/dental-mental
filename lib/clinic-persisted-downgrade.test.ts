@@ -7,8 +7,8 @@ import {
   mergeClinicSnapshotWithLocal,
   shouldPushMergedSnapshotAfterLoad,
   shouldRejectEmptyClinicOverwrite,
-} from "./clinic-persisted-state";
-import type { Patient } from "./types";
+} from "./clinic-persisted-state.ts";
+import type { Patient } from "./types.ts";
 
 function patient(id: string): Patient {
   return {
@@ -17,7 +17,12 @@ function patient(id: string): Patient {
     lastName: "B",
     phone: "+79000000000",
     birthDate: "1990-01-01",
+    gender: "male",
+    source: "Google",
+    createdAt: "2024-01-01",
     balance: 0,
+    totalSpent: 0,
+    disability: "none",
     status: "active",
   };
 }
@@ -81,7 +86,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
       durationMinutes: 30,
       status: "scheduled" as const,
       price: 0,
-      paymentStatus: "unpaid" as const,
+      paymentStatus: "pending" as const,
     }));
     existing.patients = [patient("p1")];
     existing.doctors = [{ id: "d1", name: "Doc", specialization: "T", phone: "", email: "", cabinet: "—", commissionPercent: 0, status: "active", role: "doctor" }];

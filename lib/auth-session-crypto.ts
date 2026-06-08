@@ -1,4 +1,4 @@
-import { resolveAuthSecret } from "./auth-session-token";
+import { resolveAuthSecret } from "./auth-session-token.ts";
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";

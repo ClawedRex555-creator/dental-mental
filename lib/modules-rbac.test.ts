@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { defaultClinicModules, parseClinicModules } from "./modules";
-import { canAccessPath } from "./rbac";
-import { isPathBlockedByModules, resolveSafeRedirectPath } from "./modules-rbac";
+import { defaultClinicModules, parseClinicModules } from "./modules.ts";
+import { canAccessPath } from "./rbac.ts";
+import { isPathBlockedByModules, resolveSafeRedirectPath } from "./modules-rbac.ts";
 
 describe("modules-rbac", () => {
   it("parseClinicModules always keeps settings enabled", () => {

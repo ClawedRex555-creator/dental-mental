@@ -1,5 +1,5 @@
-import type { Service } from "./types";
-import { serviceNotes } from "./utils";
+import type { Service } from "./types.ts";
+import { serviceNotes } from "./utils.ts";
 
 export const SERVICE_CATEGORIES = [
   "Терапия",

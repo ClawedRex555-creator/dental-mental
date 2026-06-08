@@ -3,9 +3,9 @@ import {
   parseSessionTokenParts,
   validateSessionTokenPayload,
   type SessionTokenPayload,
-} from "./auth-session-token";
+} from "./auth-session-token.ts";
 
-export { AUTH_COOKIE } from "./auth-session-token";
+export { AUTH_COOKIE } from "./auth-session-token.ts";
 
 export type MiddlewareSessionPayload = SessionTokenPayload;
 

@@ -1,10 +1,10 @@
 import type { StateStorage } from "zustand/middleware";
-import { isClinicServerDatabaseMode } from "@/lib/clinic-client-mode";
 import {
   CLINIC_STORAGE_KEY,
   LEGACY_CLINIC_STORAGE_KEYS,
 } from "@/lib/initial-clinic-data";
 import { pickClientSafePersistedState } from "@/lib/clinic-persisted-state";
+import type { ThemeMode } from "@/lib/types";
 
 /** Оставить в zustand-кэше только userThemePreferences (после включения server DB mode) */
 export function purgePhiFromClinicLocalStorage(): void {
@@ -12,12 +12,15 @@ export function purgePhiFromClinicLocalStorage(): void {
   try {
     const raw = localStorage.getItem(CLINIC_STORAGE_KEY);
     if (!raw) return;
-    const parsed = JSON.parse(raw) as { state?: Record<string, unknown>; version?: number };
-    const state = parsed.state ?? parsed;
+    const parsed = JSON.parse(raw) as {
+      state?: Record<string, unknown>;
+      version?: number;
+    };
+    const state: Record<string, unknown> =
+      parsed.state ?? (parsed as Record<string, unknown>);
     const safe = pickClientSafePersistedState({
       userThemePreferences:
-        (state.userThemePreferences as Record<string, import("@/lib/types").ThemeMode>) ??
-        {},
+        (state.userThemePreferences as Record<string, ThemeMode> | undefined) ?? {},
     });
     localStorage.setItem(
       CLINIC_STORAGE_KEY,

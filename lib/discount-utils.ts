@@ -1,4 +1,4 @@
-import type { DiscountType } from "./types";
+import type { DiscountType } from "./types.ts";
 
 export function calcDiscountTotals(
   subtotal: number,

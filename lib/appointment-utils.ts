@@ -1,5 +1,5 @@
 import { addMinutes, format, parse } from "date-fns";
-import type { Appointment } from "./types";
+import type { Appointment } from "./types.ts";
 
 export const SCHEDULE_SLOT_MINUTES = 30;
 export const SCHEDULE_DAY_START = "10:00";

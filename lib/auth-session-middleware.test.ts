@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { readSessionFromCookie } from "./auth-session-middleware";
-import { stringToBase64Url } from "./auth-session-token";
+import { readSessionFromCookie } from "./auth-session-middleware.ts";
+import { stringToBase64Url } from "./auth-session-token.ts";
 
 const SECRET = "test-middleware-secret";
 

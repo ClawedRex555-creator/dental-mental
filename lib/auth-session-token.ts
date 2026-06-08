@@ -1,5 +1,5 @@
-import { readAuthSecretEnv } from "./auth-env";
-import type { UserRole } from "./types";
+import { readAuthSecretEnv } from "./auth-env.ts";
+import type { UserRole } from "./types.ts";
 
 export const AUTH_COOKIE = "dc_session";
 

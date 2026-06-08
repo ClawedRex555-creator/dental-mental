@@ -11,7 +11,7 @@ import type {
   TreatmentPlanStatus,
   UserRole,
   WarehouseItemStatus,
-} from "./types";
+} from "./types.ts";
 
 export const APP_NAME = "Emkaro";
 export const APP_TAGLINE = "Система для стоматологической клиники";

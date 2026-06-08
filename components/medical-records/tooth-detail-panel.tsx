@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useState } from "react";
 import type { ToothCondition, ToothRecord, ToothSurface, ToothTreatmentStatus } from "@/lib/types";
 import {
   TOOTH_CONDITION_COLORS,
@@ -10,7 +10,6 @@ import {
 import {
   formatConditionsList,
   getSurfaceConditions,
-  patchToothSurfaces,
   TOOTH_SURFACE_LABELS,
   toggleSurfaceCondition,
 } from "@/lib/tooth-record-utils";
@@ -106,7 +105,7 @@ interface ToothDetailPanelProps {
   onSaveDetails: (patch: Partial<ToothRecord>) => void;
 }
 
-export function ToothDetailPanel({
+function ToothDetailPanelContent({
   toothNumber,
   tooth,
   readOnly,
@@ -114,13 +113,6 @@ export function ToothDetailPanel({
   onSaveDetails,
 }: ToothDetailPanelProps) {
   const [draft, setDraft] = useState<ToothDraft>(() => draftFromTooth(tooth));
-
-  /** При смене номера зуба — сразу подставляем его данные (или пустые поля) */
-  useLayoutEffect(() => {
-    setDraft(draftFromTooth(tooth));
-    // tooth читаем только в момент смены toothNumber
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toothNumber]);
 
   const commitDraft = () => {
     if (readOnly) return;
@@ -238,4 +230,8 @@ export function ToothDetailPanel({
       )}
     </div>
   );
+}
+
+export function ToothDetailPanel(props: ToothDetailPanelProps) {
+  return <ToothDetailPanelContent key={props.toothNumber} {...props} />;
 }

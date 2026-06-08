@@ -1,6 +1,6 @@
-import type { ClinicSettings, Patient, PatientPrepayment } from "./types";
-import { formatCurrency, getFullName } from "./utils";
-import { formatDocumentDiscount, getContractNumber, formatActShortDate } from "./work-act-utils";
+import type { ClinicSettings, Patient, PatientPrepayment } from "./types.ts";
+import { formatCurrency, getFullName } from "./utils.ts";
+import { formatDocumentDiscount, getContractNumber, formatActShortDate } from "./work-act-utils.ts";
 
 function escapeHtml(text: string): string {
   return text

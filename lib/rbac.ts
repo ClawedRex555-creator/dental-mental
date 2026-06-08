@@ -1,11 +1,11 @@
-import { NAV_ITEMS } from "./constants";
+import { NAV_ITEMS } from "./constants.ts";
 import {
   isModuleEnabled,
   NAV_HREF_TO_MODULE,
   resolvePathModule,
   type ClinicModules,
-} from "./modules";
-import type { UserRole } from "./types";
+} from "./modules.ts";
+import type { UserRole } from "./types.ts";
 
 export function isAccountSettingsPath(path: string): boolean {
   return (

@@ -8,7 +8,7 @@ import type {
   RevenueDataPoint,
   AppointmentsDataPoint,
   Service,
-} from "./types";
+} from "./types.ts";
 
 export function computeDashboardKPI(
   payments: Payment[],

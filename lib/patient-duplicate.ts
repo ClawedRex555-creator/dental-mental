@@ -1,6 +1,6 @@
-import { digitsOnly } from "@/lib/document-validation";
-import { normalizePhoneInput } from "@/lib/phone-utils";
-import type { Patient } from "@/lib/types";
+import { digitsOnly } from "./document-validation.ts";
+import { normalizePhoneInput } from "./phone-utils.ts";
+import type { Patient } from "./types.ts";
 
 export type PatientDuplicateReason = "phone" | "snils" | "passport" | "identity";
 
@@ -68,8 +68,8 @@ export function findDuplicatePatient(
   const candSnils = digitsOnly(candidate.snils ?? "");
   const candPassport = passportKey(candidate.passportSeries, candidate.passportNumber);
   const candIdentity = identityKey(
-    candidate.firstName,
     candidate.lastName,
+    candidate.firstName,
     candidate.middleName,
     candidate.birthDate
   );
