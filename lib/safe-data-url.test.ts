@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isAllowedDataUrl, parseAllowedDataUrl } from "./safe-data-url.ts";
+import { isAllowedDataUrl, parseAllowedDataUrl } from "./safe-data-url";
 
 const PNG_B64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

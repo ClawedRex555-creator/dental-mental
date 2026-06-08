@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
   getPatientDebtAmount,
   parseDebtInput,
@@ -7,33 +8,33 @@ import {
 
 describe("patient-balance", () => {
   it("getPatientDebtAmount", () => {
-    expect(getPatientDebtAmount(-5000)).toBe(5000);
-    expect(getPatientDebtAmount(100)).toBe(0);
-    expect(getPatientDebtAmount(0)).toBe(0);
+    assert.equal(getPatientDebtAmount(-5000), 5000);
+    assert.equal(getPatientDebtAmount(100), 0);
+    assert.equal(getPatientDebtAmount(0), 0);
   });
 
   it("parseDebtInput", () => {
-    expect(parseDebtInput("12 500")).toBe(12500);
-    expect(parseDebtInput("")).toBe(0);
-    expect(parseDebtInput("abc")).toBe(0);
+    assert.equal(parseDebtInput("12 500"), 12500);
+    assert.equal(parseDebtInput(""), 0);
+    assert.equal(parseDebtInput("abc"), 0);
   });
 
   it("resolveBalanceFromDebt sets negative balance for debt", () => {
-    expect(resolveBalanceFromDebt("debtor", 3000, 0)).toEqual({
+    assert.deepEqual(resolveBalanceFromDebt("debtor", 3000, 0), {
       balance: -3000,
       status: "debtor",
     });
   });
 
   it("resolveBalanceFromDebt pays off and clears debtor status", () => {
-    expect(resolveBalanceFromDebt("debtor", 0, -3000)).toEqual({
+    assert.deepEqual(resolveBalanceFromDebt("debtor", 0, -3000), {
       balance: 0,
       status: "active",
     });
   });
 
   it("resolveBalanceFromDebt nets credit and debt", () => {
-    expect(resolveBalanceFromDebt("debtor", 3000, 5000)).toEqual({
+    assert.deepEqual(resolveBalanceFromDebt("debtor", 3000, 5000), {
       balance: 2000,
       status: "active",
     });

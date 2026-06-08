@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-/** Mirrors middleware.ts isServiceApi — external callbacks must bypass session cookie gate */
+/** Mirrors proxy.ts isServiceApi — external callbacks must bypass session cookie gate */
 function isServiceApi(pathname: string): boolean {
   return (
     pathname.startsWith("/api/egisz/webhook") ||

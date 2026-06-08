@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqualString } from "@/lib/auth-session-token";
 import { getEgiszSubmissionById, updateEgiszSubmission } from "@/lib/egisz/db.server";
 import type { EgiszSubmissionStatus } from "@/lib/egisz/types";
 
@@ -20,8 +21,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "EGISZ_WEBHOOK_SECRET required" }, { status: 403 });
   }
 
-  const token = request.headers.get("x-egisz-webhook-token");
-  if (token !== webhookSecret) {
+  const token = request.headers.get("x-egisz-webhook-token") ?? "";
+  if (!token || !timingSafeEqualString(token, webhookSecret)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "submissionId or externalId required" }, { status: 400 });
   }
 
-  let submission = submissionId ? await getEgiszSubmissionById(submissionId) : null;
+  const submission = submissionId ? await getEgiszSubmissionById(submissionId) : null;
   if (!submission && externalId) {
     /* lookup by external_id could be added */
   }

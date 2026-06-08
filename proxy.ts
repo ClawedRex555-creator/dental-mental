@@ -51,7 +51,7 @@ function isServiceApi(pathname: string): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host");
   const clinicSlug = parseClinicSlugFromHost(host);
@@ -149,8 +149,8 @@ export async function middleware(request: NextRequest) {
 
     if (!canAccessPath(session.role, pathname)) {
       const fallback = defaultPathForRole(session.role);
-      const pathOnly = pathname.split("?")[0];
-      const target = fallback === pathOnly ? "/settings" : fallback;
+      const pathOnlyInner = pathname.split("?")[0];
+      const target = fallback === pathOnlyInner ? "/settings" : fallback;
       return NextResponse.redirect(new URL(target, request.url));
     }
 

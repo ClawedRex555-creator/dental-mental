@@ -28,9 +28,6 @@ const nextConfig: NextConfig = {
     APP_ROOT_DOMAIN: process.env.APP_ROOT_DOMAIN,
     DEFAULT_CLINIC_SLUG: process.env.DEFAULT_CLINIC_SLUG,
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   async headers() {
     return [
       {

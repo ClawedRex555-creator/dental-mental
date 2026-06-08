@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { EgiszDocumentType } from "@/lib/egisz/types";
 import type { MedicalRecord, Patient } from "@/lib/types";
 
 /** Черновик СЭМД для стоматологического случая (упрощённый JSON до подключения XSD) */

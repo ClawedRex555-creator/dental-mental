@@ -4,6 +4,7 @@ export function safeRedirectPath(from: string | null | undefined): string {
   if (!from.startsWith("/") || from.startsWith("//") || from.includes("\\")) {
     return "/appointments";
   }
-  if (from === "/login" || from.startsWith("/login/")) return "/appointments";
+  const pathOnly = from.split("?")[0]?.split("#")[0] ?? from;
+  if (pathOnly === "/login" || pathOnly.startsWith("/login/")) return "/appointments";
   return from;
 }

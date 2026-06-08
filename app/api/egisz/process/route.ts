@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqualString } from "@/lib/auth-session-token";
 import { processEgiszQueue } from "@/lib/egisz/worker.server";
 
 function authorizeCron(request: Request): boolean {
   const secret = process.env.EGISZ_CRON_SECRET?.trim();
   if (!secret) return false;
-  const header = request.headers.get("authorization");
-  return header === `Bearer ${secret}`;
+  const header = request.headers.get("authorization") ?? "";
+  const expected = `Bearer ${secret}`;
+  return header.length === expected.length && timingSafeEqualString(header, expected);
 }
 
 /** POST: обработать очередь (cron / internal) */

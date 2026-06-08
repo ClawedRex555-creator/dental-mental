@@ -96,12 +96,12 @@ export function mergeSurfaceConditions(
 ): ToothCondition[] {
   if (toAdd.length === 0) return existing;
   if (toAdd.includes("healthy")) return ["healthy"];
-  let next = existing.filter((c) => c !== "healthy");
+  const merged = existing.filter((c) => c !== "healthy");
   for (const c of toAdd) {
     if (c === "healthy") return ["healthy"];
-    if (!next.includes(c)) next.push(c);
+    if (!merged.includes(c)) merged.push(c);
   }
-  return next.length ? uniqueConditions(next) : ["healthy"];
+  return merged.length ? uniqueConditions(merged) : ["healthy"];
 }
 
 export function toggleSurfaceCondition(
@@ -110,12 +110,10 @@ export function toggleSurfaceCondition(
 ): ToothCondition[] {
   if (condition === "healthy") return ["healthy"];
   const has = existing.includes(condition);
-  let next = existing.filter((c) => c !== "healthy");
-  if (has) {
-    next = next.filter((c) => c !== condition);
-  } else {
-    next.push(condition);
-  }
+  const withoutHealthy = existing.filter((c) => c !== "healthy");
+  const next = has
+    ? withoutHealthy.filter((c) => c !== condition)
+    : [...withoutHealthy, condition];
   return next.length ? uniqueConditions(next) : ["healthy"];
 }
 
@@ -158,7 +156,7 @@ export function formatToothBriefSummary(tooth: ToothRecord): string {
   if (tooth.status && tooth.status !== "planned") {
     parts.push(TOOTH_TREATMENT_STATUS_LABELS[tooth.status]);
   }
-  const note = tooth.notes?.trim();
+  const note = tooth.diagnosis?.trim();
   if (note) parts.push(note.length > 50 ? `${note.slice(0, 50)}…` : note);
   return parts.join(" · ");
 }

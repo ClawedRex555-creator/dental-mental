@@ -1,18 +1,16 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth-session";
+import { asClinicBoundSession } from "@/lib/clinic-bound-session";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 import { removeStaffFromClinicSnapshot } from "@/lib/clinic-data-db.server";
 import { deleteStaffDb, listStaffDb, upsertStaffDb } from "@/lib/staff-db.server";
 import type { Doctor } from "@/lib/types";
 
-function requireStaffSession() {
-  return cookies().then((store) => {
-    const session = verifySessionToken(store.get(AUTH_COOKIE)?.value);
-    if (!session?.clinicId) return null;
-    return session;
-  });
+async function requireStaffSession() {
+  const store = await cookies();
+  return asClinicBoundSession(verifySessionToken(store.get(AUTH_COOKIE)?.value));
 }
 
 function parseDoctor(body: unknown): Doctor | null {

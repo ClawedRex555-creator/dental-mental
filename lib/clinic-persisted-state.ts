@@ -127,7 +127,7 @@ type PersistPickSource = {
 export type ClientSafePersistedState = Pick<ClinicPersistedState, "userThemePreferences">;
 
 export function pickClientSafePersistedState(
-  state: PersistPickSource
+  state: Pick<PersistPickSource, "userThemePreferences">
 ): ClientSafePersistedState {
   return {
     userThemePreferences: state.userThemePreferences ?? {},
@@ -265,6 +265,21 @@ export function mergeByIdPreferLocal<T extends { id: string }>(remote: T[], loca
   const map = new Map<string, T>();
   for (const x of remote) map.set(x.id, x);
   for (const x of local) map.set(x.id, x);
+  return Array.from(map.values());
+}
+
+export function doctorScheduleKey(schedule: DoctorMonthSchedule): string {
+  return `${schedule.doctorId}:${schedule.month}`;
+}
+
+/** Графики врачей: ключ doctorId + month (без поля id) */
+export function mergeDoctorSchedules(
+  remote: DoctorMonthSchedule[],
+  local: DoctorMonthSchedule[]
+): DoctorMonthSchedule[] {
+  const map = new Map<string, DoctorMonthSchedule>();
+  for (const x of remote) map.set(doctorScheduleKey(x), x);
+  for (const x of local) map.set(doctorScheduleKey(x), x);
   return Array.from(map.values());
 }
 
@@ -415,7 +430,7 @@ export function mergeClinicSnapshotWithLocal(
     documentTemplates: mergeByIdPreferLocal(remote.documentTemplates, local.documentTemplates),
     clinicExpenses: mergeByIdPreferLocal(remote.clinicExpenses, local.clinicExpenses),
     legalDocuments: mergeByIdPreferLocal(remote.legalDocuments, local.legalDocuments),
-    doctorSchedules: mergeByIdPreferLocal(remote.doctorSchedules, local.doctorSchedules),
+    doctorSchedules: mergeDoctorSchedules(remote.doctorSchedules, local.doctorSchedules),
     prepayments: mergeByIdPreferLocal(remote.prepayments, local.prepayments),
     actCounter: Math.max(remote.actCounter, local.actCounter),
     clinicSettings: local.clinicSettings ?? remote.clinicSettings,
@@ -498,7 +513,7 @@ export function mergeClinicDataForSave(
       incoming.legalDocuments,
       hasLegalDocumentDeletion ? undefined : protect
     ),
-    doctorSchedules: mergeArr(existing.doctorSchedules, incoming.doctorSchedules, protect),
+    doctorSchedules: mergeDoctorSchedules(existing.doctorSchedules, incoming.doctorSchedules),
     prepayments: mergeArr(
       existing.prepayments,
       incoming.prepayments,

@@ -1,4 +1,4 @@
-import { readAppRootDomainEnv, readDefaultClinicSlugEnv } from "./auth-env.ts";
+import { readAppRootDomainEnv, readDefaultClinicSlugEnv } from "./auth-env";
 
 /** Парсинг поддомена клиники из Host */
 

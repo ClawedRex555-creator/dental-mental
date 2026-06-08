@@ -90,6 +90,8 @@ export interface EgiszSubmissionPayload {
   n3DocumentId?: string;
   n3Response?: Record<string, unknown>;
   validationErrors?: string[];
+  /** Последний колбэк N3 webhook */
+  webhook?: Record<string, unknown>;
 }
 
 export function defaultEgiszConfig(): EgiszClinicConfig {

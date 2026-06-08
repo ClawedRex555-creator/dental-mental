@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import type { Patient } from "./types";
 import { findDuplicatePatient } from "./patient-duplicate";
 
@@ -32,8 +33,8 @@ describe("findDuplicatePatient", () => {
         birthDate: "1985-05-05",
       }
     );
-    expect(match?.patient.id).toBe("pat-1");
-    expect(match?.reason).toBe("phone");
+    assert.equal(match?.patient.id, "pat-1");
+    assert.equal(match?.reason, "phone");
   });
 
   it("detects duplicate identity", () => {
@@ -48,7 +49,7 @@ describe("findDuplicatePatient", () => {
         birthDate: "1990-01-01",
       }
     );
-    expect(match?.reason).toBe("identity");
+    assert.equal(match?.reason, "identity");
   });
 
   it("excludes current patient when editing", () => {
@@ -63,6 +64,6 @@ describe("findDuplicatePatient", () => {
       },
       "pat-1"
     );
-    expect(match).toBeNull();
+    assert.equal(match, null);
   });
 });

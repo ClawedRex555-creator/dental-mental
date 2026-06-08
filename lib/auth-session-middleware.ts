@@ -3,9 +3,9 @@ import {
   parseSessionTokenParts,
   validateSessionTokenPayload,
   type SessionTokenPayload,
-} from "./auth-session-token.ts";
+} from "./auth-session-token";
 
-export { AUTH_COOKIE } from "./auth-session-token.ts";
+export { AUTH_COOKIE } from "./auth-session-token";
 
 export type MiddlewareSessionPayload = SessionTokenPayload;
 
@@ -29,7 +29,7 @@ export function sessionCookieOptions(
 
 /**
  * Структурная проверка cookie (без HMAC) — только для legacy helpers.
- * Middleware и API routes должны использовать verifySessionTokenEdge / verifySessionToken.
+ * Proxy и API routes должны использовать verifySessionTokenEdge / verifySessionToken.
  */
 export function readSessionFromCookie(
   token: string | undefined | null

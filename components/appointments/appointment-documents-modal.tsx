@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Plus, Upload } from "lucide-react";
@@ -41,28 +41,90 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function AppointmentDocumentsModal({
-  open,
-  onOpenChange,
+function DocList({
+  title,
+  items,
+  selected,
+  onToggle,
+  emptyHint,
+  onAttachFile,
+}: {
+  title: string;
+  items: ArrivalPrintDocument[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  emptyHint: string;
+  onAttachFile: (docId: string, file: File) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+        {items.length === 0 ? (
+          <p className="p-2 text-xs text-slate-500">{emptyHint}</p>
+        ) : (
+          items.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex items-start gap-2 rounded p-2 hover:bg-slate-50"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(doc.id)}
+                onChange={() => onToggle(doc.id)}
+                className="mt-1"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-900">{doc.name}</p>
+                {doc.notes && <p className="text-xs text-slate-500">{doc.notes}</p>}
+                {doc.fileName && (
+                  <p className="text-xs text-teal-700">Файл: {doc.fileName}</p>
+                )}
+              </div>
+              <label className="cursor-pointer rounded border border-slate-200 p-1 hover:bg-slate-100">
+                <Upload className="h-3.5 w-3.5 text-slate-600" />
+                <input
+                  type="file"
+                  accept=".pdf,image/*,.doc,.docx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onAttachFile(doc.id, file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AppointmentDocumentsModalBody({
   onDone,
-}: AppointmentDocumentsModalProps) {
-  const legalEnabled = useIsModuleEnabled("legal");
+  onOpenChange,
+}: {
+  onDone: () => void;
+  onOpenChange: (open: boolean) => void;
+}) {
   const { legalDocuments, addLegalDocument, updateLegalDocument } = useClinicStore();
-
-  useEffect(() => {
-    if (!legalEnabled && open) onOpenChange(false);
-  }, [legalEnabled, open, onOpenChange]);
-
-  if (!legalEnabled) return null;
 
   const { contracts, consents, egiszRefusals } = useMemo(
     () => arrivalDocumentsFromLegal(legalDocuments),
     [legalDocuments]
   );
 
-  const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
-  const [selectedConsents, setSelectedConsents] = useState<string[]>([]);
-  const [selectedEgiszRefusals, setSelectedEgiszRefusals] = useState<string[]>([]);
+  const [selectedContracts, setSelectedContracts] = useState<string[]>(() =>
+    contracts.map((c) => c.id)
+  );
+  const [selectedConsents, setSelectedConsents] = useState<string[]>(() =>
+    consents.map((c) => c.id)
+  );
+  const [selectedEgiszRefusals, setSelectedEgiszRefusals] = useState<string[]>(() =>
+    egiszRefusals.map((c) => c.id)
+  );
   const [sendToEgisz, setSendToEgisz] = useState<"yes" | "no">("yes");
   const [newDocName, setNewDocName] = useState("");
   const [newDocCategory, setNewDocCategory] = useState<
@@ -71,15 +133,6 @@ export function AppointmentDocumentsModal({
   const [pendingFile, setPendingFile] = useState<{ dataUrl: string; name: string } | null>(
     null
   );
-
-  useEffect(() => {
-    if (!open) return;
-    setSelectedContracts(contracts.map((c) => c.id));
-    setSelectedConsents(consents.map((c) => c.id));
-    setSelectedEgiszRefusals(egiszRefusals.map((c) => c.id));
-    setSendToEgisz("yes");
-    setPendingFile(null);
-  }, [open, contracts, consents, egiszRefusals]);
 
   const toggle = (id: string, list: string[], setList: (v: string[]) => void) => {
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -110,11 +163,14 @@ export function AppointmentDocumentsModal({
     toast.success("Документ добавлен в юр. отдел");
   };
 
-  const attachFileToDoc = async (docId: string, file: File) => {
-    const dataUrl = await readFileAsDataUrl(file);
-    updateLegalDocument(docId, { fileDataUrl: dataUrl, fileName: file.name });
-    toast.success("Файл прикреплён");
-  };
+  const attachFileToDoc = useCallback(
+    async (docId: string, file: File) => {
+      const dataUrl = await readFileAsDataUrl(file);
+      updateLegalDocument(docId, { fileDataUrl: dataUrl, fileName: file.name });
+      toast.success("Файл прикреплён");
+    },
+    [updateLegalDocument]
+  );
 
   const handlePrint = () => {
     const toPrint: ArrivalPrintDocument[] = [];
@@ -184,178 +240,148 @@ export function AppointmentDocumentsModal({
     onOpenChange(false);
   };
 
-  const DocList = ({
-    title,
-    items,
-    selected,
-    onToggle,
-    emptyHint,
-  }: {
-    title: string;
-    items: ArrivalPrintDocument[];
-    selected: string[];
-    onToggle: (id: string) => void;
-    emptyHint: string;
-  }) => (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-        {items.length === 0 ? (
-          <p className="p-2 text-xs text-slate-500">{emptyHint}</p>
-        ) : (
-          items.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-start gap-2 rounded p-2 hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(doc.id)}
-                onChange={() => onToggle(doc.id)}
-                className="mt-1"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">{doc.name}</p>
-                {doc.notes && <p className="text-xs text-slate-500">{doc.notes}</p>}
-                {doc.fileName && (
-                  <p className="text-xs text-teal-700">Файл: {doc.fileName}</p>
-                )}
-              </div>
-              <label className="cursor-pointer rounded border border-slate-200 p-1 hover:bg-slate-100">
-                <Upload className="h-3.5 w-3.5 text-slate-600" />
-                <input
-                  type="file"
-                  accept=".pdf,image/*,.doc,.docx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) attachFileToDoc(doc.id, file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-          ))
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Пациент пришёл — документы</DialogTitle>
+      </DialogHeader>
+      <p className="text-sm text-slate-500">
+        Документы подгружаются из{" "}
+        <span className="font-medium text-slate-700">Юр. отдела</span>: договоры и согласия — из
+        соответствующих категорий. При отказе от ЕГИСЗ — из категории «
+        {LEGAL_CATEGORY_EGISZ_REFUSAL}».
+      </p>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <DocList
+          title={`Договоры (${LEGAL_CATEGORY_CONTRACTS})`}
+          items={contracts}
+          selected={selectedContracts}
+          onToggle={(id) => toggle(id, selectedContracts, setSelectedContracts)}
+          emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONTRACTS}»`}
+          onAttachFile={attachFileToDoc}
+        />
+        <DocList
+          title={`Согласия (${LEGAL_CATEGORY_CONSENTS})`}
+          items={consents}
+          selected={selectedConsents}
+          onToggle={(id) => toggle(id, selectedConsents, setSelectedConsents)}
+          emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONSENTS}»`}
+          onAttachFile={attachFileToDoc}
+        />
+      </div>
+
+      <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+        <Label>Отправка данных в ЕГИСЗ</Label>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input
+              type="radio"
+              checked={sendToEgisz === "yes"}
+              onChange={() => handleEgiszChoice("yes")}
+            />
+            Да, отправить
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input
+              type="radio"
+              checked={sendToEgisz === "no"}
+              onChange={() => handleEgiszChoice("no")}
+            />
+            Нет — печать отказа из юр. отдела
+          </label>
+        </div>
+
+        {sendToEgisz === "no" && (
+          <div className="mt-2 border-t border-slate-100 pt-3">
+            <DocList
+              title={LEGAL_CATEGORY_EGISZ_REFUSAL}
+              items={egiszRefusals}
+              selected={selectedEgiszRefusals}
+              onToggle={(id) => toggle(id, selectedEgiszRefusals, setSelectedEgiszRefusals)}
+              emptyHint={`Загрузите форму отказа в юр. отдел → «${LEGAL_CATEGORY_EGISZ_REFUSAL}»`}
+              onAttachFile={attachFileToDoc}
+            />
+          </div>
         )}
       </div>
-    </div>
+
+      <div className="rounded-lg bg-slate-50 p-3 space-y-3">
+        <Label className="text-xs font-semibold">
+          Быстро добавить в юр. отдел (договор или согласие)
+        </Label>
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            className="h-9 rounded-lg border border-slate-200 px-2 text-sm text-slate-900"
+            value={newDocCategory}
+            onChange={(e) =>
+              setNewDocCategory(
+                e.target.value as typeof LEGAL_CATEGORY_CONTRACTS | typeof LEGAL_CATEGORY_CONSENTS
+              )
+            }
+          >
+            <option value={LEGAL_CATEGORY_CONTRACTS}>{LEGAL_CATEGORY_CONTRACTS}</option>
+            <option value={LEGAL_CATEGORY_CONSENTS}>{LEGAL_CATEGORY_CONSENTS}</option>
+          </select>
+          <Input
+            placeholder="Название документа"
+            value={newDocName}
+            onChange={(e) => setNewDocName(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm hover:border-teal-400">
+            <Upload className="h-4 w-4" />
+            {pendingFile ? pendingFile.name : "Файл (PDF, фото)"}
+            <input
+              type="file"
+              accept=".pdf,image/*,.doc,.docx"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const dataUrl = await readFileAsDataUrl(file);
+                setPendingFile({ dataUrl, name: file.name });
+              }}
+            />
+          </label>
+          <Button type="button" onClick={handleAddToLegal}>
+            <Plus className="h-4 w-4" />
+            В юр. отдел
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button onClick={handlePrint}>Печать / открыть выбранные</Button>
+      </div>
+    </>
   );
+}
+
+export function AppointmentDocumentsModal({
+  open,
+  onOpenChange,
+  onDone,
+}: AppointmentDocumentsModalProps) {
+  const legalEnabled = useIsModuleEnabled("legal");
+
+  useEffect(() => {
+    if (!legalEnabled && open) onOpenChange(false);
+  }, [legalEnabled, open, onOpenChange]);
+
+  if (!legalEnabled) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Пациент пришёл — документы</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-slate-500">
-          Документы подгружаются из{" "}
-          <span className="font-medium text-slate-700">Юр. отдела</span>: договоры и согласия — из
-          соответствующих категорий. При отказе от ЕГИСЗ — из категории «
-          {LEGAL_CATEGORY_EGISZ_REFUSAL}».
-        </p>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <DocList
-            title={`Договоры (${LEGAL_CATEGORY_CONTRACTS})`}
-            items={contracts}
-            selected={selectedContracts}
-            onToggle={(id) => toggle(id, selectedContracts, setSelectedContracts)}
-            emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONTRACTS}»`}
+        {open ? (
+          <AppointmentDocumentsModalBody
+            key="appointment-documents-open"
+            onDone={onDone}
+            onOpenChange={onOpenChange}
           />
-          <DocList
-            title={`Согласия (${LEGAL_CATEGORY_CONSENTS})`}
-            items={consents}
-            selected={selectedConsents}
-            onToggle={(id) => toggle(id, selectedConsents, setSelectedConsents)}
-            emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONSENTS}»`}
-          />
-        </div>
-
-        <div className="rounded-lg border border-slate-200 p-3 space-y-2">
-          <Label>Отправка данных в ЕГИСЗ</Label>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm text-slate-800">
-              <input
-                type="radio"
-                checked={sendToEgisz === "yes"}
-                onChange={() => handleEgiszChoice("yes")}
-              />
-              Да, отправить
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-800">
-              <input
-                type="radio"
-                checked={sendToEgisz === "no"}
-                onChange={() => handleEgiszChoice("no")}
-              />
-              Нет — печать отказа из юр. отдела
-            </label>
-          </div>
-
-          {sendToEgisz === "no" && (
-            <div className="mt-2 border-t border-slate-100 pt-3">
-              <DocList
-                title={LEGAL_CATEGORY_EGISZ_REFUSAL}
-                items={egiszRefusals}
-                selected={selectedEgiszRefusals}
-                onToggle={(id) =>
-                  toggle(id, selectedEgiszRefusals, setSelectedEgiszRefusals)
-                }
-                emptyHint={`Загрузите форму отказа в юр. отдел → «${LEGAL_CATEGORY_EGISZ_REFUSAL}»`}
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg bg-slate-50 p-3 space-y-3">
-          <Label className="text-xs font-semibold">
-            Быстро добавить в юр. отдел (договор или согласие)
-          </Label>
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              className="h-9 rounded-lg border border-slate-200 px-2 text-sm text-slate-900"
-              value={newDocCategory}
-              onChange={(e) =>
-                setNewDocCategory(
-                  e.target.value as typeof LEGAL_CATEGORY_CONTRACTS | typeof LEGAL_CATEGORY_CONSENTS
-                )
-              }
-            >
-              <option value={LEGAL_CATEGORY_CONTRACTS}>{LEGAL_CATEGORY_CONTRACTS}</option>
-              <option value={LEGAL_CATEGORY_CONSENTS}>{LEGAL_CATEGORY_CONSENTS}</option>
-            </select>
-            <Input
-              placeholder="Название документа"
-              value={newDocName}
-              onChange={(e) => setNewDocName(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm hover:border-teal-400">
-              <Upload className="h-4 w-4" />
-              {pendingFile ? pendingFile.name : "Файл (PDF, фото)"}
-              <input
-                type="file"
-                accept=".pdf,image/*,.doc,.docx"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const dataUrl = await readFileAsDataUrl(file);
-                  setPendingFile({ dataUrl, name: file.name });
-                }}
-              />
-            </label>
-            <Button type="button" onClick={handleAddToLegal}>
-              <Plus className="h-4 w-4" />
-              В юр. отдел
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2">
-          <Button onClick={handlePrint}>Печать / открыть выбранные</Button>
-        </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

@@ -3,14 +3,14 @@ import { describe, it } from "node:test";
 import {
   createSessionToken,
   verifySessionToken,
-} from "./auth-session.ts";
+} from "./auth-session";
+import { setTestEnv } from "./test-env";
 
 const SECRET = "roundtrip-test-secret";
 
 describe("auth-session roundtrip (Node crypto)", () => {
   it("signs and verifies token with Cyrillic name", () => {
-    process.env.AUTH_SECRET = SECRET;
-    process.env.NODE_ENV = "test";
+    setTestEnv({ AUTH_SECRET: SECRET, NODE_ENV: "test" });
 
     const token = createSessionToken({
       userId: "u1",
@@ -28,6 +28,6 @@ describe("auth-session roundtrip (Node crypto)", () => {
     assert.equal(session?.clinicSlug, "tstom");
     assert.equal(session?.name, "Макаров Дмитрий Сергеевич");
 
-    delete process.env.AUTH_SECRET;
+    setTestEnv({ AUTH_SECRET: undefined });
   });
 });

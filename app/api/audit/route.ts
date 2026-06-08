@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
-import type { AuditAction, AuditResourceType } from "@/lib/audit-log.server";
+import { isClientAuditAction, isValidAuditResourceType } from "@/lib/audit-validation";
 import { getServerSession } from "@/lib/get-server-session";
 
 export async function POST(request: Request) {
@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   }
 
   let body: {
-    action?: AuditAction;
-    resourceType?: AuditResourceType;
+    action?: string;
+    resourceType?: string;
     resourceId?: string;
     metadata?: Record<string, unknown>;
   };
@@ -26,9 +26,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Неверный запрос" }, { status: 400 });
   }
 
-  if (!body.action || !body.resourceType) {
-    return NextResponse.json({ error: "Укажите action и resourceType" }, { status: 400 });
+  if (!isClientAuditAction(body.action) || !isValidAuditResourceType(body.resourceType)) {
+    return NextResponse.json({ error: "Недопустимые action или resourceType" }, { status: 400 });
   }
+
+  const resourceId =
+    typeof body.resourceId === "string" && body.resourceId.length <= 128
+      ? body.resourceId
+      : undefined;
+  const metadata =
+    body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+      ? body.metadata
+      : undefined;
 
   await writeAuditLog(
     auditFromRequest(request, {
@@ -38,8 +47,8 @@ export async function POST(request: Request) {
       userRole: session.role,
       action: body.action,
       resourceType: body.resourceType,
-      resourceId: body.resourceId,
-      metadata: body.metadata,
+      resourceId,
+      metadata,
     })
   );
 

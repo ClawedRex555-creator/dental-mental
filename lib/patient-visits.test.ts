@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createFreshPersistedState } from "./clinic-persisted-state.ts";
-import type { Appointment, Patient } from "./types.ts";
+import { createFreshPersistedState } from "./clinic-persisted-state";
+import type { Appointment, Patient } from "./types";
 import {
   countClinicVisits,
   derivePatientVisitFields,
@@ -10,7 +10,7 @@ import {
   patientsLostButAppointmentsRemain,
   repairMissingPatientsInSnapshot,
   syncOtherClinicVisitsInList,
-} from "./patient-visits.ts";
+} from "./patient-visits";
 
 function patient(id: string): Patient {
   return {

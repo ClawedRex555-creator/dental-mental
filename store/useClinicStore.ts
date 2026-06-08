@@ -37,6 +37,7 @@ import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-cl
 import {
   createFreshPersistedState,
   mergeByIdPreferLocal,
+  mergeDoctorSchedules,
   mergeClinicPatients,
   pickPersistedState,
   pickPersistedStateForStorage,
@@ -810,7 +811,7 @@ export const useClinicStore = create<ClinicState>()(
           ),
           clinicExpenses: mergeByIdPreferLocal(data.clinicExpenses ?? [], s.clinicExpenses),
           legalDocuments: mergeByIdPreferLocal(data.legalDocuments ?? [], s.legalDocuments),
-          doctorSchedules: mergeByIdPreferLocal(data.doctorSchedules ?? [], s.doctorSchedules),
+          doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
           prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
           userThemePreferences: mergeThemePreferences(
             data.userThemePreferences,

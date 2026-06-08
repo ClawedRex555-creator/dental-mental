@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createFreshPersistedState } from "./clinic-persisted-state.ts";
-import type { Patient } from "./types.ts";
+import { createFreshPersistedState } from "./clinic-persisted-state";
+import type { Patient } from "./types";
 import {
   needsMergeWithServerOnLoad,
   prepareSnapshotAfterServerFetch,
   shouldPushSnapshotAfterServerFetch,
-} from "./clinic-snapshot-load.ts";
+} from "./clinic-snapshot-load";
 
 function patient(id: string): Patient {
   return {

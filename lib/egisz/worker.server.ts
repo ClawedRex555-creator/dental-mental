@@ -19,8 +19,9 @@ import { signCdaDocument } from "@/lib/egisz/signing/index.server";
 import type { EgiszSubmissionPayload } from "@/lib/egisz/types";
 import { isN3StubMode, resolveGatewayUrl } from "@/lib/egisz/types";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
+import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
 import { clinicHasModule } from "@/lib/module-access.server";
-import type { ClinicPersistedState, Doctor, MedicalRecord, Patient } from "@/lib/types";
+import type { Doctor, MedicalRecord, Patient } from "@/lib/types";
 
 function findEntities(
   data: ClinicPersistedState,

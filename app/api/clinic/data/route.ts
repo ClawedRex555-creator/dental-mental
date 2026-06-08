@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth-session";
+import { asClinicBoundSession } from "@/lib/clinic-bound-session";
 import {
   CLINIC_DATA_SCHEMA_VERSION,
   mergeClinicDataForSave,
@@ -22,12 +23,9 @@ import { getClinicModules } from "@/lib/platform-modules.server";
 
 const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024;
 
-function requireClinicSession() {
-  return cookies().then((store) => {
-    const session = verifySessionToken(store.get(AUTH_COOKIE)?.value);
-    if (!session?.clinicId) return null;
-    return session;
-  });
+async function requireClinicSession() {
+  const store = await cookies();
+  return asClinicBoundSession(verifySessionToken(store.get(AUTH_COOKIE)?.value));
 }
 
 export async function GET() {

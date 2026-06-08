@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   clinicSlugMismatch,
   parseClinicSlugFromHost,
-} from "./clinic-host.ts";
+} from "./clinic-host";
 
 describe("clinic-host", () => {
   it("parses clinic slug when APP_ROOT_DOMAIN is localhost in bundle", () => {

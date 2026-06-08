@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { signSessionBody } from "./auth-session-crypto.ts";
-import { readAuthSecretEnv } from "./auth-env.ts";
-import { verifySessionTokenEdge } from "./auth-session-edge.ts";
+import { signSessionBody } from "./auth-session-crypto";
+import { readAuthSecretEnv } from "./auth-env";
+import { verifySessionTokenEdge } from "./auth-session-edge";
 import {
   stringToBase64Url,
   validateSessionTokenPayload,
-} from "./auth-session-token.ts";
+} from "./auth-session-token";
+import { setTestEnv } from "./test-env";
 
 const TEST_SECRET = "test-secret-for-security-suite";
 
@@ -18,8 +19,7 @@ async function createTestToken(payload: {
   email: string;
   exp?: number;
 }): Promise<string> {
-  process.env.AUTH_SECRET = TEST_SECRET;
-  process.env.NODE_ENV = "test";
+  setTestEnv({ AUTH_SECRET: TEST_SECRET, NODE_ENV: "test" });
   const body = JSON.stringify({
     ...payload,
     exp: payload.exp ?? Date.now() + 60_000,
@@ -39,12 +39,11 @@ describe("auth session HMAC (edge)", () => {
     const session = await verifySessionTokenEdge(token);
     assert.equal(session?.userId, "u1");
     assert.equal(session?.role, "doctor");
-    delete process.env.AUTH_SECRET;
+    setTestEnv({ AUTH_SECRET: undefined });
   });
 
   it("rejects forged owner role with invalid signature", async () => {
-    process.env.AUTH_SECRET = TEST_SECRET;
-    process.env.NODE_ENV = "test";
+    setTestEnv({ AUTH_SECRET: TEST_SECRET, NODE_ENV: "test" });
     const body = JSON.stringify({
       userId: "u1",
       role: "owner",
@@ -55,7 +54,7 @@ describe("auth session HMAC (edge)", () => {
     const bodyB64 = stringToBase64Url(body);
     const badSig = createHmac("sha256", "wrong-secret").update(body).digest("base64url");
     assert.equal(await verifySessionTokenEdge(`${bodyB64}.${badSig}`), null);
-    delete process.env.AUTH_SECRET;
+    setTestEnv({ AUTH_SECRET: undefined });
   });
 
   it("rejects expired payload", () => {
@@ -70,9 +69,9 @@ describe("auth session HMAC (edge)", () => {
   });
 
   it("reads AUTH_SECRET via dynamic env key", () => {
-    process.env.AUTH_SECRET = TEST_SECRET;
+    setTestEnv({ AUTH_SECRET: TEST_SECRET });
     assert.equal(readAuthSecretEnv(), TEST_SECRET);
-    delete process.env.AUTH_SECRET;
+    setTestEnv({ AUTH_SECRET: undefined });
   });
 
   it("rejects token without valid signature", async () => {
@@ -84,12 +83,11 @@ describe("auth session HMAC (edge)", () => {
     });
     const tampered = `${token.slice(0, -3)}xxx`;
     assert.equal(await verifySessionTokenEdge(tampered), null);
-    delete process.env.AUTH_SECRET;
+    setTestEnv({ AUTH_SECRET: undefined });
   });
 
   it("rejects fully forged owner payload (middleware must not trust structure-only parse)", async () => {
-    process.env.AUTH_SECRET = TEST_SECRET;
-    process.env.NODE_ENV = "test";
+    setTestEnv({ AUTH_SECRET: TEST_SECRET, NODE_ENV: "test" });
     const body = JSON.stringify({
       userId: "forged",
       role: "owner",
@@ -100,6 +98,6 @@ describe("auth session HMAC (edge)", () => {
     });
     const forged = `${stringToBase64Url(body)}.invalid-signature`;
     assert.equal(await verifySessionTokenEdge(forged), null);
-    delete process.env.AUTH_SECRET;
+    setTestEnv({ AUTH_SECRET: undefined });
   });
 });

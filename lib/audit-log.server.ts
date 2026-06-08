@@ -1,26 +1,9 @@
 import "server-only";
 
 import { withDb } from "@/lib/db";
+import type { AuditAction, AuditResourceType } from "@/lib/audit-validation";
 
-export type AuditAction =
-  | "view"
-  | "create"
-  | "update"
-  | "delete"
-  | "export"
-  | "print"
-  | "login"
-  | "logout";
-
-export type AuditResourceType =
-  | "patient"
-  | "medical_record"
-  | "appointment"
-  | "payment"
-  | "work_act"
-  | "treatment_plan"
-  | "settings"
-  | "auth";
+export type { AuditAction, AuditResourceType } from "@/lib/audit-validation";
 
 export interface AuditLogInput {
   clinicId?: string;

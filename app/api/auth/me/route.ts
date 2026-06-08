@@ -77,18 +77,10 @@ export async function GET(request: Request) {
     return res;
   } catch (err) {
     console.error("[auth/me] resolve user failed", err);
-    return NextResponse.json({
-      user: {
-        id: session.userId,
-        name: session.name,
-        email: session.email,
-        role: session.role,
-        staffId: session.staffId,
-        status: "active" as const,
-        clinicId: session.clinicId,
-        clinicSlug: session.clinicSlug,
-      },
-    });
+    return NextResponse.json(
+      { error: "Не удалось проверить учётную запись. Повторите позже." },
+      { status: 503 }
+    );
   }
 }
 

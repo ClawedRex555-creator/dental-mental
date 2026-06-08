@@ -4,7 +4,7 @@ import {
   canAccessFullClinicDataSync,
   canReadClinicDataSync,
   canWriteClinicDataSync,
-} from "./clinic-data-access.ts";
+} from "./clinic-data-access";
 
 describe("clinic data sync access", () => {
   it("read: clinical and finance roles", () => {

@@ -4,7 +4,7 @@ import {
   CLINIC_SCOPE_STORAGE_KEY,
   ensureClinicStorageScope,
   readClinicStorageScope,
-} from "./clinic-storage-scope.ts";
+} from "./clinic-storage-scope";
 
 const storage = new Map<string, string>();
 
