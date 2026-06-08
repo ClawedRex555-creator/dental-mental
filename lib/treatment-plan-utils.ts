@@ -1,5 +1,5 @@
-import type { DiscountType, TreatmentPlanItem } from "./types.ts";
-import { calcDiscountTotals } from "./discount-utils.ts";
+import type { DiscountType, TreatmentPlanItem } from "./types";
+import { calcDiscountTotals } from "./discount-utils";
 
 export function calcPlanTotals(
   items: TreatmentPlanItem[],

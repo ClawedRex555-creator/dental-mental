@@ -14,7 +14,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
-RUN test -n "$AUTH_SECRET" || (echo "ERROR: pass AUTH_SECRET build-arg (from .env) for session signing in middleware" && exit 1)
+RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env before docker compose build" && exit 1)
 RUN npm run build || (echo "=== npm run build failed ===" && exit 1)
 FROM node:20-alpine AS runner
 WORKDIR /app

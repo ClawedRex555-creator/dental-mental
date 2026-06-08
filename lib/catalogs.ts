@@ -4,7 +4,7 @@ export {
   SERVICE_CATEGORIES,
   type ServiceCategory,
   normalizeServiceCategory,
-} from "./service-categories.ts";
+} from "./service-categories";
 
 export interface CatalogItem {
   label: string;

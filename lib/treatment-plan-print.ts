@@ -1,8 +1,8 @@
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import type { ClinicSettings, Doctor, Patient, TreatmentPlan } from "./types.ts";
-import { formatCurrency, getFullName } from "./utils.ts";
-import { TREATMENT_PLAN_STATUS_LABELS } from "./constants.ts";
+import type { ClinicSettings, Doctor, Patient, TreatmentPlan } from "./types";
+import { formatCurrency, getFullName } from "./utils";
+import { TREATMENT_PLAN_STATUS_LABELS } from "./constants";
 
 function escapeHtml(text: string): string {
   return text

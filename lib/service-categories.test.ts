@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Service } from "./types.ts";
+import type { Service } from "./types";
 import {
   groupServicesByCategory,
   mergeClinicServices,
   normalizeServiceCategory,
   normalizeServiceFields,
-} from "./service-categories.ts";
+} from "./service-categories";
 
 describe("service categories", () => {
   it("keeps implant category from dropdown", () => {

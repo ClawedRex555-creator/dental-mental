@@ -7,8 +7,8 @@ import {
   mergeClinicSnapshotWithLocal,
   shouldPushMergedSnapshotAfterLoad,
   shouldRejectEmptyClinicOverwrite,
-} from "./clinic-persisted-state.ts";
-import type { Patient } from "./types.ts";
+} from "./clinic-persisted-state";
+import type { Patient } from "./types";
 
 function patient(id: string): Patient {
   return {

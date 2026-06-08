@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { safeRedirectPath } from "./safe-redirect.ts";
+import { safeRedirectPath } from "./safe-redirect";
 
 describe("safeRedirectPath", () => {
   it("allows internal paths", () => {

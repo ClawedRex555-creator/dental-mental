@@ -4,7 +4,7 @@ import {
   getPatientDebtAmount,
   parseDebtInput,
   resolveBalanceFromDebt,
-} from "./patient-balance.ts";
+} from "./patient-balance";
 
 describe("patient-balance", () => {
   it("getPatientDebtAmount", () => {

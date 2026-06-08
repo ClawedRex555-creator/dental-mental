@@ -1,4 +1,4 @@
-import type { ClinicDocumentTemplate } from "./types.ts";
+import type { ClinicDocumentTemplate } from "./types";
 
 export const DEFAULT_DOCUMENT_TEMPLATES: ClinicDocumentTemplate[] = [
   {

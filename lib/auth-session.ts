@@ -7,12 +7,12 @@ import {
   timingSafeEqualString,
   validateSessionTokenPayload,
   type SessionTokenPayload,
-} from "./auth-session-token.ts";
+} from "./auth-session-token";
 
-export { AUTH_COOKIE } from "./auth-session-token.ts";
-export type { SessionTokenPayload as SessionPayload } from "./auth-session-token.ts";
-export { sessionCookieOptions } from "./auth-session-middleware.ts";
-export { readSessionFromCookie } from "./auth-session-middleware.ts";
+export { AUTH_COOKIE } from "./auth-session-token";
+export type { SessionTokenPayload as SessionPayload } from "./auth-session-token";
+export { sessionCookieOptions } from "./auth-session-middleware";
+export { readSessionFromCookie } from "./auth-session-middleware";
 
 function signBody(body: string, secret: string): string {
   return createHmac("sha256", secret).update(body).digest("base64url");

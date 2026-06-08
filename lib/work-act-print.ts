@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { ClinicSettings, Patient, WorkAct } from "./types.ts";
+import type { ClinicSettings, Patient, WorkAct } from "./types";
 import {
   calcWorkActLine,
   formatActAmount,
@@ -9,10 +9,10 @@ import {
   getContractNumber,
   getPatientActName,
   resolveWorkActTotals,
-} from "./work-act-utils.ts";
+} from "./work-act-utils";
 
-import { escapeHtml } from "./escape-html.ts";
-import { sanitizeHttpImageUrl } from "./safe-url.ts";
+import { escapeHtml } from "./escape-html";
+import { sanitizeHttpImageUrl } from "./safe-url";
 
 export function printWorkAct(
   act: WorkAct,

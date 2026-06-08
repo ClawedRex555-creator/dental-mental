@@ -3,7 +3,7 @@ import { describe, it, before, after } from "node:test";
 import {
   isClinicServerDatabaseMode,
   setClinicServerDatabaseMode,
-} from "./clinic-client-mode.ts";
+} from "./clinic-client-mode";
 
 /** Mirrors pickPersistedStateForStorage without pulling full clinic-persisted-state graph */
 function pickForStorage(

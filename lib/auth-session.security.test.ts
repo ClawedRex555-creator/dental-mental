@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { signSessionBody } from "./auth-session-crypto.ts";
-import { readAuthSecretEnv } from "./auth-env.ts";
-import { verifySessionTokenEdge } from "./auth-session-edge.ts";
+import { signSessionBody } from "./auth-session-crypto";
+import { readAuthSecretEnv } from "./auth-env";
+import { verifySessionTokenEdge } from "./auth-session-edge";
 import {
   stringToBase64Url,
   validateSessionTokenPayload,
-} from "./auth-session-token.ts";
-import { setTestEnv } from "./test-env.ts";
+} from "./auth-session-token";
+import { setTestEnv } from "./test-env";
 
 const TEST_SECRET = "test-secret-for-security-suite";
 

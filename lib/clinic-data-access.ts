@@ -1,4 +1,4 @@
-import type { UserRole } from "./types.ts";
+import type { UserRole } from "./types";
 
 /** Чтение полного snapshot (GET /api/clinic/data) */
 export function canReadClinicDataSync(role: UserRole): boolean {

@@ -1,4 +1,4 @@
-import type { Appointment, Doctor, Payment, WorkAct } from "./types.ts";
+import type { Appointment, Doctor, Payment, WorkAct } from "./types";
 
 export interface PaymentSplit {
   total: number;

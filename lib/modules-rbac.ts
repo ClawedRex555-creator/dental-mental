@@ -1,11 +1,11 @@
-import { NAV_ITEMS } from "./constants.ts";
+import { NAV_ITEMS } from "./constants";
 import {
   isModuleEnabled,
   resolvePathModule,
   type ClinicModules,
-} from "./modules.ts";
-import type { UserRole } from "./types.ts";
-import { canAccessPath, filterNavByModules, isAccountSettingsPath } from "./rbac.ts";
+} from "./modules";
+import type { UserRole } from "./types";
+import { canAccessPath, filterNavByModules, isAccountSettingsPath } from "./rbac";
 
 /** Куда безопасно перенаправить, если текущий раздел отключён (без циклов) */
 export function resolveSafeRedirectPath(

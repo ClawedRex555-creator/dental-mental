@@ -4,7 +4,7 @@ import {
   isClientAuditAction,
   isValidAuditAction,
   isValidAuditResourceType,
-} from "./audit-validation.ts";
+} from "./audit-validation";
 
 describe("audit validation", () => {
   it("accepts known client actions", () => {

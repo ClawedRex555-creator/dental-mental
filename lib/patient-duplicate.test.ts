@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Patient } from "./types.ts";
-import { findDuplicatePatient } from "./patient-duplicate.ts";
+import type { Patient } from "./types";
+import { findDuplicatePatient } from "./patient-duplicate";
 
 function basePatient(overrides: Partial<Patient> = {}): Patient {
   return {

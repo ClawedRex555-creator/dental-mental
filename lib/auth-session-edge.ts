@@ -4,8 +4,8 @@ import {
   timingSafeEqualString,
   validateSessionTokenPayload,
   type SessionTokenPayload,
-} from "./auth-session-token.ts";
-import { hmacSha256Base64Url } from "./auth-session-crypto.ts";
+} from "./auth-session-token";
+import { hmacSha256Base64Url } from "./auth-session-crypto";
 
 /** Edge-safe session verify (proxy) — HMAC-SHA256 over JSON body string */
 export async function verifySessionTokenEdge(

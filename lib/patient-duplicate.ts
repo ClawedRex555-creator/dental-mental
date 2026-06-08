@@ -1,6 +1,6 @@
-import { digitsOnly } from "./document-validation.ts";
-import { normalizePhoneInput } from "./phone-utils.ts";
-import type { Patient } from "./types.ts";
+import { digitsOnly } from "@/lib/document-validation";
+import { normalizePhoneInput } from "@/lib/phone-utils";
+import type { Patient } from "@/lib/types";
 
 export type PatientDuplicateReason = "phone" | "snils" | "passport" | "identity";
 
