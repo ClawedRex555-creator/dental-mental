@@ -468,11 +468,18 @@ export function mergeClinicDataForSave(
   const hasLegalDocumentDeletion =
     isDeletionOnlySubset(existing.legalDocuments, incoming.legalDocuments) &&
     incoming.legalDocuments.length < existing.legalDocuments.length;
+  const hasServiceDeletion =
+    isDeletionOnlySubset(existing.services, incoming.services) &&
+    incoming.services.length < existing.services.length;
 
   const merged: ClinicPersistedState = {
     ...incoming,
     doctors: mergeArr(existing.doctors, incoming.doctors, protect),
-    services: mergeArr(existing.services, incoming.services, protect),
+    services: mergeArr(
+      existing.services,
+      incoming.services,
+      hasServiceDeletion ? undefined : protect
+    ),
     cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
     patients: mergeArr(existing.patients, incoming.patients, protect),
     appointments: mergeArr(
@@ -576,6 +583,9 @@ export function isSuspiciousClinicDataDowngrade(
   const hasLegalDocumentDeletion =
     isDeletionOnlySubset(existing.legalDocuments, incoming.legalDocuments) &&
     incoming.legalDocuments.length < existing.legalDocuments.length;
+  const hasServiceDeletion =
+    isDeletionOnlySubset(existing.services, incoming.services) &&
+    incoming.services.length < existing.services.length;
 
   const guarded: Array<{
     existing: { id: string }[];
@@ -584,7 +594,11 @@ export function isSuspiciousClinicDataDowngrade(
   }> = [
     { existing: existing.patients, incoming: incoming.patients, protectMassLoss: true },
     { existing: existing.doctors, incoming: incoming.doctors, protectMassLoss: true },
-    { existing: existing.services, incoming: incoming.services, protectMassLoss: true },
+    {
+      existing: existing.services,
+      incoming: incoming.services,
+      protectMassLoss: !hasServiceDeletion,
+    },
 
     // Транзакционные сущности: защищаем от "обнуления" только если пациенты не удалялись.
     { existing: existing.appointments, incoming: incoming.appointments, protectMassLoss: !hasPatientDeletion },
