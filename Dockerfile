@@ -16,7 +16,8 @@ RUN test -f .deploy-version || echo "local-build" > .deploy-version
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
 RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env before docker compose build" && exit 1)
-RUN npm run build || (echo "=== npm run build failed ===" && exit 1)
+RUN chmod +x scripts/fix-stale-routes.sh && bash scripts/fix-stale-routes.sh /app
+RUN npm run build 2>&1 | tee /tmp/next-build.log || (echo "=== npm run build failed ===" && tail -80 /tmp/next-build.log && exit 1)
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production

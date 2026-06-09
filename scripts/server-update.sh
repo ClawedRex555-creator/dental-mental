@@ -27,18 +27,7 @@ if [ -f "$ARCHIVE" ]; then
   cp /tmp/emkaro.env.bak .env
   sed -i 's/\r$//' .env 2>/dev/null || true
 
-  # После переноса страниц в app/(dashboard)/(modules)/ старые каталоги в tar не удаляются — дубликаты ломают next build
-  DASH="app/(dashboard)"
-  for dir in appointments patients medical-records treatment-plans finance dashboard reports staff legal online-booking my-salary; do
-    if [ -d "$ROOT/$DASH/$dir" ] && [ -d "$ROOT/$DASH/(modules)/$dir" ]; then
-      echo ">>> Удаляю устаревший маршрут $DASH/$dir (есть (modules)/$dir)"
-      rm -rf "$ROOT/$DASH/$dir"
-    fi
-  done
-  if [ -d "$ROOT/$DASH/(modules)/warehouse" ]; then
-    echo ">>> Удаляю устаревший маршрут $DASH/(modules)/warehouse"
-    rm -rf "$ROOT/$DASH/(modules)/warehouse"
-  fi
+  bash scripts/fix-stale-routes.sh "$ROOT"
   if [ -f "$ROOT/.deploy-version" ]; then
     echo ">>> Версия деплоя: $(cat "$ROOT/.deploy-version")"
   fi
@@ -48,6 +37,7 @@ if [ -f "$ARCHIVE" ]; then
   fi
 else
   echo ">>> Архив $ARCHIVE не найден — только пересборка контейнеров"
+  bash scripts/fix-stale-routes.sh "$ROOT"
 fi
 
 echo ">>> Пересборка (данные в volume pg-data не трогаются)..."
