@@ -1,5 +1,11 @@
 {
   email {$ACME_EMAIL}
+  # Production Let's Encrypt (not staging — staging certs are untrusted in browsers).
+  acme_ca https://acme-v02.api.letsencrypt.org/directory
+  # Per-subdomain certs via HTTP-01 (wildcard *.domain needs DNS-01 and will fail).
+  on_demand_tls {
+    ask http://app:3000/api/internal/tls-ask
+  }
 }
 
 www.{$APP_ROOT_DOMAIN} {
@@ -11,8 +17,11 @@ www.{$APP_ROOT_DOMAIN} {
   reverse_proxy app:3000
 }
 
-# Все клиники: elanar, tstom, … (сертификат Let's Encrypt на каждый поддомен при первом заходе)
+# Клиники: demo.emkaro.ru, tstom.emkaro.ru, … — отдельный сертификат при первом заходе
 *.{$APP_ROOT_DOMAIN} {
+  tls {
+    on_demand
+  }
   encode gzip
   reverse_proxy app:3000
 }
