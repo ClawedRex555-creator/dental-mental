@@ -23,6 +23,7 @@ services:
         AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
     environment:
       NODE_ENV: production
+      DEPLOY_VERSION: ${DEPLOY_VERSION:-unknown}
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       ENABLE_DEMO_ACCOUNTS: "false"
       DATABASE_URL: postgresql://mis:${POSTGRES_PASSWORD}@postgres:5432/dentalcloud

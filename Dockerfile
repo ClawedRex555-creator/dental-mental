@@ -12,6 +12,7 @@ ENV APP_ROOT_DOMAIN=$APP_ROOT_DOMAIN
 ENV AUTH_SECRET=$AUTH_SECRET
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN test -f .deploy-version || echo "local-build" > .deploy-version
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
 RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env before docker compose build" && exit 1)
@@ -28,6 +29,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/db ./db
+COPY --from=builder /app/.deploy-version ./.deploy-version
 
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 

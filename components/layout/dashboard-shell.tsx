@@ -59,7 +59,21 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarHover, setSidebarHover] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const navItems = navItemsForRole(currentRole, enabledModules);
+  let navItems = navItemsForRole(currentRole, enabledModules);
+
+  // Врач: прайс услуг всегда в меню (даже при отключённом модуле «склад»)
+  if (currentRole === "doctor") {
+    const servicesNav = NAV_ITEMS.find((item) => item.href === "/warehouse");
+    if (servicesNav && !navItems.some((item) => item.href === "/warehouse")) {
+      const afterPlans = navItems.findIndex((item) => item.href === "/treatment-plans");
+      const insertAt = afterPlans >= 0 ? afterPlans + 1 : navItems.length;
+      navItems = [
+        ...navItems.slice(0, insertAt),
+        servicesNav,
+        ...navItems.slice(insertAt),
+      ];
+    }
+  }
 
   const settingsNav = NAV_ITEMS.find((item) => item.href === "/settings");
   const navWithSettings =

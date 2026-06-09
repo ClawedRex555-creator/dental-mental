@@ -51,6 +51,11 @@ else
 fi
 
 echo ">>> Пересборка (данные в volume pg-data не трогаются)..."
+if [ -f "$ROOT/.deploy-version" ]; then
+  export DEPLOY_VERSION="$(tr -d '\r' < "$ROOT/.deploy-version")"
+else
+  export DEPLOY_VERSION="unknown"
+fi
 docker compose up -d --build
 
 echo ">>> Статус:"
