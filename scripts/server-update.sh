@@ -35,9 +35,16 @@ if [ -f "$ARCHIVE" ]; then
       rm -rf "$ROOT/$DASH/$dir"
     fi
   done
-  if [ -d "$ROOT/$DASH/warehouse" ] && [ -d "$ROOT/$DASH/(modules)/warehouse" ]; then
-    echo ">>> Удаляю устаревший маршрут $DASH/(modules)/warehouse (есть $DASH/warehouse)"
+  if [ -d "$ROOT/$DASH/(modules)/warehouse" ]; then
+    echo ">>> Удаляю устаревший маршрут $DASH/(modules)/warehouse"
     rm -rf "$ROOT/$DASH/(modules)/warehouse"
+  fi
+  if [ -f "$ROOT/.deploy-version" ]; then
+    echo ">>> Версия деплоя: $(cat "$ROOT/.deploy-version")"
+  fi
+  if ! grep -q 'doctor' "$ROOT/lib/constants.ts" 2>/dev/null || \
+     ! grep -q '/warehouse' "$ROOT/lib/constants.ts" 2>/dev/null; then
+    echo "ПРЕДУПРЕЖДЕНИЕ: lib/constants.ts на сервере без доступа врача к Услугам — задеплойте свежий код с Mac"
   fi
 else
   echo ">>> Архив $ARCHIVE не найден — только пересборка контейнеров"
