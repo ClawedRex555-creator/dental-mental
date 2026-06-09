@@ -7,6 +7,21 @@ import {
 } from "./modules";
 import type { UserRole } from "./types";
 
+const SERVICES_CATALOG_PATH = "/warehouse";
+
+function isServicesCatalogPath(path: string): boolean {
+  return path === SERVICES_CATALOG_PATH || path.startsWith(`${SERVICES_CATALOG_PATH}/`);
+}
+
+/** Прайс услуг: врач всегда видит только чтение; остальные — при включённом модуле «склад» */
+export function canAccessServicesCatalog(
+  role: UserRole,
+  modules?: ClinicModules
+): boolean {
+  if (role === "doctor") return true;
+  return !modules || isModuleEnabled(modules, "warehouse");
+}
+
 export function isAccountSettingsPath(path: string): boolean {
   return (
     path === "/settings" ||
@@ -29,9 +44,18 @@ export function canAccessPath(
     return settingsNav?.roles.includes(role) ?? false;
   }
 
+  // Врач: прайс на /warehouse (proxy вызывает без modules — отдельная ветка)
+  if (isServicesCatalogPath(path) && role === "doctor") {
+    return canAccessServicesCatalog(role, modules);
+  }
+
   const moduleId = resolvePathModule(path);
   if (modules && moduleId && !isModuleEnabled(modules, moduleId)) {
-    return false;
+    if (isServicesCatalogPath(path) && canAccessServicesCatalog(role, modules)) {
+      // read-only catalog for doctors
+    } else {
+      return false;
+    }
   }
 
   const item = NAV_ITEMS.find(
@@ -43,15 +67,34 @@ export function canAccessPath(
 
 export function filterNavByModules<T extends { href: string }>(
   items: T[],
-  modules?: ClinicModules
+  modules?: ClinicModules,
+  role?: UserRole
 ): T[] {
   if (!modules) return items;
   return items.filter((item) => {
     if (item.href === "/profile" || item.href === "/settings") return true;
+    if (item.href === SERVICES_CATALOG_PATH && role) {
+      return canAccessServicesCatalog(role, modules);
+    }
     const moduleId = NAV_HREF_TO_MODULE[item.href];
     if (!moduleId) return true;
     return isModuleEnabled(modules, moduleId);
   });
+}
+
+/** Пункты бокового меню для роли с учётом модулей клиники */
+export function navItemsForRole(role: UserRole, modules?: ClinicModules) {
+  const roleNav = NAV_ITEMS.filter(
+    (item) =>
+      item.roles.includes(role) ||
+      (item.href === SERVICES_CATALOG_PATH && canAccessServicesCatalog(role, modules))
+  );
+  return filterNavByModules(roleNav, modules, role);
+}
+
+/** Справочник услуг (прайс): создание и редактирование */
+export function canManageServices(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
 }
 
 /** Удаление актов — только владелец клиники */
@@ -70,9 +113,5 @@ export function canDeleteTreatmentPlans(role: UserRole): boolean {
 }
 
 export function defaultPathForRole(role: UserRole, modules?: ClinicModules): string {
-  const items = filterNavByModules(
-    NAV_ITEMS.filter((nav) => nav.roles.includes(role)),
-    modules
-  );
-  return items[0]?.href ?? "/settings";
+  return navItemsForRole(role, modules)[0]?.href ?? "/settings";
 }

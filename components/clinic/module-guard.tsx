@@ -28,7 +28,7 @@ export function ModuleGuard({ children }: { children: React.ReactNode }) {
   const role = useClinicStore((s) => s.currentRole);
   const lastRedirect = useRef<string | null>(null);
 
-  const blocked = isPathBlockedByModules(pathname, modules);
+  const blocked = isPathBlockedByModules(pathname, modules, role);
 
   useEffect(() => {
     if (!blocked) {

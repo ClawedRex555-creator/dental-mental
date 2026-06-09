@@ -5,7 +5,12 @@ import {
   type ClinicModules,
 } from "./modules";
 import type { UserRole } from "./types";
-import { canAccessPath, filterNavByModules, isAccountSettingsPath } from "./rbac";
+import {
+  canAccessPath,
+  canAccessServicesCatalog,
+  isAccountSettingsPath,
+  navItemsForRole,
+} from "./rbac";
 
 /** Куда безопасно перенаправить, если текущий раздел отключён (без циклов) */
 export function resolveSafeRedirectPath(
@@ -15,10 +20,7 @@ export function resolveSafeRedirectPath(
 ): string {
   const current = currentPathname?.split("?")[0] ?? "";
 
-  const items = filterNavByModules(
-    NAV_ITEMS.filter((nav) => nav.roles.includes(role)),
-    modules
-  );
+  const items = navItemsForRole(role, modules);
 
   for (const item of items) {
     if (item.href === current) continue;
@@ -35,9 +37,18 @@ export function resolveSafeRedirectPath(
 
 export function isPathBlockedByModules(
   pathname: string,
-  modules: ClinicModules
+  modules: ClinicModules,
+  role?: UserRole
 ): boolean {
   if (isAccountSettingsPath(pathname)) return false;
+  const path = pathname.split("?")[0];
+  if (
+    (path === "/warehouse" || path.startsWith("/warehouse/")) &&
+    role &&
+    canAccessServicesCatalog(role, modules)
+  ) {
+    return false;
+  }
   const moduleId = resolvePathModule(pathname);
   return moduleId != null && !isModuleEnabled(modules, moduleId);
 }

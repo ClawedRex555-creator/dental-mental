@@ -19,8 +19,9 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { APP_LOGO_TEXT, APP_NAME, NAV_ITEMS, ROLE_LABELS } from "@/lib/constants";
-import { filterNavByModules } from "@/lib/rbac";
+import { AppLogo } from "@/components/brand/app-logo";
+import { APP_NAME, NAV_ITEMS, ROLE_LABELS } from "@/lib/constants";
+import { navItemsForRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
 import { notifySessionChanged } from "@/lib/session-sync.client";
@@ -58,8 +59,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarHover, setSidebarHover] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const roleNav = NAV_ITEMS.filter((item) => item.roles.includes(currentRole));
-  const navItems = filterNavByModules(roleNav, enabledModules);
+  const navItems = navItemsForRole(currentRole, enabledModules);
+
   const settingsNav = NAV_ITEMS.find((item) => item.href === "/settings");
   const navWithSettings =
     settingsNav &&
@@ -96,9 +97,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       >
         <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-4">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-teal-600">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-sm text-white">
-              {APP_LOGO_TEXT}
-            </span>
+            <AppLogo size={32} className="h-8 w-8 rounded-lg" />
             <span
               className={cn(
                 "truncate text-sm transition-all duration-300 ease-in-out",

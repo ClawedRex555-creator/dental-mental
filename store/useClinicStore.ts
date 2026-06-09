@@ -71,6 +71,7 @@ import {
   persistThemePreferencesToStorage,
   readThemePreferencesFromStorage,
 } from "@/lib/user-theme-storage";
+import { canManageServices } from "@/lib/rbac";
 
 const freshState = createFreshPersistedState();
 
@@ -415,22 +416,28 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: s.legalDocuments.filter((d) => d.id !== id),
         })),
 
-      addService: (service) =>
+      addService: (service) => {
+        if (!canManageServices(get().currentRole)) return;
         set((s) => ({
           services: [normalizeServiceFields(service), ...s.services],
-        })),
+        }));
+      },
 
-      updateService: (id, data) =>
+      updateService: (id, data) => {
+        if (!canManageServices(get().currentRole)) return;
         set((s) => ({
           services: s.services.map((svc) =>
             svc.id === id ? normalizeServiceFields({ ...svc, ...data }) : svc
           ),
-        })),
+        }));
+      },
 
-      removeService: (id) =>
+      removeService: (id) => {
+        if (!canManageServices(get().currentRole)) return;
         set((s) => ({
           services: s.services.filter((svc) => svc.id !== id),
-        })),
+        }));
+      },
 
       addPatient: (patient) =>
         set((s) => ({

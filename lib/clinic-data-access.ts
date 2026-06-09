@@ -1,3 +1,4 @@
+import type { ClinicPersistedState } from "./clinic-persisted-state";
 import type { UserRole } from "./types";
 
 /** Чтение полного snapshot (GET /api/clinic/data) */
@@ -19,4 +20,14 @@ export function canWriteClinicDataSync(role: UserRole): boolean {
 /** @deprecated используйте canReadClinicDataSync / canWriteClinicDataSync */
 export function canAccessFullClinicDataSync(role: UserRole): boolean {
   return canWriteClinicDataSync(role);
+}
+
+/** Врач видит прайс, но не может менять услуги при автосохранении snapshot. */
+export function preserveServicesForReadOnlyRoles(
+  role: UserRole,
+  incoming: ClinicPersistedState,
+  existing: ClinicPersistedState | null | undefined
+): ClinicPersistedState {
+  if (role !== "doctor" || !existing) return incoming;
+  return { ...incoming, services: existing.services };
 }

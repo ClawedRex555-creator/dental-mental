@@ -29,12 +29,16 @@ if [ -f "$ARCHIVE" ]; then
 
   # После переноса страниц в app/(dashboard)/(modules)/ старые каталоги в tar не удаляются — дубликаты ломают next build
   DASH="app/(dashboard)"
-  for dir in appointments patients medical-records treatment-plans finance warehouse dashboard reports staff legal online-booking my-salary; do
+  for dir in appointments patients medical-records treatment-plans finance dashboard reports staff legal online-booking my-salary; do
     if [ -d "$ROOT/$DASH/$dir" ] && [ -d "$ROOT/$DASH/(modules)/$dir" ]; then
       echo ">>> Удаляю устаревший маршрут $DASH/$dir (есть (modules)/$dir)"
       rm -rf "$ROOT/$DASH/$dir"
     fi
   done
+  if [ -d "$ROOT/$DASH/warehouse" ] && [ -d "$ROOT/$DASH/(modules)/warehouse" ]; then
+    echo ">>> Удаляю устаревший маршрут $DASH/(modules)/warehouse (есть $DASH/warehouse)"
+    rm -rf "$ROOT/$DASH/(modules)/warehouse"
+  fi
 else
   echo ">>> Архив $ARCHIVE не найден — только пересборка контейнеров"
 fi

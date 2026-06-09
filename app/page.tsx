@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_LOGO_TEXT, APP_NAME, APP_TAGLINE } from "@/lib/constants";
+import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { clinicBaseUrl, getAppRootDomain } from "@/lib/clinic-host";
 import { listClinics } from "@/lib/clinic-db.server";
 import { isDatabaseEnabled } from "@/lib/db";
@@ -15,7 +15,7 @@ export default async function PlatformHomePage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto max-w-3xl px-4 py-16">
         <div className="mb-10 text-center">
-          <HiddenAdminLogo>{APP_LOGO_TEXT}</HiddenAdminLogo>
+          <HiddenAdminLogo />
           <h1 className="text-3xl font-bold text-slate-900">{APP_NAME}</h1>
           <p className="mt-2 text-slate-600">{APP_TAGLINE}</p>
         </div>

@@ -25,7 +25,7 @@ export const NAV_ITEMS = [
   { href: "/treatment-plans", label: "Планы лечения", icon: "ClipboardList", roles: ["owner", "admin", "doctor"] as UserRole[] },
   { href: "/my-salary", label: "Моя зарплата", icon: "Wallet", roles: ["doctor"] as UserRole[] },
   { href: "/finance", label: "Финансы", icon: "Wallet", roles: ["owner", "admin", "accountant"] as UserRole[] },
-  { href: "/warehouse", label: "Услуги", icon: "Package", roles: ["owner", "admin"] as UserRole[] },
+  { href: "/warehouse", label: "Услуги", icon: "Package", roles: ["owner", "admin", "doctor"] as UserRole[] },
   { href: "/dashboard", label: "Аналитика", icon: "LayoutDashboard", roles: ["owner", "admin", "accountant"] as UserRole[] },
   { href: "/reports", label: "Отчёты", icon: "BarChart3", roles: ["owner", "admin", "accountant"] as UserRole[] },
   { href: "/staff", label: "Сотрудники", icon: "UserCog", roles: ["owner", "admin"] as UserRole[] },

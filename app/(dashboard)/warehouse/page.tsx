@@ -6,13 +6,15 @@ import { ServiceModal } from "@/components/staff/service-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { canManageServices } from "@/lib/rbac";
 import { groupServicesByCategory } from "@/lib/service-categories";
 import { formatServicePrice, serviceNotes } from "@/lib/utils";
 import type { Service } from "@/lib/types";
 import { useClinicStore } from "@/store/useClinicStore";
 
 export default function ServicesPage() {
-  const { services } = useClinicStore();
+  const { services, currentUser } = useClinicStore();
+  const canEdit = canManageServices(currentUser.role);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -41,12 +43,16 @@ export default function ServicesPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Услуги</h1>
-          <p className="text-sm text-slate-500">Прайс клиники по категориям</p>
+          <p className="text-sm text-slate-500">
+            {canEdit ? "Прайс клиники по категориям" : "Прайс клиники — только просмотр"}
+          </p>
         </div>
-        <Button onClick={openAdd}>
-          <Plus className="h-4 w-4" />
-          Добавить услугу
-        </Button>
+        {canEdit && (
+          <Button onClick={openAdd}>
+            <Plus className="h-4 w-4" />
+            Добавить услугу
+          </Button>
+        )}
       </div>
 
       <div className="relative max-w-lg">
@@ -62,7 +68,9 @@ export default function ServicesPage() {
       {services.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-sm text-slate-500">
-            Нет услуг. Добавьте первую — она понадобится в актах и планах лечения.
+            {canEdit
+              ? "Нет услуг. Добавьте первую — она понадобится в актах и планах лечения."
+              : "Список услуг пока пуст. Обратитесь к администратору клиники."}
           </CardContent>
         </Card>
       ) : (
@@ -73,7 +81,7 @@ export default function ServicesPage() {
               <section key={category} className="space-y-3">
                 <h2 className="text-lg font-semibold text-slate-900">
                   {category}
-                  {isLegacyCategory && (
+                  {canEdit && isLegacyCategory && (
                     <span className="ml-2 text-sm font-normal text-amber-700">
                       (переназначьте категорию в карточке услуги)
                     </span>
@@ -95,14 +103,16 @@ export default function ServicesPage() {
                               </p>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEdit(service)}
-                            title="Редактировать"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEdit(service)}
+                              title="Редактировать"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
                         </CardContent>
                       </Card>
                     ))}
@@ -117,11 +127,13 @@ export default function ServicesPage() {
         </div>
       )}
 
-      <ServiceModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        service={editingService}
-      />
+      {canEdit && (
+        <ServiceModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          service={editingService}
+        />
+      )}
     </div>
   );
 }

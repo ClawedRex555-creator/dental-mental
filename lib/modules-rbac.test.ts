@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { defaultClinicModules, parseClinicModules } from "./modules";
-import { canAccessPath } from "./rbac";
+import { canAccessPath, filterNavByModules, navItemsForRole } from "./rbac";
 import { isPathBlockedByModules, resolveSafeRedirectPath } from "./modules-rbac";
 
 describe("modules-rbac", () => {
@@ -27,6 +27,43 @@ describe("modules-rbac", () => {
     const target = resolveSafeRedirectPath("owner", modules, "/legal");
     assert.notEqual(target, "/legal");
     assert.equal(canAccessPath("owner", target, modules), true);
+  });
+
+  it("doctor can access services catalog (read-only route)", () => {
+    const modules = defaultClinicModules();
+    assert.equal(canAccessPath("doctor", "/warehouse", modules), true);
+    assert.equal(canAccessPath("assistant", "/warehouse", modules), false);
+  });
+
+  it("doctor can open /warehouse via proxy (no modules arg)", () => {
+    assert.equal(canAccessPath("doctor", "/warehouse"), true);
+    assert.equal(canAccessPath("assistant", "/warehouse"), false);
+  });
+
+  it("doctor nav always includes Услуги even when warehouse module is off", () => {
+    const modules = parseClinicModules({ warehouse: false, patients: true });
+    const nav = navItemsForRole("doctor", modules);
+    assert.ok(
+      nav.some((item) => item.href === "/warehouse"),
+      "doctor sidebar must include /warehouse"
+    );
+    assert.equal(
+      nav.filter((item) => item.href === "/warehouse").length,
+      1
+    );
+  });
+
+  it("doctor sees services when warehouse module is off", () => {
+    const modules = parseClinicModules({ warehouse: false, patients: false });
+    assert.equal(isPathBlockedByModules("/warehouse", modules, "doctor"), false);
+    assert.equal(canAccessPath("doctor", "/warehouse", modules), true);
+    const nav = filterNavByModules(
+      [{ href: "/warehouse" }],
+      modules,
+      "doctor"
+    );
+    assert.equal(nav.length, 1);
+    assert.equal(isPathBlockedByModules("/warehouse", modules, "owner"), true);
   });
 
   it("when only settings available, redirect goes to settings", () => {

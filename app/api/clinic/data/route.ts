@@ -15,6 +15,7 @@ import {
 import {
   canReadClinicDataSync,
   canWriteClinicDataSync,
+  preserveServicesForReadOnlyRoles,
 } from "@/lib/clinic-data-access";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
@@ -104,6 +105,12 @@ export async function PUT(request: Request) {
     ) {
       toPersist = mergeClinicDataForSave(existing.data, parsed);
     }
+    toPersist = preserveServicesForReadOnlyRoles(
+      session.role,
+      toPersist,
+      existing?.data ?? null
+    );
+
     const saved = await saveClinicDataDb(session.clinicId, toPersist);
 
     if (existing?.data.medicalRecords) {
