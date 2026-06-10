@@ -47,7 +47,14 @@ AUTH_SECRET=<openssl rand -base64 48>
 APP_ROOT_DOMAIN=emkaro.ru
 ACME_EMAIL=admin@emkaro.ru
 POSTGRES_PASSWORD=<сильный-пароль-БД>
+PHI_ENCRYPTION_KEY=<openssl rand -base64 48>
 ENABLE_DEMO_ACCOUNTS=false
+```
+
+После обновления `.env` перезапустите Caddy и app:
+
+```bash
+docker compose up -d --build app caddy
 ```
 
 ---
@@ -89,10 +96,24 @@ docker compose exec app node scripts/create-clinic.mjs \
   --password 'AnotherPass123!'
 ```
 
+### SSL для нового поддомена
+
+1. Добавьте блок в `deploy/Caddyfile` (по образцу `demo`, `tstom`, `elanar`):
+
+```caddyfile
+zubki.{$APP_ROOT_DOMAIN} {
+  encode gzip
+  reverse_proxy app:3000
+}
+```
+
+2. Перезапустите Caddy: `docker compose restart caddy` (или `docker compose up -d caddy`).
+
+> **Не используйте** `on_demand_tls` + `*.домен` без отладки `/api/internal/tls-ask` — при сбое ask все поддомены теряют HTTPS.
+
 ### Клиника «Эланар»
 
-1. В `deploy/Caddyfile` используется `*.{$APP_ROOT_DOMAIN}` — отдельный блок на каждую клинику не нужен; после деплоя: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`.
-2. Создайте tenant в БД:
+1. Создайте tenant в БД:
 
 ```bash
 export ELANAR_OWNER_PASSWORD='YourStrongPass123!'
@@ -197,7 +218,9 @@ docker compose exec app tar -czf - /app/data > data-backup.tar.gz
 ## 10. Чеклист перед production
 
 - [ ] `AUTH_SECRET` уникален
+- [ ] `PHI_ENCRYPTION_KEY` задан (production не стартует без него)
 - [ ] `ENABLE_DEMO_ACCOUNTS=false`
+- [ ] Новые клиники добавлены в `deploy/Caddyfile` (явный блок на slug)
 - [ ] Wildcard DNS `*` → IP сервера
 - [ ] HTTPS работает на `https://slug.домен.ru`
 - [ ] Создан owner через `create-clinic`, не demo-пароли

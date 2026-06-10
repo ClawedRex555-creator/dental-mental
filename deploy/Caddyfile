@@ -2,10 +2,6 @@
   email {$ACME_EMAIL}
   # Production Let's Encrypt (not staging — staging certs are untrusted in browsers).
   acme_ca https://acme-v02.api.letsencrypt.org/directory
-  # Per-subdomain certs via HTTP-01 (wildcard *.domain needs DNS-01 and will fail).
-  on_demand_tls {
-    ask http://app:3000/api/internal/tls-ask
-  }
 }
 
 www.{$APP_ROOT_DOMAIN} {
@@ -17,11 +13,19 @@ www.{$APP_ROOT_DOMAIN} {
   reverse_proxy app:3000
 }
 
-# Клиники: demo.emkaro.ru, tstom.emkaro.ru, … — отдельный сертификат при первом заходе
-*.{$APP_ROOT_DOMAIN} {
-  tls {
-    on_demand
-  }
+# Клиники: явный блок на каждый поддомен (HTTP-01, без on_demand_tls).
+# После create-clinic добавьте slug сюда и: docker compose restart caddy
+demo.{$APP_ROOT_DOMAIN} {
+  encode gzip
+  reverse_proxy app:3000
+}
+
+tstom.{$APP_ROOT_DOMAIN} {
+  encode gzip
+  reverse_proxy app:3000
+}
+
+elanar.{$APP_ROOT_DOMAIN} {
   encode gzip
   reverse_proxy app:3000
 }
