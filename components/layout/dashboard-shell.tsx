@@ -61,8 +61,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   let navItems = navItemsForRole(currentRole, enabledModules);
 
-  // Врач: прайс услуг всегда в меню (даже при отключённом модуле «склад»)
+  // Врач: планы лечения и прайс всегда в меню (даже при отключённых модулях)
   if (currentRole === "doctor") {
+    const plansNav = NAV_ITEMS.find((item) => item.href === "/treatment-plans");
+    if (plansNav && !navItems.some((item) => item.href === "/treatment-plans")) {
+      const afterRecords = navItems.findIndex((item) => item.href === "/medical-records");
+      const insertAt = afterRecords >= 0 ? afterRecords + 1 : navItems.length;
+      navItems = [
+        ...navItems.slice(0, insertAt),
+        plansNav,
+        ...navItems.slice(insertAt),
+      ];
+    }
     const servicesNav = NAV_ITEMS.find((item) => item.href === "/warehouse");
     if (servicesNav && !navItems.some((item) => item.href === "/warehouse")) {
       const afterPlans = navItems.findIndex((item) => item.href === "/treatment-plans");

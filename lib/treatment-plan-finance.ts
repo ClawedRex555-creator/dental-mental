@@ -1,6 +1,10 @@
 import { format } from "date-fns";
 import type { TreatmentPlan, WorkAct, WorkActItem } from "@/lib/types";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
+import {
+  normalizePlanItemQuantity,
+  planItemLineTotal,
+} from "@/lib/treatment-plan-item-utils";
 import { generateId } from "@/lib/utils";
 
 export function buildWorkActFromTreatmentPlan(
@@ -11,14 +15,17 @@ export function buildWorkActFromTreatmentPlan(
   const invoiceId = generateId("inv");
   const actDate = format(new Date(), "yyyy-MM-dd");
 
-  const items: WorkActItem[] = plan.items.map((item) => ({
-    id: generateId("wai"),
-    serviceId: item.serviceId,
-    serviceName: item.serviceName,
-    quantity: 1,
-    price: item.price,
-    total: item.price,
-  }));
+  const items: WorkActItem[] = plan.items.map((item) => {
+    const quantity = normalizePlanItemQuantity(item.quantity);
+    return {
+      id: generateId("wai"),
+      serviceId: item.serviceId,
+      serviceName: item.serviceName,
+      quantity,
+      price: item.price,
+      total: planItemLineTotal(item),
+    };
+  });
 
   const act: WorkAct = {
     id: actId,

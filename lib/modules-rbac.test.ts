@@ -53,6 +53,14 @@ describe("modules-rbac", () => {
     );
   });
 
+  it("doctor sees treatment plans when treatment_plans module is off", () => {
+    const modules = parseClinicModules({ treatment_plans: false, patients: true });
+    assert.equal(isPathBlockedByModules("/treatment-plans", modules, "doctor"), false);
+    assert.equal(canAccessPath("doctor", "/treatment-plans", modules), true);
+    const nav = navItemsForRole("doctor", modules);
+    assert.ok(nav.some((item) => item.href === "/treatment-plans"));
+  });
+
   it("doctor sees services when warehouse module is off", () => {
     const modules = parseClinicModules({ warehouse: false, patients: false });
     assert.equal(isPathBlockedByModules("/warehouse", modules, "doctor"), false);

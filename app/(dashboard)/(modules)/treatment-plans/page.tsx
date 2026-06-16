@@ -16,6 +16,8 @@ import { buildWorkActFromTreatmentPlan } from "@/lib/treatment-plan-finance";
 import { formatCurrency, formatDate, getFullName } from "@/lib/utils";
 import { logAuditClient } from "@/lib/audit-client";
 import { canDeleteTreatmentPlans } from "@/lib/rbac";
+import { treatmentPlansForViewer } from "@/lib/treatment-plan-access";
+import { normalizePlanItemQuantity, planItemLineTotal } from "@/lib/treatment-plan-item-utils";
 import { useClinicStore } from "@/store/useClinicStore";
 import type { PaymentMethod, TreatmentPlan, WorkAct } from "@/lib/types";
 
@@ -51,16 +53,21 @@ export default function TreatmentPlansPage() {
     setPayAct(act);
   };
 
+  const visiblePlans = useMemo(
+    () => treatmentPlansForViewer(treatmentPlans, currentUser),
+    [treatmentPlans, currentUser]
+  );
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return treatmentPlans.filter((plan) => {
+    return visiblePlans.filter((plan) => {
       const patient = patients.find((p) => p.id === plan.patientId);
       const name = patient
         ? getFullName(patient.firstName, patient.lastName, patient.middleName).toLowerCase()
         : "";
       return plan.title.toLowerCase().includes(q) || name.includes(q);
     });
-  }, [treatmentPlans, patients, search]);
+  }, [visiblePlans, patients, search]);
 
   return (
     <div className="space-y-6">
@@ -191,15 +198,19 @@ export default function TreatmentPlansPage() {
                   {plan.discount > 0 ? ` · скидка ${discountLabel}` : ""}
                 </p>
                 <ul className="mt-3 space-y-1 text-sm text-slate-600">
-                  {plan.items.map((item) => (
-                    <li key={item.id} className="flex justify-between">
-                      <span>
-                        {item.toothNumber ? `#${item.toothNumber} ` : ""}
-                        {item.serviceName}
-                      </span>
-                      <span>{formatCurrency(item.price)}</span>
-                    </li>
-                  ))}
+                  {plan.items.map((item) => {
+                    const qty = normalizePlanItemQuantity(item.quantity);
+                    return (
+                      <li key={item.id} className="flex justify-between">
+                        <span>
+                          {item.toothNumber ? `#${item.toothNumber} ` : ""}
+                          {item.serviceName}
+                          {qty > 1 ? ` × ${qty}` : ""}
+                        </span>
+                        <span>{formatCurrency(planItemLineTotal(item))}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <Button

@@ -17,6 +17,27 @@ fi
 
 echo "=== Emkaro: безопасное обновление ==="
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+missing_env=()
+for key in AUTH_SECRET APP_ROOT_DOMAIN POSTGRES_PASSWORD PHI_ENCRYPTION_KEY; do
+  eval "val=\${$key:-}"
+  if [ -z "$val" ]; then
+    missing_env+=("$key")
+  fi
+done
+if [ "${#missing_env[@]}" -gt 0 ]; then
+  echo "ОШИБКА: в .env не заданы: ${missing_env[*]}"
+  echo "Добавьте в /opt/emkaro/.env (сгенерировать: openssl rand -base64 48):"
+  echo "  PHI_ENCRYPTION_KEY=<случайная строка>"
+  echo "Без этого docker compose не пересоберёт app — останется старый контейнер."
+  exit 1
+fi
+
 echo ">>> Бэкап PostgreSQL..."
 bash scripts/backup-db.sh "$ROOT"
 
@@ -46,10 +67,36 @@ if [ -f "$ROOT/.deploy-version" ]; then
 else
   export DEPLOY_VERSION="unknown"
 fi
-docker compose up -d --build
+
+# Без --no-cache Docker часто оставляет старый .next в образе (см. scripts/check-server-version.sh)
+if [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
+  echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
+  docker compose build --no-cache app
+  docker compose up -d --force-recreate app caddy
+else
+  docker compose up -d --build
+fi
 
 echo ">>> Статус:"
 docker compose ps
+
+echo ">>> Проверка bundle внутри контейнера..."
+health_json="$(docker compose exec -T app node -e "
+fetch('http://127.0.0.1:3000/api/health').then(r=>r.json()).then(j=>console.log(JSON.stringify(j))).catch(e=>{console.error(e);process.exit(1)})
+" 2>/dev/null || echo '{}')"
+
+if echo "$health_json" | grep -q 'patientAppointmentSearch'; then
+  echo "OK: новый bundle (patientAppointmentSearch в /api/health)"
+else
+  echo "ОШИБКА: контейнер со старым Next.js bundle."
+  echo "Ответ /api/health: $health_json"
+  if grep -q 'patientAppointmentSearch' "$ROOT/app/api/health/route.ts" 2>/dev/null; then
+    echo "На диске код новый — пересоберите: DEPLOY_NO_CACHE=1 docker compose build --no-cache app && docker compose up -d --force-recreate app"
+  else
+    echo "На диске код старый — задеплойте свежий tar с Mac: bash scripts/deploy-to-server.sh"
+  fi
+  exit 1
+fi
 
 echo ""
 echo "============================================"

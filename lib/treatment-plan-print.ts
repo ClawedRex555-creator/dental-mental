@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import type { ClinicSettings, Doctor, Patient, TreatmentPlan } from "./types";
+import { normalizePlanItemQuantity, planItemLineTotal } from "./treatment-plan-item-utils";
 import { formatCurrency, getFullName } from "./utils";
 import { TREATMENT_PLAN_STATUS_LABELS } from "./constants";
 
@@ -26,7 +27,8 @@ export function printTreatmentPlan(
       <td>${i + 1}</td>
       <td>${escapeHtml(item.serviceName)}</td>
       <td>${item.toothNumber ?? "—"}</td>
-      <td style="text-align:right">${formatCurrency(item.price)}</td>
+      <td style="text-align:center">${normalizePlanItemQuantity(item.quantity)}</td>
+      <td style="text-align:right">${formatCurrency(planItemLineTotal(item))}</td>
     </tr>`
     )
     .join("");
@@ -57,7 +59,7 @@ export function printTreatmentPlan(
   </p>
   <table>
     <thead>
-      <tr><th>№</th><th>Услуга</th><th>Зуб</th><th>Сумма</th></tr>
+      <tr><th>№</th><th>Услуга</th><th>Зуб</th><th>Кол-во</th><th>Сумма</th></tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>

@@ -16,7 +16,12 @@ function readDeployVersion(): string | undefined {
 
 export async function GET() {
   const version = readDeployVersion();
-  const features = { doctorServicesCatalog: true };
+  const features = {
+    doctorServicesCatalog: true,
+    patientAppointmentSearch: true,
+    treatmentPlanQuantity: true,
+    treatmentPlansAllDoctors: true,
+  };
 
   try {
     const pool = getPool();

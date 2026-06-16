@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # Удаляет устаревшие файлы/маршруты, которые tar не удаляет при обновлении.
 # Ломают next build: дубликаты страниц, старый middleware.ts
-set -euo pipefail
+set -eu
 
 ROOT="${1:-.}"
 cd "$ROOT"

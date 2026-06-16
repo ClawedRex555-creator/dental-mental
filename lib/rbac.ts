@@ -8,9 +8,14 @@ import {
 import type { UserRole } from "./types";
 
 const SERVICES_CATALOG_PATH = "/warehouse";
+const TREATMENT_PLANS_PATH = "/treatment-plans";
 
 function isServicesCatalogPath(path: string): boolean {
   return path === SERVICES_CATALOG_PATH || path.startsWith(`${SERVICES_CATALOG_PATH}/`);
+}
+
+function isTreatmentPlansPath(path: string): boolean {
+  return path === TREATMENT_PLANS_PATH || path.startsWith(`${TREATMENT_PLANS_PATH}/`);
 }
 
 /** Прайс услуг: врач всегда видит только чтение; остальные — при включённом модуле «склад» */
@@ -20,6 +25,15 @@ export function canAccessServicesCatalog(
 ): boolean {
   if (role === "doctor") return true;
   return !modules || isModuleEnabled(modules, "warehouse");
+}
+
+/** Планы лечения: врач всегда видит все планы клиники */
+export function canAccessTreatmentPlansCatalog(
+  role: UserRole,
+  modules?: ClinicModules
+): boolean {
+  if (role === "doctor") return true;
+  return !modules || isModuleEnabled(modules, "treatment_plans");
 }
 
 export function isAccountSettingsPath(path: string): boolean {
@@ -49,10 +63,16 @@ export function canAccessPath(
     return canAccessServicesCatalog(role, modules);
   }
 
+  if (isTreatmentPlansPath(path) && role === "doctor") {
+    return canAccessTreatmentPlansCatalog(role, modules);
+  }
+
   const moduleId = resolvePathModule(path);
   if (modules && moduleId && !isModuleEnabled(modules, moduleId)) {
     if (isServicesCatalogPath(path) && canAccessServicesCatalog(role, modules)) {
       // read-only catalog for doctors
+    } else if (isTreatmentPlansPath(path) && canAccessTreatmentPlansCatalog(role, modules)) {
+      // все планы клиники для врачей
     } else {
       return false;
     }
@@ -76,6 +96,9 @@ export function filterNavByModules<T extends { href: string }>(
     if (item.href === SERVICES_CATALOG_PATH && role) {
       return canAccessServicesCatalog(role, modules);
     }
+    if (item.href === TREATMENT_PLANS_PATH && role) {
+      return canAccessTreatmentPlansCatalog(role, modules);
+    }
     const moduleId = NAV_HREF_TO_MODULE[item.href];
     if (!moduleId) return true;
     return isModuleEnabled(modules, moduleId);
@@ -87,7 +110,8 @@ export function navItemsForRole(role: UserRole, modules?: ClinicModules) {
   const roleNav = NAV_ITEMS.filter(
     (item) =>
       item.roles.includes(role) ||
-      (item.href === SERVICES_CATALOG_PATH && canAccessServicesCatalog(role, modules))
+      (item.href === SERVICES_CATALOG_PATH && canAccessServicesCatalog(role, modules)) ||
+      (item.href === TREATMENT_PLANS_PATH && canAccessTreatmentPlansCatalog(role, modules))
   );
   return filterNavByModules(roleNav, modules, role);
 }

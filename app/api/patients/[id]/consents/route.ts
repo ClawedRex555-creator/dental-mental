@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import {
   listPatientConsents,
@@ -7,24 +8,30 @@ import {
 } from "@/lib/patient-consents.server";
 import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
 import { getServerSession } from "@/lib/get-server-session";
+import type { SessionPayload } from "@/lib/auth-session";
 import { assertClinicModule } from "@/lib/module-access.server";
 
-async function requireStaff() {
+type StaffSession = SessionPayload & { clinicId: string };
+
+async function requireStaff(request: Request): Promise<NextResponse | StaffSession> {
   const session = await getServerSession();
-  if (!session?.clinicId || session.isSuperAdmin) return null;
-  return session;
+  if (!session?.clinicId || session.isSuperAdmin) {
+    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
+  return { ...session, clinicId: session.clinicId };
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireStaff();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
+  const sessionOrDenied = await requireStaff(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
   const { id: patientId } = await params;
-  const consents = await listPatientConsents(session.clinicId!, patientId);
+  const consents = await listPatientConsents(session.clinicId, patientId);
   return NextResponse.json({ consents });
 }
 
@@ -35,10 +42,9 @@ export async function PUT(
   if (!verifySameOrigin(request)) {
     return NextResponse.json({ error: "Запрос отклонён" }, { status: 403 });
   }
-  const session = await requireStaff();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
+  const sessionOrDenied = await requireStaff(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
 
   let body: {
     consentType?: PatientConsentType;
@@ -57,13 +63,13 @@ export async function PUT(
   }
 
   if (body.consentType === "egisz_transfer") {
-    const denied = await assertClinicModule(session.clinicId!, "egisz");
+    const denied = await assertClinicModule(session.clinicId, "egisz");
     if (denied) return denied;
   }
 
   const { id: patientId } = await params;
   await upsertPatientConsent({
-    clinicId: session.clinicId!,
+    clinicId: session.clinicId,
     patientId,
     consentType: body.consentType,
     granted: body.granted,

@@ -14,6 +14,7 @@ import {
 } from "@/components/finance/work-act-modal";
 import { PatientModal } from "@/components/patients/patient-modal";
 import { AppointmentDocumentsModal } from "@/components/appointments/appointment-documents-modal";
+import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
@@ -295,22 +296,18 @@ export function AppointmentModal({
               <div className="space-y-2">
                 <Label>{UI.patient}</Label>
                 <div className="flex gap-2">
-                  <select
-                    className="flex h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm disabled:bg-slate-50"
-                    value={patientId}
+                  <PatientSearchSelect
+                    patients={patients}
+                    selectedPatientId={patientId}
                     disabled={formLocked}
-                    onChange={(e) => setPatientId(e.target.value)}
-                  >
-                    {patients.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.lastName} {p.firstName}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="ФИО или телефон..."
+                    onSelect={(patient) => setPatientId(patient.id)}
+                  />
                   {!formLocked && (
                     <Button
                       type="button"
                       variant="outline"
+                      className="shrink-0"
                       onClick={() => setPatientModalOpen(true)}
                     >
                       +

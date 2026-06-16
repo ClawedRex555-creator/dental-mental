@@ -35,6 +35,13 @@ export function parseClinicSlugFromHost(hostHeader: string | null): string | nul
 
   const root = getAppRootDomain();
 
+  if (root === "localhost") {
+    const labels = hostname.split(".");
+    if (labels.length === 2 && labels[1] === "localhost") {
+      return normalizeSlug(labels[0]);
+    }
+  }
+
   if (root !== "localhost") {
     if (hostname === root || hostname === `www.${root}`) {
       return null;

@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth-session";
-import { asClinicBoundSession } from "@/lib/clinic-bound-session";
+import { asClinicBoundSession, type ClinicBoundSession } from "@/lib/clinic-bound-session";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import {
   CLINIC_DATA_SCHEMA_VERSION,
   mergeClinicDataForSave,
   parseClinicPersistedState,
-  type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
   getClinicDataDbWithLegacyStaff,
@@ -15,8 +15,10 @@ import {
 import {
   canReadClinicDataSync,
   canWriteClinicDataSync,
+  filterClinicSnapshotForAccountant,
   preserveServicesForReadOnlyRoles,
 } from "@/lib/clinic-data-access";
+import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 import { isModuleEnabled } from "@/lib/modules";
@@ -24,20 +26,27 @@ import { getClinicModules } from "@/lib/platform-modules.server";
 
 const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024;
 
-async function requireClinicSession() {
+async function requireClinicSession(
+  request: Request
+): Promise<NextResponse | ClinicBoundSession> {
   const store = await cookies();
-  return asClinicBoundSession(verifySessionToken(store.get(AUTH_COOKIE)?.value));
+  const session = asClinicBoundSession(verifySessionToken(store.get(AUTH_COOKIE)?.value));
+  if (!session) {
+    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
+  return session;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isDatabaseEnabled()) {
     return NextResponse.json({ data: null, database: false });
   }
 
-  const session = await requireClinicSession();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
+  const sessionOrDenied = await requireClinicSession(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
   if (!canReadClinicDataSync(session.role)) {
     return NextResponse.json(
       { error: "Нет доступа к данным клиники" },
@@ -50,8 +59,13 @@ export async function GET() {
     return NextResponse.json({ data: null, database: true, version: CLINIC_DATA_SCHEMA_VERSION });
   }
 
+  const data =
+    session.role === "accountant"
+      ? filterClinicSnapshotForAccountant(record.data)
+      : record.data;
+
   return NextResponse.json({
-    data: record.data,
+    data,
     updatedAt: record.updatedAt,
     version: record.version,
     database: true,
@@ -67,11 +81,13 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
   }
 
-  const session = await requireClinicSession();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
-  if (!canWriteClinicDataSync(session.role)) {
+  const sessionOrDenied = await requireClinicSession(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
+
+  const authUser = await findAuthUserByUserIdDb(session.clinicId, session.userId);
+  const role = authUser?.role ?? session.role;
+  if (!canWriteClinicDataSync(role)) {
     return NextResponse.json(
       { error: "Сохранение данных доступно владельцу, администратору, врачу и ассистенту" },
       { status: 403 }
@@ -106,7 +122,7 @@ export async function PUT(request: Request) {
       toPersist = mergeClinicDataForSave(existing.data, parsed);
     }
     toPersist = preserveServicesForReadOnlyRoles(
-      session.role,
+      role,
       toPersist,
       existing?.data ?? null
     );

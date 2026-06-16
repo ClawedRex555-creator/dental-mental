@@ -40,3 +40,19 @@ export function isClientAuditAction(value: unknown): value is AuditAction {
     isValidAuditAction(value) && value !== "login" && value !== "logout"
   );
 }
+
+export const AUDIT_METADATA_MAX_BYTES = 4096;
+const RESOURCE_ID_RE = /^[a-zA-Z0-9-]{1,128}$/;
+
+export function isValidAuditResourceId(value: unknown): value is string {
+  return typeof value === "string" && RESOURCE_ID_RE.test(value);
+}
+
+export function isValidAuditMetadata(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  try {
+    return JSON.stringify(value).length <= AUDIT_METADATA_MAX_BYTES;
+  } catch {
+    return false;
+  }
+}

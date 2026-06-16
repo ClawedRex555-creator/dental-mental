@@ -5,6 +5,7 @@ import {
   canAccessFullClinicDataSync,
   canReadClinicDataSync,
   canWriteClinicDataSync,
+  filterClinicSnapshotForAccountant,
   preserveServicesForReadOnlyRoles,
 } from "./clinic-data-access";
 import { canManageServices } from "./rbac";
@@ -36,6 +37,54 @@ describe("clinic data sync access", () => {
     assert.equal(canManageServices("admin"), true);
     assert.equal(canManageServices("doctor"), false);
     assert.equal(canManageServices("assistant"), false);
+  });
+
+  it("filterClinicSnapshotForAccountant strips PHI and non-finance data", () => {
+    const state = createFreshPersistedState();
+    state.patients = [
+      {
+        id: "p1",
+        firstName: "Анна",
+        lastName: "Смирнова",
+        phone: "+79990001122",
+        email: "anna@example.com",
+        snils: "111-222-333 44",
+        birthDate: "1985-05-05",
+        gender: "female",
+        source: "walk_in",
+        status: "active",
+        balance: 1500,
+        totalSpent: 12000,
+        disability: "none",
+        notes: "секрет",
+        diagnosis: "K04",
+      },
+    ];
+    state.payments = [{ id: "pay1", patientId: "p1", amount: 1000, method: "cash", status: "paid", date: "2026-01-01" }];
+    state.medicalRecords = [
+      {
+        id: "mr1",
+        patientId: "p1",
+        doctorId: "d1",
+        complaints: "боль",
+        diagnosis: "секрет",
+        treatment: "лечение",
+        createdAt: "2026-01-01",
+      },
+    ];
+    state.warehouse = [{ id: "w1", name: "Материал", category: "c", quantity: 1, unit: "шт", minStock: 0, price: 100 }];
+
+    const filtered = filterClinicSnapshotForAccountant(state);
+    assert.equal(filtered.payments.length, 1);
+    assert.equal(filtered.medicalRecords.length, 0);
+    assert.equal(filtered.warehouse.length, 0);
+    assert.equal(filtered.patients.length, 1);
+    const p = filtered.patients[0]!;
+    assert.equal(p.firstName, "Анна");
+    assert.equal(p.balance, 1500);
+    assert.equal((p as { phone?: string }).phone, undefined);
+    assert.equal((p as { snils?: string }).snils, undefined);
+    assert.equal((p as { notes?: string }).notes, undefined);
   });
 
   it("preserveServicesForReadOnlyRoles keeps server services for doctor", () => {

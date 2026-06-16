@@ -12,8 +12,31 @@ echo "--- constants.ts (warehouse roles) ---"
 grep '/warehouse' lib/constants.ts || echo "NOT FOUND"
 
 echo ""
-echo "--- health route (first 5 lines) ---"
-head -5 app/api/health/route.ts 2>/dev/null || echo "MISSING"
+echo "--- новые фичи на диске ---"
+if [ -f components/shared/patient-search-select.tsx ]; then
+  echo "patient-search-select.tsx: OK"
+else
+  echo "patient-search-select.tsx: MISSING (нужен деплой с Mac)"
+fi
+if grep -q canAccessTreatmentPlansCatalog lib/rbac.ts 2>/dev/null; then
+  echo "canAccessTreatmentPlansCatalog: OK"
+else
+  echo "canAccessTreatmentPlansCatalog: MISSING"
+fi
+
+echo ""
+echo "--- .env (обязательные ключи) ---"
+for key in AUTH_SECRET PHI_ENCRYPTION_KEY APP_ROOT_DOMAIN; do
+  if grep -q "^${key}=" .env 2>/dev/null && [ -n "$(grep "^${key}=" .env | cut -d= -f2- | tr -d ' \"')" ]; then
+    echo "$key: set"
+  else
+    echo "$key: MISSING — пересборка app не запустится"
+  fi
+done
+
+echo ""
+echo "--- health route (features block) ---"
+grep -A6 'const features' app/api/health/route.ts 2>/dev/null || echo "MISSING"
 
 echo ""
 echo "--- .deploy-version ---"

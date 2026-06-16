@@ -8,6 +8,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_ROOT_DOMAIN=emkaro.ru
 ARG AUTH_SECRET
+ARG CACHEBUST=unknown
 ENV APP_ROOT_DOMAIN=$APP_ROOT_DOMAIN
 ENV AUTH_SECRET=$AUTH_SECRET
 COPY --from=deps /app/node_modules ./node_modules
@@ -16,7 +17,11 @@ RUN test -f .deploy-version || echo "local-build" > .deploy-version
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
 RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env before docker compose build" && exit 1)
-RUN chmod +x scripts/fix-stale-routes.sh && bash scripts/fix-stale-routes.sh /app
+RUN chmod +x scripts/fix-stale-routes.sh && sh scripts/fix-stale-routes.sh /app
+RUN grep -q 'patientAppointmentSearch' app/api/health/route.ts || (echo "ERROR: stale source — redeploy fresh tar from Mac" && exit 1)
+RUN test -f components/shared/patient-search-select.tsx || (echo "ERROR: missing patient-search-select.tsx" && exit 1)
+# CACHEBUST сбрасывает кэш next build при каждом деплое (иначе возможен старый bundle + новый DEPLOY_VERSION)
+RUN echo "build cache bust: $CACHEBUST"
 RUN npm run build 2>&1 | tee /tmp/next-build.log || (echo "=== npm run build failed ===" && tail -80 /tmp/next-build.log && exit 1)
 FROM node:20-alpine AS runner
 WORKDIR /app

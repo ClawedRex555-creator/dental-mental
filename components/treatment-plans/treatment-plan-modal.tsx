@@ -6,6 +6,11 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { DiscountType, TreatmentPlan, TreatmentPlanItem, TreatmentPlanStatus } from "@/lib/types";
 import { TREATMENT_PLAN_STATUS_LABELS, UI } from "@/lib/constants";
+import {
+  findMatchingPlanItemIndex,
+  normalizePlanItemQuantity,
+  planItemLineTotal,
+} from "@/lib/treatment-plan-item-utils";
 import { calcPlanTotals } from "@/lib/treatment-plan-utils";
 import { printTreatmentPlan } from "@/lib/treatment-plan-print";
 import { logAuditClient } from "@/lib/audit-client";
@@ -116,17 +121,28 @@ export function TreatmentPlanModal({
   const addItemFromService = (serviceId: string) => {
     const service = services.find((s) => s.id === serviceId);
     if (!service) return;
-    setItems((prev) => [
-      ...prev,
-      {
-        id: generateId("tpi"),
-        serviceId: service.id,
-        serviceName: service.name,
-        price: service.price,
-        status: "planned",
-        stage: service.category,
-      },
-    ]);
+    setItems((prev) => {
+      const existingIdx = findMatchingPlanItemIndex(prev, service.id);
+      if (existingIdx >= 0) {
+        return prev.map((it, i) =>
+          i === existingIdx
+            ? { ...it, quantity: normalizePlanItemQuantity(it.quantity) + 1 }
+            : it
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: generateId("tpi"),
+          serviceId: service.id,
+          serviceName: service.name,
+          price: service.price,
+          quantity: 1,
+          status: "planned" as const,
+          stage: service.category,
+        },
+      ];
+    });
   };
 
   const selectServiceForItem = (itemId: string, serviceId: string) => {
@@ -139,6 +155,7 @@ export function TreatmentPlanModal({
       serviceId: service.id,
       serviceName: service.name,
       price: service.price,
+      quantity: 1,
       stage: service.category,
     });
   };
@@ -167,7 +184,11 @@ export function TreatmentPlanModal({
       doctorId,
       medicalRecordId: medicalRecordId || undefined,
       title: title.trim(),
-      items: items.map((i) => ({ ...i, serviceName: i.serviceName.trim() })),
+      items: items.map((i) => ({
+        ...i,
+        serviceName: i.serviceName.trim(),
+        quantity: normalizePlanItemQuantity(i.quantity),
+      })),
       totalAmount,
       discountType,
       discount: Number(discount) || 0,
@@ -312,7 +333,7 @@ export function TreatmentPlanModal({
               )}
               {items.map((item) => (
                 <div key={item.id} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-5 space-y-1">
+                  <div className="col-span-4 space-y-1">
                     <Label className="text-xs text-slate-500">Услуга из прайса</Label>
                     <ClinicServiceSearch
                       compact
@@ -335,8 +356,23 @@ export function TreatmentPlanModal({
                       }
                     />
                   </div>
-                  <div className="col-span-4 space-y-1">
-                    <Label className="text-xs text-slate-500">Цена (можно изменить)</Label>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs text-slate-500">Кол-во</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={normalizePlanItemQuantity(item.quantity)}
+                      onChange={(e) =>
+                        updateItem(item.id, {
+                          quantity: normalizePlanItemQuantity(Number(e.target.value) || 1),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <Label className="text-xs text-slate-500">
+                      Цена за ед. · {formatCurrency(planItemLineTotal(item))}
+                    </Label>
                     <Input
                       type="number"
                       min={0}

@@ -9,6 +9,7 @@ describe("clinic-host", () => {
   it("parses clinic slug when APP_ROOT_DOMAIN is localhost in bundle", () => {
     const prev = process.env.APP_ROOT_DOMAIN;
     process.env.APP_ROOT_DOMAIN = "localhost";
+    assert.equal(parseClinicSlugFromHost("demo.localhost:3000"), "demo");
     assert.equal(parseClinicSlugFromHost("tstom.emkaro.ru"), "tstom");
     assert.equal(parseClinicSlugFromHost("emkaro.ru"), null);
     if (prev === undefined) delete process.env.APP_ROOT_DOMAIN;

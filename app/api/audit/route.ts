@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
-import { isClientAuditAction, isValidAuditResourceType } from "@/lib/audit-validation";
+import {
+  isClientAuditAction,
+  isValidAuditMetadata,
+  isValidAuditResourceId,
+  isValidAuditResourceType,
+} from "@/lib/audit-validation";
 import { getServerSession } from "@/lib/get-server-session";
 
 export async function POST(request: Request) {
@@ -13,6 +19,9 @@ export async function POST(request: Request) {
   if (!session || session.isSuperAdmin) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
 
   let body: {
     action?: string;
@@ -30,14 +39,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Недопустимые action или resourceType" }, { status: 400 });
   }
 
-  const resourceId =
-    typeof body.resourceId === "string" && body.resourceId.length <= 128
-      ? body.resourceId
-      : undefined;
-  const metadata =
-    body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
-      ? body.metadata
-      : undefined;
+  if (body.resourceId !== undefined && !isValidAuditResourceId(body.resourceId)) {
+    return NextResponse.json({ error: "Недопустимый resourceId" }, { status: 400 });
+  }
+
+  if (body.metadata !== undefined && !isValidAuditMetadata(body.metadata)) {
+    return NextResponse.json({ error: "Недопустимый metadata" }, { status: 400 });
+  }
+
+  const resourceId = isValidAuditResourceId(body.resourceId) ? body.resourceId : undefined;
+  const metadata = isValidAuditMetadata(body.metadata) ? body.metadata : undefined;
 
   await writeAuditLog(
     auditFromRequest(request, {
@@ -55,11 +66,15 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession();
   if (!session?.clinicId || session.isSuperAdmin) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
+
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }

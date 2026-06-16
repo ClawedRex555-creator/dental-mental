@@ -9,8 +9,8 @@ Emkaro реализует технические меры защиты перс�
 | Аутентификация | HTTP-only cookie, HMAC-подпись сессии (`AUTH_SECRET`) |
 | Разграничение доступа | RBAC по ролям + модули клиники (супер-админ) |
 | CSRF | Проверка Origin/Referer на изменяющих запросах |
-| Rate limit входа | Блокировка после серии неудачных попыток |
-| Шифрование ПДн | AES-256-GCM для SNILS, паспорта, телефона, email, адреса (`PHI_ENCRYPTION_KEY`) |
+| Rate limit входа | Блокировка после серии неудачных попыток (in-memory, одна реплика app) |
+| Шифрование ПДн | AES-256-GCM для ФИО, SNILS, паспорта, телефона, email, адреса, заметок, диагноза (`PHI_ENCRYPTION_KEY`, обязателен в production) |
 | Журнал доступа | Таблица `audit_logs`, API `/api/audit`, просмотр карточки пациента |
 | Согласия | Таблица `patient_consents`, API `/api/patients/[id]/consents` |
 | Экспорт / обезличивание | API `/api/compliance` (действия `export`, `anonymize`) |
@@ -21,7 +21,9 @@ Emkaro реализует технические меры защиты перс�
 ```env
 AUTH_SECRET=<случайная строка ≥32 символов>
 PHI_ENCRYPTION_KEY=<случайная строка ≥32 символов>
+TLS_ASK_SECRET=<случайная строка ≥32 символов>
 DATABASE_URL=postgresql://...
+ENABLE_DEMO_ACCOUNTS=false
 ```
 
 **Важно:** после включения `PHI_ENCRYPTION_KEY` не меняйте ключ без миграции — иначе зашифрованные поля не расшифруются.

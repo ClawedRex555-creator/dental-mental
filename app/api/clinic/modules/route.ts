@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { findClinicBySlug } from "@/lib/clinic-db.server";
 import { parseClinicSlugFromHost } from "@/lib/clinic-host";
 import { getServerSession } from "@/lib/get-server-session";
@@ -15,6 +16,9 @@ export async function GET(request: Request) {
   if (!session || session.isSuperAdmin) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
 
   let clinicId = session.clinicId;
   if (!clinicId && session.clinicSlug) {

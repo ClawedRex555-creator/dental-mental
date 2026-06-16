@@ -26,16 +26,23 @@ export default function PatientsPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return patients.filter((p) => {
-      if (statusFilter !== "all" && p.status !== statusFilter) return false;
-      if (!q) return true;
-      const name = getFullName(p.firstName, p.lastName, p.middleName).toLowerCase();
-      return (
-        name.includes(q) ||
-        p.phone.includes(q) ||
-        (p.email?.toLowerCase().includes(q) ?? false)
+    return patients
+      .filter((p) => {
+        if (statusFilter !== "all" && p.status !== statusFilter) return false;
+        if (!q) return true;
+        const name = getFullName(p.firstName, p.lastName, p.middleName).toLowerCase();
+        return (
+          name.includes(q) ||
+          p.phone.includes(q) ||
+          (p.email?.toLowerCase().includes(q) ?? false)
+        );
+      })
+      .sort((a, b) =>
+        getFullName(a.firstName, a.lastName, a.middleName).localeCompare(
+          getFullName(b.firstName, b.lastName, b.middleName),
+          "ru"
+        )
       );
-    });
   }, [patients, search, statusFilter]);
 
   return (
@@ -87,6 +94,7 @@ export default function PatientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-slate-500">
+                <th className="w-12 px-4 py-3 font-medium">№</th>
                 <th className="px-4 py-3 font-medium">{UI.patient}</th>
                 <th className="px-4 py-3 font-medium">{UI.phone}</th>
                 <th className="px-4 py-3 font-medium">{UI.age}</th>
@@ -97,8 +105,9 @@ export default function PatientsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
+              {filtered.map((p, index) => (
                 <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <td className="px-4 py-3 tabular-nums text-slate-500">{index + 1}</td>
                   <td className="px-4 py-3">
                     <Link
                       href={`/patients/${p.id}`}

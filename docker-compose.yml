@@ -21,6 +21,7 @@ services:
       args:
         APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
         AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+        CACHEBUST: ${DEPLOY_VERSION:-unknown}
     environment:
       NODE_ENV: production
       DEPLOY_VERSION: ${DEPLOY_VERSION:-unknown}

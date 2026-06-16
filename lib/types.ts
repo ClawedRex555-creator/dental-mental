@@ -288,6 +288,8 @@ export interface TreatmentPlanItem {
   serviceName: string;
   description?: string;
   price: number;
+  /** Количество услуг (по умолчанию 1) */
+  quantity?: number;
   status: ToothTreatmentStatus;
   stage?: string;
 }

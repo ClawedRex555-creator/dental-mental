@@ -9,7 +9,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:security": "NODE_OPTIONS='--import tsx' node --test lib/auth-session.security.test.ts lib/auth-session-middleware.test.ts lib/auth-session-roundtrip.test.ts lib/middleware-service-api.test.ts lib/clinic-host.test.ts lib/clinic-storage-scope.test.ts lib/modules-rbac.test.ts lib/clinic-data-access.test.ts lib/clinic-persisted-storage.test.ts lib/clinic-persisted-downgrade.test.ts lib/clinic-snapshot-load.test.ts lib/patient-visits.test.ts lib/safe-data-url.test.ts lib/service-categories.test.ts lib/audit-validation.test.ts lib/safe-redirect.test.ts lib/patient-balance.test.ts lib/patient-duplicate.test.ts",
+    "test:security": "NODE_OPTIONS='--import tsx' node --test lib/auth-session.security.test.ts lib/auth-session-middleware.test.ts lib/auth-session-roundtrip.test.ts lib/middleware-service-api.test.ts lib/clinic-host.test.ts lib/clinic-storage-scope.test.ts lib/modules-rbac.test.ts lib/clinic-data-access.test.ts lib/clinic-persisted-storage.test.ts lib/clinic-persisted-downgrade.test.ts lib/clinic-snapshot-load.test.ts lib/patient-visits.test.ts lib/safe-data-url.test.ts lib/service-categories.test.ts lib/audit-validation.test.ts lib/safe-redirect.test.ts lib/patient-balance.test.ts lib/patient-duplicate.test.ts lib/tls-ask.test.ts lib/phi-crypto.test.ts lib/demo-accounts.test.ts lib/assert-clinic-host.test.ts lib/csrf-origin.test.ts lib/treatment-plan-utils.test.ts lib/patient-search.test.ts",
     "bootstrap:owner": "node scripts/bootstrap-owner.mjs",
     "db:init": "node scripts/init-db.mjs",
     "create-superadmin": "node scripts/create-superadmin.mjs",

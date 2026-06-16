@@ -1,3 +1,8 @@
+/**
+ * In-memory rate limit — действует только в рамках одного процесса Node.js.
+ * При нескольких репликах app или перезапуске контейнера счётчики не общие;
+ * для кластера нужен внешний store (Redis и т.п.). См. docs/COMPLIANCE-152FZ.md.
+ */
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
 

@@ -49,6 +49,12 @@ export function isPathBlockedByModules(
   ) {
     return false;
   }
+  if (
+    (path === "/treatment-plans" || path.startsWith("/treatment-plans/")) &&
+    role === "doctor"
+  ) {
+    return false;
+  }
   const moduleId = resolvePathModule(pathname);
   return moduleId != null && !isModuleEnabled(modules, moduleId);
 }

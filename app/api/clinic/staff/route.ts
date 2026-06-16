@@ -1,16 +1,25 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth-session";
-import { asClinicBoundSession } from "@/lib/clinic-bound-session";
+import { asClinicBoundSession, type ClinicBoundSession } from "@/lib/clinic-bound-session";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 import { removeStaffFromClinicSnapshot } from "@/lib/clinic-data-db.server";
 import { deleteStaffDb, listStaffDb, upsertStaffDb } from "@/lib/staff-db.server";
 import type { Doctor } from "@/lib/types";
 
-async function requireStaffSession() {
+async function requireStaffSession(
+  request: Request
+): Promise<NextResponse | ClinicBoundSession> {
   const store = await cookies();
-  return asClinicBoundSession(verifySessionToken(store.get(AUTH_COOKIE)?.value));
+  const session = asClinicBoundSession(verifySessionToken(store.get(AUTH_COOKIE)?.value));
+  if (!session) {
+    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
+  return session;
 }
 
 function parseDoctor(body: unknown): Doctor | null {
@@ -30,15 +39,14 @@ function parseDoctor(body: unknown): Doctor | null {
   return d as Doctor;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isDatabaseEnabled()) {
     return NextResponse.json({ staff: null, database: false });
   }
 
-  const session = await requireStaffSession();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
+  const sessionOrDenied = await requireStaffSession(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
 
   const staff = await listStaffDb(session.clinicId);
   return NextResponse.json({ staff, database: true });
@@ -53,10 +61,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
   }
 
-  const session = await requireStaffSession();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
+  const sessionOrDenied = await requireStaffSession(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
@@ -91,10 +98,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
   }
 
-  const session = await requireStaffSession();
-  if (!session) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
-  }
+  const sessionOrDenied = await requireStaffSession(request);
+  if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
+  const session = sessionOrDenied;
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
