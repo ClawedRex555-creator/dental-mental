@@ -129,6 +129,12 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
   const requireDoctorCert =
     !stub && signingConfig.mode === "cryptopro" && !signingConfig.doctorCertThumbprint?.trim();
 
+  if (!stub && signingConfig.mode === "stub") {
+    validationErrors.push(
+      "Live N3: подпись stub не подходит для AddMedRecord — на тестовом контуре N3 нужны откреплённые КЭП (CryptoPro) врача и организации"
+    );
+  }
+
   validationErrors.push(
     ...(doctor
       ? validateDoctorForEgisz(doctor, { requireCert: requireDoctorCert })
@@ -161,7 +167,7 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
     config: signingConfig,
     doctorCertThumbprint: doctor.certThumbprint,
   });
-  payload.signedCdaBase64 = signed.base64;
+  payload.signedCdaBase64 = signed.dataBase64;
 
   const n3 = config.n3 ?? {};
   const client = createN3ClientFromConfig({
@@ -173,11 +179,10 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
     stub,
   });
 
-  let patientGuid = payload.n3PatientGuid;
-  if (!patientGuid) {
+  if (!payload.n3PatientGuid) {
     const addPatient = await client.addPatient(mapPatientToN3(patient));
     payload.n3Response = { addPatient };
-    if (!addPatient.success || !addPatient.patientGuid) {
+    if (!addPatient.success) {
       await updateEgiszSubmission(submissionId, {
         status: "error",
         errorMessage: addPatient.errorMessage ?? "AddPatient failed",
@@ -185,19 +190,18 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
       });
       return;
     }
-    patientGuid = addPatient.patientGuid;
-    payload.n3PatientGuid = patientGuid;
+    if (addPatient.patientGuid) payload.n3PatientGuid = addPatient.patientGuid;
   }
 
   const medDoc = mapMedDocumentToN3({
     record,
     config,
-    cdaXml: signed.xml,
-    signedBase64: signed.base64,
+    signed,
+    doctor,
   });
 
   const addRecord = await client.addMedRecord({
-    patientGuid,
+    idPatientMis: patient.id,
     document: medDoc,
   });
   payload.n3Response = { ...(payload.n3Response ?? {}), addRecord };

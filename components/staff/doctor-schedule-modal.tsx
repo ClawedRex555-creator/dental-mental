@@ -4,13 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
+  endOfWeek,
   format,
+  isSameMonth,
   parseISO,
   startOfMonth,
+  startOfWeek,
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
 import type { Doctor, DoctorShiftDay } from "@/lib/types";
+import { WEEKDAY_SHORT } from "@/lib/constants";
 import { monthKey, normalizeShiftDay } from "@/lib/clinic-schedule";
 import { useClinicStore } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
@@ -42,11 +46,17 @@ export function DoctorScheduleModal({
   const [defaultEnd, setDefaultEnd] = useState("19:00");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
+  const monthStart = useMemo(() => startOfMonth(parseISO(`${month}-01`)), [month]);
+
   const monthDays = useMemo(() => {
-    const start = startOfMonth(parseISO(`${month}-01`));
-    const end = endOfMonth(start);
+    return eachDayOfInterval({ start: monthStart, end: endOfMonth(monthStart) });
+  }, [monthStart]);
+
+  const monthCalendarDays = useMemo(() => {
+    const start = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 1 });
     return eachDayOfInterval({ start, end });
-  }, [month]);
+  }, [monthStart]);
 
   useEffect(() => {
     if (!open || !doctor) return;
@@ -180,8 +190,18 @@ export function DoctorScheduleModal({
             Зелёный — врач на смене. Укажите часы — они отобразятся в расписании. Нажмите на день,
             чтобы изменить время смены.
           </p>
+          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-[var(--muted)]">
+            {WEEKDAY_SHORT.map((label) => (
+              <div key={label} className="py-1">
+                {label}
+              </div>
+            ))}
+          </div>
           <div className="grid grid-cols-7 gap-1 text-center text-xs">
-            {monthDays.map((day) => {
+            {monthCalendarDays.map((day) => {
+              if (!isSameMonth(day, monthStart)) {
+                return <div key={day.toISOString()} className="min-h-[52px]" aria-hidden />;
+              }
               const dateStr = format(day, "yyyy-MM-dd");
               const shift = normalizeShiftDay(days[dateStr], {
                 startTime: defaultStart,
@@ -200,10 +220,9 @@ export function DoctorScheduleModal({
                       : "border-slate-300 bg-slate-200 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200",
                     isSelected && "ring-2 ring-teal-600 dark:ring-teal-400"
                   )}
-                  title={format(day, "d MMMM yyyy", { locale: ru })}
+                  title={format(day, "d MMMM yyyy, EEEE", { locale: ru })}
                 >
                   <div className="font-semibold">{format(day, "d")}</div>
-                  <div className="text-[10px]">{format(day, "EEE", { locale: ru })}</div>
                   {shift.working && (
                     <div className="mt-0.5 text-[9px] leading-tight opacity-90">
                       {shift.startTime}–{shift.endTime}

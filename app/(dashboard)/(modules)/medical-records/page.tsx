@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ClipboardList, Plus, Search } from "lucide-react";
+import { ClipboardList, Plus, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { MedicalRecordModal } from "@/components/medical-records/medical-record-modal";
 import { TreatmentPlanModal } from "@/components/treatment-plans/treatment-plan-modal";
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { UI } from "@/lib/constants";
 import { formatDate, getFullName } from "@/lib/utils";
+import { logAuditClient } from "@/lib/audit-client";
+import { canDeleteMedicalRecords } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 
 export default function MedicalRecordsPage() {
-  const { medicalRecords, patients, doctors } = useClinicStore();
+  const { medicalRecords, patients, doctors, currentUser, deleteMedicalRecord } = useClinicStore();
+  const canDeleteRecords = canDeleteMedicalRecords(currentUser.role);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
@@ -90,6 +94,39 @@ export default function MedicalRecordsPage() {
                       <ClipboardList className="mr-1 h-4 w-4" />
                       План лечения
                     </Button>
+                    {canDeleteRecords && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Удалить запись"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Удалить запись «${record.diagnosis}»?\n\nАкты и планы останутся, привязка к этой записи будет снята.`
+                            )
+                          ) {
+                            return;
+                          }
+                          if (deleteMedicalRecord(record.id)) {
+                            void logAuditClient({
+                              action: "delete",
+                              resourceType: "medical_record",
+                              resourceId: record.id,
+                              metadata: {
+                                diagnosis: record.diagnosis,
+                                patientId: record.patientId,
+                              },
+                            });
+                            toast.success("Запись медкарты удалена");
+                          } else {
+                            toast.error("Не удалось удалить запись");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <p className="text-sm text-slate-500">

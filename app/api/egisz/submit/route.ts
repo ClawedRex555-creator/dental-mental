@@ -48,8 +48,28 @@ export async function POST(request: Request) {
     if (!submission) {
       return NextResponse.json({ error: "Отправка не найдена" }, { status: 404 });
     }
-    await processEgiszSubmission(body.submissionId, ctx.clinicId);
-    return NextResponse.json({ ok: true, submissionId: body.submissionId });
+    try {
+      await processEgiszSubmission(body.submissionId, ctx.clinicId);
+    } catch {
+      const updated = await getEgiszSubmissionById(body.submissionId, ctx.clinicId);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: updated?.errorMessage ?? "Ошибка обработки отправки",
+          submissionId: body.submissionId,
+          status: updated?.status,
+        },
+        { status: 422 }
+      );
+    }
+    const updated = await getEgiszSubmissionById(body.submissionId, ctx.clinicId);
+    return NextResponse.json({
+      ok: true,
+      submissionId: body.submissionId,
+      status: updated?.status,
+      externalId: updated?.externalId,
+      errorMessage: updated?.errorMessage,
+    });
   }
 
   if (body.medicalRecordId) {

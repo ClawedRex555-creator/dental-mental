@@ -1,9 +1,17 @@
 import "server-only";
 
-import type { ClinicSettings, Doctor, MedicalRecord, Patient } from "@/lib/types";
-import { mapGenderToEgisz } from "@/lib/egisz/cda/constants";
-import type { N3MedDocumentDto, N3PatientDto } from "@/lib/egisz/n3/types";
+import {
+  mapGenderToEgisz,
+  resolveN3MedDocumentType,
+} from "@/lib/egisz/cda/constants";
+import type { N3EmkPersonDto, N3MedDocumentDto, N3PatientDto } from "@/lib/egisz/n3/types";
 import type { EgiszClinicConfig } from "@/lib/egisz/types";
+import type { SignedDocument } from "@/lib/egisz/signing/interface";
+import type { ClinicSettings, Doctor, MedicalRecord, Patient } from "@/lib/types";
+
+/** Значения из минимального примера N3 (AddMedRecord.xml) */
+const DEFAULT_N3_SPECIALITY = "28";
+const DEFAULT_N3_POSITION = "114";
 
 function splitDoctorName(name: string): {
   familyName: string;
@@ -23,31 +31,66 @@ export function mapPatientToN3(patient: Patient): N3PatientDto {
     idPatientMis: patient.id,
     familyName: patient.lastName.trim(),
     givenName: patient.firstName.trim(),
-    middleName: patient.middleName?.trim() || undefined,
+    middleName: patient.middleName?.trim() || "",
     birthDate: patient.birthDate.slice(0, 10),
     sex: mapGenderToEgisz(patient.gender),
     snils: patient.snils?.replace(/\D/g, "") ?? "",
-    phone: patient.phone?.trim() || undefined,
-    address: patient.address?.trim() || undefined,
-    documentSeries: patient.passportSeries?.trim() || undefined,
-    documentNumber: patient.passportNumber?.trim() || undefined,
   };
+}
+
+export function mapDoctorToN3(doctor: Doctor): N3EmkPersonDto {
+  const name = splitDoctorName(doctor.name);
+  return {
+    idPersonMis: doctor.frmrOid?.trim() || doctor.id,
+    familyName: name.familyName,
+    givenName: name.givenName,
+    middleName: name.middleName ?? "",
+    snils: doctor.snils?.replace(/\D/g, "") ?? "",
+    idSpeciality: doctor.n3SpecialityId?.trim() || DEFAULT_N3_SPECIALITY,
+    idPosition: doctor.n3PositionId?.trim() || DEFAULT_N3_POSITION,
+  };
+}
+
+function formatN3CreationDate(record: MedicalRecord): string {
+  const raw = record.createdAt?.trim();
+  if (raw) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      const offsetMin = -parsed.getTimezoneOffset();
+      const sign = offsetMin >= 0 ? "+" : "-";
+      const abs = Math.abs(offsetMin);
+      const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+      const mm = String(abs % 60).padStart(2, "0");
+      const iso = parsed.toISOString().slice(0, 19);
+      return `${iso}${sign}${hh}:${mm}`;
+    }
+  }
+  const now = new Date();
+  const offsetMin = -now.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `${now.toISOString().slice(0, 19)}${sign}${hh}:${mm}`;
 }
 
 export function mapMedDocumentToN3(input: {
   record: MedicalRecord;
   config: EgiszClinicConfig;
-  cdaXml: string;
-  signedBase64: string;
+  signed: SignedDocument;
+  doctor: Doctor;
 }): N3MedDocumentDto {
   const docOid = input.config.documentOid ?? "1.2.643.5.1.13.13.14.1.9.1.181";
   return {
     idDocumentMis: input.record.id,
-    idDocumentType: docOid,
+    idMedDocumentType: resolveN3MedDocumentType(docOid),
     header: `Протокол консультации / ${input.record.serviceName ?? "стоматологический приём"}`,
-    cdaXml: input.cdaXml,
-    signedBase64: input.signedBase64,
-    mimeType: "application/xml",
+    creationDate: formatN3CreationDate(input.record),
+    dataBase64: input.signed.dataBase64,
+    organizationSignBase64: input.signed.organizationSignBase64,
+    personalSignBase64: input.signed.personalSignBase64,
+    mimeType: "text/xml",
+    author: mapDoctorToN3(input.doctor),
   };
 }
 

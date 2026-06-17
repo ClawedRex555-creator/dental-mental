@@ -55,6 +55,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
   const [snils, setSnils] = useState("");
   const [frmrOid, setFrmrOid] = useState("");
   const [positionCode, setPositionCode] = useState("34");
+  const [n3PositionId, setN3PositionId] = useState("114");
+  const [n3SpecialityId, setN3SpecialityId] = useState("28");
   const [certThumbprint, setCertThumbprint] = useState("");
   const [role, setRole] = useState<UserRole>("doctor");
   const [authPassword, setAuthPassword] = useState("");
@@ -99,6 +101,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setSnils(member.snils ?? "");
       setFrmrOid(member.frmrOid ?? "");
       setPositionCode(member.positionCode ?? "34");
+      setN3PositionId(member.n3PositionId ?? "114");
+      setN3SpecialityId(member.n3SpecialityId ?? "28");
       setCertThumbprint(member.certThumbprint ?? "");
       setRole(member.role);
     } else {
@@ -116,6 +120,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setSnils("");
       setFrmrOid("");
       setPositionCode("34");
+      setN3PositionId("114");
+      setN3SpecialityId("28");
       setCertThumbprint("");
       setRole("doctor");
       setAuthPassword("");
@@ -182,6 +188,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       snils: snils.trim() || undefined,
       frmrOid: frmrOid.trim() || undefined,
       positionCode: positionCode.trim() || undefined,
+      n3PositionId: n3PositionId.trim() || undefined,
+      n3SpecialityId: n3SpecialityId.trim() || undefined,
       certThumbprint: certThumbprint.trim() || undefined,
       role,
     };
@@ -541,8 +549,16 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
                 <Input value={frmrOid} onChange={(e) => setFrmrOid(e.target.value)} placeholder="1.2.643..." />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>Код должности (NSI)</Label>
+                <Label>Код должности (NSI 1002)</Label>
                 <Input value={positionCode} onChange={(e) => setPositionCode(e.target.value)} placeholder="34 — врач-стоматолог" />
+              </div>
+              <div className="space-y-2">
+                <Label>N3 IdPosition</Label>
+                <Input value={n3PositionId} onChange={(e) => setN3PositionId(e.target.value)} placeholder="114 — из примера N3" />
+              </div>
+              <div className="space-y-2">
+                <Label>N3 IdSpeciality</Label>
+                <Input value={n3SpecialityId} onChange={(e) => setN3SpecialityId(e.target.value)} placeholder="28 — из примера N3" />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>Отпечаток КЭП врача (CryptoPro)</Label>

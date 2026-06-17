@@ -20,9 +20,12 @@ import {
 } from "@/lib/constants";
 import {
   digitsOnly,
+  formatBirthCertificateNumber,
   formatPassportNumber,
   formatPassportSeries,
   formatSnils,
+  validateBirthCertificateNumber,
+  validateBirthCertificateSeries,
   validatePassportNumber,
   validatePassportSeries,
   validatePhone,
@@ -89,6 +92,12 @@ function emptyPatientFields() {
     snils: "",
     passportSeries: "",
     passportNumber: "",
+    isChild: false,
+    birthCertificateSeries: "",
+    birthCertificateNumber: "",
+    representativeFullName: "",
+    representativePassportSeries: "",
+    representativePassportNumber: "",
     diagnosis: "",
     hadPreviousVisits: false,
     previousVisitsNote: "",
@@ -146,6 +155,12 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         snils: patient.snils ?? "",
         passportSeries: patient.passportSeries ?? "",
         passportNumber: patient.passportNumber ?? "",
+        isChild: patient.isChild ?? false,
+        birthCertificateSeries: patient.birthCertificateSeries ?? "",
+        birthCertificateNumber: patient.birthCertificateNumber ?? "",
+        representativeFullName: patient.representativeFullName ?? "",
+        representativePassportSeries: patient.representativePassportSeries ?? "",
+        representativePassportNumber: patient.representativePassportNumber ?? "",
         diagnosis: patient.diagnosis ?? "",
         hadPreviousVisits: patient.hadPreviousVisits ?? false,
         previousVisitsNote: patient.previousVisitsNote ?? "",
@@ -188,11 +203,29 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       const snilsCheck = validateSnils(fields.snils);
       if (!snilsCheck.valid) errors.snils = snilsCheck.message!;
 
-      const seriesCheck = validatePassportSeries(fields.passportSeries);
-      if (!seriesCheck.valid) errors.passportSeries = seriesCheck.message!;
+      if (fields.isChild) {
+        const bcSeriesCheck = validateBirthCertificateSeries(fields.birthCertificateSeries);
+        if (!bcSeriesCheck.valid) errors.birthCertificateSeries = bcSeriesCheck.message!;
 
-      const numberCheck = validatePassportNumber(fields.passportNumber);
-      if (!numberCheck.valid) errors.passportNumber = numberCheck.message!;
+        const bcNumberCheck = validateBirthCertificateNumber(fields.birthCertificateNumber);
+        if (!bcNumberCheck.valid) errors.birthCertificateNumber = bcNumberCheck.message!;
+
+        const repSeriesCheck = validatePassportSeries(fields.representativePassportSeries);
+        if (!repSeriesCheck.valid) {
+          errors.representativePassportSeries = repSeriesCheck.message!;
+        }
+
+        const repNumberCheck = validatePassportNumber(fields.representativePassportNumber);
+        if (!repNumberCheck.valid) {
+          errors.representativePassportNumber = repNumberCheck.message!;
+        }
+      } else {
+        const seriesCheck = validatePassportSeries(fields.passportSeries);
+        if (!seriesCheck.valid) errors.passportSeries = seriesCheck.message!;
+
+        const numberCheck = validatePassportNumber(fields.passportNumber);
+        if (!numberCheck.valid) errors.passportNumber = numberCheck.message!;
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -242,10 +275,35 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       snils: withoutDocuments ? undefined : formatSnils(fields.snils),
       passportSeries: withoutDocuments
         ? undefined
-        : formatPassportSeries(fields.passportSeries),
+        : fields.isChild
+          ? undefined
+          : formatPassportSeries(fields.passportSeries),
       passportNumber: withoutDocuments
         ? undefined
-        : formatPassportNumber(fields.passportNumber),
+        : fields.isChild
+          ? undefined
+          : formatPassportNumber(fields.passportNumber),
+      isChild: fields.isChild || undefined,
+      birthCertificateSeries:
+        withoutDocuments || !fields.isChild
+          ? undefined
+          : fields.birthCertificateSeries.trim() || undefined,
+      birthCertificateNumber:
+        withoutDocuments || !fields.isChild
+          ? undefined
+          : formatBirthCertificateNumber(fields.birthCertificateNumber) || undefined,
+      representativeFullName:
+        withoutDocuments || !fields.isChild
+          ? undefined
+          : fields.representativeFullName.trim() || undefined,
+      representativePassportSeries:
+        withoutDocuments || !fields.isChild
+          ? undefined
+          : formatPassportSeries(fields.representativePassportSeries),
+      representativePassportNumber:
+        withoutDocuments || !fields.isChild
+          ? undefined
+          : formatPassportNumber(fields.representativePassportNumber),
       diagnosis: fields.diagnosis.trim() || undefined,
       hadPreviousVisits: fields.hadPreviousVisits,
       previousVisitsNote: fields.hadPreviousVisits
@@ -397,12 +455,21 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                         snils: "",
                         passportSeries: "",
                         passportNumber: "",
+                        birthCertificateSeries: "",
+                        birthCertificateNumber: "",
+                        representativeFullName: "",
+                        representativePassportSeries: "",
+                        representativePassportNumber: "",
                       }));
                       setDocErrors((prev) => {
                         const next = { ...prev };
                         delete next.snils;
                         delete next.passportSeries;
                         delete next.passportNumber;
+                        delete next.birthCertificateSeries;
+                        delete next.birthCertificateNumber;
+                        delete next.representativePassportSeries;
+                        delete next.representativePassportNumber;
                         return next;
                       });
                     }
@@ -440,7 +507,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                   placeholder="4510"
                   inputMode="numeric"
                   maxLength={4}
-                  disabled={withoutDocuments}
+                  disabled={withoutDocuments || fields.isChild}
                 />
                 {docErrors.passportSeries && (
                   <p className="text-xs text-red-600">{docErrors.passportSeries}</p>
@@ -456,13 +523,18 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                   placeholder="123456"
                   inputMode="numeric"
                   maxLength={6}
-                  disabled={withoutDocuments}
+                  disabled={withoutDocuments || fields.isChild}
                 />
                 {docErrors.passportNumber && (
                   <p className="text-xs text-red-600">{docErrors.passportNumber}</p>
                 )}
               </div>
             </div>
+            {fields.isChild && !withoutDocuments && (
+              <p className="text-xs text-[var(--muted)]">
+                Для ребёнка укажите свидетельство о рождении и паспорт представителя в блоке ниже.
+              </p>
+            )}
             </div>
             {withoutDocuments && (
               <p className="text-xs text-[var(--muted)]">
@@ -514,6 +586,127 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
               </select>
             </div>
           </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+              checked={fields.isChild}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                set("isChild", checked);
+                if (checked) {
+                  setFields((prev) => ({
+                    ...prev,
+                    passportSeries: "",
+                    passportNumber: "",
+                  }));
+                  setDocErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.passportSeries;
+                    delete next.passportNumber;
+                    return next;
+                  });
+                } else {
+                  setFields((prev) => ({
+                    ...prev,
+                    birthCertificateSeries: "",
+                    birthCertificateNumber: "",
+                    representativeFullName: "",
+                    representativePassportSeries: "",
+                    representativePassportNumber: "",
+                  }));
+                  setDocErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.birthCertificateSeries;
+                    delete next.birthCertificateNumber;
+                    delete next.representativePassportSeries;
+                    delete next.representativePassportNumber;
+                    return next;
+                  });
+                }
+              }}
+            />
+            Пациент — ребёнок
+          </label>
+
+          {fields.isChild && (
+            <div className="form-panel space-y-3 border-teal-200 dark:border-teal-800">
+              <p className="form-panel-title">Документы ребёнка и представителя</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Серия свидетельства о рождении *</Label>
+                  <Input
+                    value={fields.birthCertificateSeries}
+                    onChange={(e) => set("birthCertificateSeries", e.target.value)}
+                    placeholder="I-АА или IVМЮ"
+                    disabled={withoutDocuments}
+                  />
+                  {docErrors.birthCertificateSeries && (
+                    <p className="text-xs text-red-600">{docErrors.birthCertificateSeries}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Номер свидетельства о рождении *</Label>
+                  <Input
+                    value={fields.birthCertificateNumber}
+                    onChange={(e) =>
+                      set("birthCertificateNumber", formatBirthCertificateNumber(e.target.value))
+                    }
+                    placeholder="123456"
+                    inputMode="numeric"
+                    disabled={withoutDocuments}
+                  />
+                  {docErrors.birthCertificateNumber && (
+                    <p className="text-xs text-red-600">{docErrors.birthCertificateNumber}</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>ФИО законного представителя</Label>
+                <Input
+                  value={fields.representativeFullName}
+                  onChange={(e) => set("representativeFullName", e.target.value)}
+                  placeholder="Фамилия Имя Отчество родителя"
+                  disabled={withoutDocuments}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Паспорт представителя, серия *</Label>
+                  <Input
+                    value={fields.representativePassportSeries}
+                    onChange={(e) =>
+                      set("representativePassportSeries", formatPassportSeries(e.target.value))
+                    }
+                    placeholder="4510"
+                    inputMode="numeric"
+                    maxLength={4}
+                    disabled={withoutDocuments}
+                  />
+                  {docErrors.representativePassportSeries && (
+                    <p className="text-xs text-red-600">{docErrors.representativePassportSeries}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Паспорт представителя, номер *</Label>
+                  <Input
+                    value={fields.representativePassportNumber}
+                    onChange={(e) =>
+                      set("representativePassportNumber", formatPassportNumber(e.target.value))
+                    }
+                    placeholder="123456"
+                    inputMode="numeric"
+                    maxLength={6}
+                    disabled={withoutDocuments}
+                  />
+                  {docErrors.representativePassportNumber && (
+                    <p className="text-xs text-red-600">{docErrors.representativePassportNumber}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>{UI.diagnosis}</Label>

@@ -108,7 +108,6 @@ export function getClinicEgiszReadiness(
   if (!clinicMeta?.name?.trim()) missingForLive.push("Название клиники");
   if (!clinicMeta?.inn?.trim()) missingForLive.push("ИНН клиники");
   if (!resolved.organizationOid?.trim()) missingForLive.push("OID организации");
-  if (!resolveSystemId(resolved)) missingForLive.push("ID информационной системы (Emkaro)");
   if (!resolved.n3?.guid?.trim()) missingForLive.push("GUID N3");
   if (!resolved.n3?.lpuId?.trim()) missingForLive.push("idLPU N3");
   if (!resolved.n3?.login?.trim()) missingForLive.push("Login N3");

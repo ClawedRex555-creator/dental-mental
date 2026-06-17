@@ -27,6 +27,10 @@ export interface EgiszN3Credentials {
   lpuId?: string;
   login?: string;
   password?: string;
+  /**
+   * @deprecated N3 определяет МИС автоматически; поле не используется в UI
+   */
+  systemId?: string;
 }
 
 export interface EgiszSigningConfig {
@@ -47,8 +51,7 @@ export interface EgiszClinicConfig {
   /** OID медицинской организации в ЕГИСЗ */
   organizationOid?: string;
   /**
-   * OID информационной системы Emkaro в НСИ ЕГИСЗ (справочник 1.2.643.2.69.1.2).
-   * Задаётся разработчиком платформы через EGISZ_SYSTEM_ID, не выдаётся N3 клинике.
+   * @deprecated N3 определяет МИС автоматически
    */
   systemId?: string;
   /** URL SOAP-шлюза N3 (перекрывает EGISZ_GATEWAY_URL) */
@@ -109,6 +112,7 @@ export function defaultEgiszConfig(): EgiszClinicConfig {
 export function resolveSystemId(config: EgiszClinicConfig): string | undefined {
   return (
     config.systemId?.trim() ||
+    config.n3?.systemId?.trim() ||
     process.env.EGISZ_SYSTEM_ID?.trim() ||
     undefined
   );
@@ -129,6 +133,7 @@ function parseN3(raw: unknown): EgiszN3Credentials {
     lpuId: d.lpuId?.trim() || undefined,
     login: d.login?.trim() || undefined,
     password: d.password?.trim() || undefined,
+    systemId: d.systemId?.trim() || undefined,
   };
 }
 

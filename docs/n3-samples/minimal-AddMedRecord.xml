@@ -1,0 +1,72 @@
+<!-- заголовки запроса !-->
+POST http://b2b-demo.n3health.ru/emk/EMKService.svc HTTP/1.1
+Content-Type: text/xml;charset=UTF-8
+SOAPAction: "http://tempuri.org/IEmkService/AddMedRecord"
+Host: b2b-demo.n3health.ru
+<!-- тело запроса !-->
+<!-- из данного примера ничего из параметров удалять/перемещать нельзя, он заполнен по минимально обязательному варианту !-->
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <AddMedRecord xmlns="http://tempuri.org/">
+      <guid></guid>
+      <idLpu></idLpu>
+      <idPatientMis></idPatientMis>
+      <medRecord i:type="d4p3:MedDocument" xmlns:d4p1="http://schemas.datacontract.org/2004/07/N3.EMK.Dto.MedRec" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns:d4p3="http://schemas.datacontract.org/2004/07/N3.EMK.Dto.MedRec.MedDoc">
+        <d4p3:Attachments>
+          <d4p3:MedDocumentDto.DocumentAttachment>
+            <d4p3:Data>подписываемый_документ_в_формате_base64binary</d4p3:Data>
+            <d4p3:OrganizationSign>откреплённая_подпись_организации_в_формате_base64binary</d4p3:OrganizationSign>
+            <d4p3:PersonalSigns>
+              <d4p3:MedDocumentDto.PersonalSign>
+                <d4p3:Sign>откреплённая_подпись_врача_в_формате_base64binary</d4p3:Sign>
+                <d4p3:Doctor xmlns:d9p1="http://schemas.datacontract.org/2004/07/N3.EMK.Dto">
+                  <d9p1:Person>
+                    <d9p1:HumanName>
+                      <d9p1:GivenName>Имя</d9p1:GivenName>
+                      <d9p1:MiddleName>Отчество</d9p1:MiddleName>
+                      <d9p1:FamilyName>Фамилия</d9p1:FamilyName>
+                    </d9p1:HumanName>
+                    <d9p1:IdPersonMis>415</d9p1:IdPersonMis>
+                    <d9p1:Documents>
+                      <d9p1:IdentityDocument>
+                        <d9p1:DocN>12312312312</d9p1:DocN>
+                        <d9p1:IdDocumentType>223</d9p1:IdDocumentType>
+                        <d9p1:ProviderName>ПФР</d9p1:ProviderName>
+                      </d9p1:IdentityDocument>
+                    </d9p1:Documents>
+                  </d9p1:Person>
+                  <d9p1:IdSpeciality>28</d9p1:IdSpeciality>
+                  <d9p1:IdPosition>114</d9p1:IdPosition>
+                </d4p3:Doctor>
+              </d4p3:MedDocumentDto.PersonalSign>
+            </d4p3:PersonalSigns>
+            <d4p3:MimeType>text/xml</d4p3:MimeType>
+          </d4p3:MedDocumentDto.DocumentAttachment>
+        </d4p3:Attachments>
+        <d4p3:Author xmlns:d5p1="http://schemas.datacontract.org/2004/07/N3.EMK.Dto">
+          <d5p1:Person>
+            <d5p1:HumanName>
+              <d5p1:GivenName>Имя</d5p1:GivenName>
+              <d5p1:MiddleName>Отчество</d5p1:MiddleName>
+              <d5p1:FamilyName>Фамилия</d5p1:FamilyName>
+            </d5p1:HumanName>
+            <d5p1:IdPersonMis>415</d5p1:IdPersonMis>
+            <d5p1:Documents>
+              <d5p1:IdentityDocument>
+                <d5p1:DocN>12312312312</d5p1:DocN>
+                <d5p1:IdDocumentType>223</d5p1:IdDocumentType>
+                <d5p1:ProviderName>ПФР</d5p1:ProviderName>
+              </d5p1:IdentityDocument>
+            </d5p1:Documents>
+          </d5p1:Person>
+          <d5p1:IdSpeciality>28</d5p1:IdSpeciality>
+          <d5p1:IdPosition>114</d5p1:IdPosition>
+        </d4p3:Author>
+        <d4p3:CreationDate>2022-07-09T10:52:21+03:00</d4p3:CreationDate>
+        <d4p3:Header>Наименование документа</d4p3:Header>
+        <d4p3:IdDocumentMis>уникальный_идентификатор_документа</d4p3:IdDocumentMis>
+        <d4p3:IdMedDocumentType>код_документа_по_справочнику_1.2.643.2.69.1.1.1.195</d4p3:IdMedDocumentType>
+      </medRecord>
+    </AddMedRecord>
+  </s:Body>
+</s:Envelope>

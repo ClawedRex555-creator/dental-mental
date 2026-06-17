@@ -103,6 +103,13 @@ export interface Patient {
   snils?: string;
   passportSeries?: string;
   passportNumber?: string;
+  /** Пациент — ребёнок (документы в birthCertificate* и representative*) */
+  isChild?: boolean;
+  birthCertificateSeries?: string;
+  birthCertificateNumber?: string;
+  representativeFullName?: string;
+  representativePassportSeries?: string;
+  representativePassportNumber?: string;
   /** Пациент заведён без СНИЛС и паспорта */
   withoutIdentityDocuments?: boolean;
   diagnosis?: string;
@@ -150,6 +157,10 @@ export interface Doctor {
   frmrOid?: string;
   /** Код должности по справочнику NSI (1.2.643.5.1.13.13.11.1002) */
   positionCode?: string;
+  /** IdPosition для N3 AddMedRecord (справочник ИЭМК, не то же что NSI 1002) */
+  n3PositionId?: string;
+  /** IdSpeciality для N3 AddMedRecord */
+  n3SpecialityId?: string;
   /** Отпечаток личной КЭП врача (CryptoPro), для подписи СЭМД */
   certThumbprint?: string;
   avatar?: string;

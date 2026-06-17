@@ -1,4 +1,4 @@
-/** Типы запросов/ответов N3.Health ИЭМК */
+/** Типы запросов/ответов N3.Health ИЭМК / PIX */
 
 export interface N3PatientDto {
   idPatientMis: string;
@@ -8,19 +8,28 @@ export interface N3PatientDto {
   birthDate: string;
   sex: "1" | "2";
   snils: string;
-  phone?: string;
-  address?: string;
-  documentSeries?: string;
-  documentNumber?: string;
+}
+
+export interface N3EmkPersonDto {
+  idPersonMis: string;
+  familyName: string;
+  givenName: string;
+  middleName?: string;
+  snils: string;
+  idSpeciality: string;
+  idPosition: string;
 }
 
 export interface N3MedDocumentDto {
   idDocumentMis: string;
-  idDocumentType: string;
+  idMedDocumentType: string;
   header: string;
-  cdaXml: string;
-  signedBase64: string;
+  creationDate: string;
+  dataBase64: string;
+  organizationSignBase64: string;
+  personalSignBase64: string;
   mimeType: string;
+  author: N3EmkPersonDto;
 }
 
 export interface N3AddPatientResult {

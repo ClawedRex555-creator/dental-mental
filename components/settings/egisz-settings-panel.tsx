@@ -30,14 +30,8 @@ interface StatusInfo {
   connectionMode?: EgiszConnectionMode;
   signingMode?: string;
   gatewayUrl?: string;
-  platformSystemId?: string;
   missingForLive?: string[];
   message?: string;
-}
-
-interface PlatformInfo {
-  systemId?: string;
-  productName?: string;
 }
 
 interface ClinicInfo {
@@ -57,7 +51,6 @@ export function EgiszSettingsPanel() {
     signing: { mode: "stub" },
     n3: {},
   });
-  const [platform, setPlatform] = useState<PlatformInfo>({});
   const [clinic, setClinic] = useState<ClinicInfo>({ name: "", inn: "" });
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const [status, setStatus] = useState<StatusInfo>({});
@@ -75,7 +68,6 @@ export function EgiszSettingsPanel() {
         const data = await cfgRes.json();
         setConfig(data.config ?? config);
         setSubmissions(data.submissions ?? []);
-        setPlatform(data.platform ?? {});
         setClinic(data.clinic ?? { name: "", inn: "" });
       }
       if (stRes.ok) setStatus(await stRes.json());
@@ -91,18 +83,22 @@ export function EgiszSettingsPanel() {
   const save = async () => {
     setSaving(true);
     try {
+      const { n3PasswordSet: _omit, ...payload } = config;
       const res = await fetch("/api/egisz/config", {
         method: "PUT",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify(payload),
       });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        toast.error("Не удалось сохранить");
+        toast.error(data.error ?? `Не удалось сохранить (HTTP ${res.status})`);
         return;
       }
       toast.success("Настройки N3 / ЕГИСЗ сохранены");
       await load();
+    } catch {
+      toast.error("Ошибка сети при сохранении настроек ЕГИСЗ");
     } finally {
       setSaving(false);
     }
@@ -112,7 +108,16 @@ export function EgiszSettingsPanel() {
     setProcessing(true);
     try {
       const queued = submissions.filter((s) => s.status === "queued");
-      for (const s of queued.slice(0, 5)) {
+      if (queued.length === 0) {
+        toast.message("В очереди нет записей", {
+          description:
+            "Сохраните медкарту с диагнозом (включите «Автоматически ставить СЭМД в очередь») или отправьте вручную из медкарты.",
+        });
+        return;
+      }
+      const batch = queued.slice(0, 5);
+      let ok = 0;
+      for (const s of batch) {
         const res = await fetch("/api/egisz/submit", {
           method: "POST",
           credentials: "same-origin",
@@ -120,13 +125,38 @@ export function EgiszSettingsPanel() {
           body: JSON.stringify({ submissionId: s.id, process: true }),
         });
         if (!res.ok) {
-          toast.error("Ошибка обработки очереди");
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error ?? "Ошибка обработки очереди");
           await load();
           return;
         }
+        const data = await res.json().catch(() => ({}));
+        if (data.ok === false && data.error) {
+          toast.error(String(data.error));
+        }
+        ok += 1;
       }
-      toast.success("Очередь обработана");
-      await load();
+      const cfgRes = await fetch("/api/egisz/config", { credentials: "same-origin" });
+      const data = cfgRes.ok ? await cfgRes.json() : {};
+      const fresh: SubmissionRow[] = data.submissions ?? [];
+      setSubmissions(fresh);
+      if (cfgRes.ok && data.config) setConfig(data.config);
+
+      const batchIds = new Set(batch.map((s) => s.id));
+      const processed = fresh.filter((s) => batchIds.has(s.id));
+      const failed = processed.filter((s) => s.status === "error");
+      if (failed.length > 0) {
+        toast.error(
+          `Обработано ${ok}: ${failed[0]?.errorMessage ?? "ошибка — см. список «Отправки»"}`
+        );
+      } else {
+        const sent = processed.filter((s) => s.status === "sent" || s.status === "accepted");
+        toast.success(
+          sent.length > 0
+            ? `Отправлено: ${sent.length}. Статус — в списке «Отправки» ниже.`
+            : `Обработано записей: ${ok}. Смотрите статус в списке «Отправки» ниже.`
+        );
+      }
     } finally {
       setProcessing(false);
     }
@@ -140,8 +170,6 @@ export function EgiszSettingsPanel() {
       ...c,
       signing: { mode: "stub", ...c.signing, ...patch },
     }));
-
-  const effectiveSystemId = config.systemId || platform.systemId || status.platformSystemId;
 
   if (loading) {
     return <p className="text-sm text-[var(--muted)]">Загрузка настроек ЕГИСЗ…</p>;
@@ -262,28 +290,14 @@ export function EgiszSettingsPanel() {
               placeholder="OID вашего юр. лица"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label>OID типа CDA-документа</Label>
             <Input
               value={config.documentOid ?? ""}
               onChange={(e) => setConfig((c) => ({ ...c, documentOid: e.target.value }))}
             />
           </div>
-          <div className="space-y-2">
-            <Label>ID информационной системы (Emkaro)</Label>
-            <Input
-              value={effectiveSystemId ?? ""}
-              readOnly
-              className="opacity-90"
-              style={{ backgroundColor: "var(--input-readonly-bg)" }}
-              placeholder="Задаётся платформой (EGISZ_SYSTEM_ID)"
-            />
-            <p className="text-xs text-[var(--muted)]">
-              OID продукта Emkaro в реестре НСИ ЕГИСЗ (1.2.643.2.69.1.2.*). Задаётся
-              разработчиком платформы в EGISZ_SYSTEM_ID на сервере, не приходит из ЛК N3.
-            </p>
-          </div>
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label>URL SOAP N3</Label>
             <Input
               value={config.gatewayUrl ?? ""}
@@ -308,8 +322,8 @@ export function EgiszSettingsPanel() {
         <div className="rounded-lg border border-[var(--border)] p-3 space-y-3">
           <p className="text-sm font-medium">Учётные данные N3 этой клиники (ЛК n3health.ru)</p>
           <p className="text-xs text-[var(--muted)]">
-            GUID, idLPU, login и password — из личного кабинета N3 для вашего юр. лица. Одна
-            клиника Emkaro — один набор; другие tenant&apos;ы используют свои credentials.
+            GUID, idLPU, login и password — из личного кабинета N3. ID информационной системы
+            (МИС) N3 определяет на своей стороне автоматически — вводить в Emkaro не нужно.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
@@ -385,7 +399,7 @@ export function EgiszSettingsPanel() {
           </Button>
         </div>
 
-        {submissions.length > 0 && (
+        {submissions.length > 0 ? (
           <div className="border-t border-[var(--border)] pt-4">
             <h3 className="mb-2 text-sm font-medium">Отправки этой клиники</h3>
             <ul className="space-y-1 text-xs text-[var(--muted)]">
@@ -399,6 +413,12 @@ export function EgiszSettingsPanel() {
               ))}
             </ul>
           </div>
+        ) : (
+          <p className="border-t border-[var(--border)] pt-4 text-xs text-[var(--muted)]">
+            Отправок пока нет. Сохраните медкарту с диагнозом при включённой интеграции ЕГИСЗ
+            (галочка «Автоматически ставить СЭМД в очередь») — запись появится здесь со статусом
+            «В очереди».
+          </p>
         )}
       </CardContent>
     </Card>

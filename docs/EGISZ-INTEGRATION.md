@@ -20,7 +20,7 @@ lib/egisz/
   queue.server.ts       — постановка в очередь, autoSubmitSemd
   export.ts             — validatePatient, re-exports
   n3/
-    client.ts           — SOAP-клиент AddPatient, AddMedRecord
+    client.ts           — SOAP: AddPatient → PixService, AddMedRecord → EMKService
     mappers.ts          — Patient/Doctor/Record → N3 DTO
     types.ts
   cda/
@@ -49,8 +49,6 @@ lib/egisz/
 ```env
 EGISZ_GATEWAY_URL=https://b2b-demo.n3health.ru/emk/EMKService.svc
 EGISZ_ENV=test
-# OID Emkaro в НСИ ЕГИСЗ (справочник 1.2.643.2.69.1.2.*) — НЕ выдаётся N3 клинике
-EGISZ_SYSTEM_ID=1.2.643.2.69.1.2.xxx
 EGISZ_PRODUCT_NAME=Emkaro
 EGISZ_N3_STUB=true              # legacy: не блокирует live у клиник с connectionMode=live
 EGISZ_CRON_SECRET=...           # для POST /api/egisz/process
@@ -58,23 +56,20 @@ EGISZ_WEBHOOK_SECRET=...        # опционально для webhook
 PHI_ENCRYPTION_KEY=...          # СНИЛС пациентов в БД
 ```
 
-### Что такое `EGISZ_SYSTEM_ID`
+### Идентификация МИС (System ID)
 
-| Параметр | Кто выдаёт | Пример |
-|----------|------------|--------|
-| **EGISZ_SYSTEM_ID** | Разработчик Emkaro — регистрация МИС в [НСИ ЕГИСЗ](https://nsi.rosminzdrav.ru) (OID ветки `1.2.643.2.69.1.2`) | `1.2.643.2.69.1.2.10` — только пример из документации N3, не копировать |
-| GUID, idLPU, login/password | N3 — ЛК [lk.n3health.ru](https://lk.n3health.ru) | на каждое юр. лицо |
-| OID организации (МО) | ФРМО / ЛК N3 | `1.2.643.5.1.13.13.12.2.61.*` |
+**В Emkaro ничего указывать не нужно.** N3 привязывает информационную систему (Emkaro) автоматически по учётным данным клиники (GUID, idLPU, login/password) при регистрации в [ЛК n3health.ru](https://lk.n3health.ru).
 
-N3 в тикете поддержки **не обязаны** выдавать SystemId: это OID **продукта Emkaro**, а не клиники. Клиника заполняет в Emkaro только свои N3-параметры.
-
-Регистрация МИС: [api.n3med.ru](https://api.n3med.ru) → раздел про тестовый контур «МИС–РМИС–ЕГИСЗ».
+| Параметр | Кто выдаёт | Где в Emkaro |
+|----------|------------|--------------|
+| GUID, idLPU, login/password | N3 — ЛК | Настройки → N3 / ЕГИСЗ |
+| OID организации (МО) | ФРМО / ЛК N3 | Настройки → OID организации |
+| System ID (OID ИС) | N3 (автоматически) | **не настраивается** |
 
 ### Multi-clinic (разные юр. лица)
 
 | Уровень | Что хранится |
 |---------|----------------|
-| **Платформа** (`.env`) | `EGISZ_SYSTEM_ID` — OID информационной системы Emkaro |
 | **Клиника** (`clinics.egisz_config`) | OID организации, N3 GUID/idLPU/login/password, режим stub/live, КЭП |
 | **Очередь** (`egisz_submissions.clinic_id`) | Отправки изолированы по tenant |
 
@@ -98,8 +93,8 @@ N3 в тикете поддержки **не обязаны** выдавать S
    - валидация пациента, врача (СНИЛС, OID ФРМР, код должности), клиники, медкарты
    - сборка CDA (`buildCdaDocument`)
    - подпись двумя КЭП (`signCdaDocument`)
-   - `AddPatient` → GUID пациента в N3
-   - `AddMedRecord` + `MedDocument.DocumentAttachment` (base64 CDA)
+   - `AddPatient` → **PixService.svc** (СНИЛС как документ 223, без login/password в SOAP)
+   - `AddMedRecord` → **EMKService.svc** (`idPatientMis`, откреплённые подписи врача и МО)
 3. Статус: `sent` | `error` | `accepted` (через webhook)
 
 ### Ручная отправка
@@ -134,21 +129,20 @@ curl -X POST https://emkaro.ru/api/egisz/process \
 Название, ИНН, OID организации, GUID/idLPU N3
 
 ### Согласие
-`patient_consents.consent_type = egisz_transfer` или документ «Отказ от ЕГИСЗ» в юр. отделе
+`patient_consents.consent_type = egisz_transfer` или встроенная форма отказа при приёме (без обязательного шаблона в юр. отделе)
 
 ---
 
 ## Тестирование с N3
 
-1. Зарегистрировать **Emkaro** в НСИ → получить `EGISZ_SYSTEM_ID`, прописать в `.env` на сервере, `docker compose up -d --build app`
-2. Регистрация **клиники** в ЛК N3 → GUID, idLPU, login/password
-3. **OpenVPN** из ЛК N3 (например `b2b-makarova-1.ovpn`) — подключить на сервере или на машине, с которой идёт SOAP к demo
-4. Включить модуль `egisz` для клиники: `/platform/admin` → клиника → модуль ЕГИСЗ
-5. `tstom.emkaro.ru` → Настройки → N3 / ЕГИСЗ: live, OID организации, N3 credentials, URL demo
-6. Добавить врача: СНИЛС, OID ФРМР, код должности
-7. Медкарта с диагнозом → «Обработать очередь» или `POST /api/egisz/submit`
-8. Совместное тестирование с N3
-9. Промышленный контур — только после успешного теста на demo
+1. Регистрация в [ЛК N3](https://lk.n3health.ru) → GUID, idLPU, login/password в Настройки клиники
+2. **OpenVPN** из ЛК N3 (например `b2b-makarova-1.ovpn`) — подключить на сервере или на машине, с которой идёт SOAP к demo
+3. Включить модуль `egisz` для клиники: `/platform/admin` → клиника → модуль ЕГИСЗ
+4. `tstom.emkaro.ru` → Настройки → N3 / ЕГИСЗ: live, OID организации, N3 credentials, URL demo
+5. Добавить врача: СНИЛС, OID ФРМР, код должности
+6. Медкарта с диагнозом → «Обработать очередь» или `POST /api/egisz/submit`
+7. Совместное тестирование с N3
+8. Промышленный контур — только после успешного теста на demo
 
 ### Пример: ИП Макарова (`tstom`)
 
@@ -162,7 +156,7 @@ curl -X POST https://emkaro.ru/api/egisz/process \
 | SOAP (demo) | `http://b2b-demo.n3health.ru/emk/EMKService.svc` |
 | Login | email из ЛК N3 |
 
-В UI Emkaro: **Live**, контур **Тестовый**, включить интеграцию. `EGISZ_SYSTEM_ID` на сервере — отдельно (см. выше).
+В UI Emkaro: **Live**, контур **Тестовый**, включить интеграцию. System ID настраивать не нужно.
 
 Проверка готовности (владелец клиники, залогинен):
 
@@ -186,10 +180,12 @@ curl -s "https://tstom.emkaro.ru/api/egisz/status" -b "dc_session=..."
 
 ## Промышленный контур (CryptoPro)
 
-1. Установить КриптоПро CSP на сервере приложения
-2. `signing.mode = cryptopro` в настройках клиники
-3. `orgCertThumbprint` — в настройках ЕГИСЗ; `certThumbprint` — у каждого врача в карточке
-4. Доработать `lib/egisz/signing/cryptopro.server.ts` под ваш CLI/CAdES API
+Подпись на **Windows-ПК с флешкой** через агент: [CRYPTOPRO-WINDOWS.md](./CRYPTOPRO-WINDOWS.md)
+
+1. Запустить `scripts/egisz-signing-agent` на ПК с КриптоПро
+2. В `.env` сервера: `EGISZ_SIGNING_URL`, `EGISZ_SIGNING_SECRET`
+3. `signing.mode = cryptopro` в настройках клиники
+4. Отпечатки КЭП: организация — в ЕГИСЗ; врач — в карточке сотрудника
 
 ---
 

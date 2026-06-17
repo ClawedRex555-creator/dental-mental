@@ -136,6 +136,11 @@ export function canDeleteTreatmentPlans(role: UserRole): boolean {
   return role === "owner";
 }
 
+/** Удаление записей медкарты — только владелец клиники */
+export function canDeleteMedicalRecords(role: UserRole): boolean {
+  return role === "owner";
+}
+
 export function defaultPathForRole(role: UserRole, modules?: ClinicModules): string {
   return navItemsForRole(role, modules)[0]?.href ?? "/settings";
 }

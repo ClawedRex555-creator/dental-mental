@@ -40,16 +40,9 @@ interface ClinicEgiszRow {
   sentCount: number;
 }
 
-interface PlatformEgiszInfo {
-  systemId?: string;
-  productName?: string;
-  defaultGatewayUrl?: string;
-}
-
 export default function PlatformAdminPage() {
   const [clinics, setClinics] = useState<ClinicRow[]>([]);
   const [egiszClinics, setEgiszClinics] = useState<ClinicEgiszRow[]>([]);
-  const [platformEgisz, setPlatformEgisz] = useState<PlatformEgiszInfo>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -73,7 +66,6 @@ export default function PlatformAdminPage() {
       setClinics(clinicsData.clinics ?? []);
 
       if (egiszRes.ok) {
-        setPlatformEgisz(egiszData.platform ?? {});
         setEgiszClinics(egiszData.clinics ?? []);
       }
     } catch {
@@ -153,14 +145,8 @@ export default function PlatformAdminPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-slate-600">
               <p>
-                <strong className="text-slate-800">ИС (информационная система):</strong>{" "}
-                {platformEgisz.systemId ? (
-                  <code className="rounded bg-slate-100 px-1">{platformEgisz.systemId}</code>
-                ) : (
-                  <span className="text-amber-700">
-                    не задан — OID Emkaro в НСИ ЕГИСЗ, затем EGISZ_SYSTEM_ID в .env сервера
-                  </span>
-                )}
+                N3 привязывает Emkaro как МИС автоматически по учётным данным клиники.
+                Отдельный System ID в настройках не требуется.
               </p>
               <p>
                 У каждой клиники — отдельное юр. лицо, OID и credentials N3. Админ клиники

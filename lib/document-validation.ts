@@ -68,6 +68,28 @@ export function validatePassportNumber(value: string): ValidationResult {
   return { valid: true };
 }
 
+export function validateBirthCertificateSeries(value: string): ValidationResult {
+  const trimmed = value.trim();
+  if (!trimmed) return { valid: false, message: "Укажите серию свидетельства о рождении" };
+  if (trimmed.length < 2) {
+    return { valid: false, message: "Серия свидетельства слишком короткая" };
+  }
+  return { valid: true };
+}
+
+export function validateBirthCertificateNumber(value: string): ValidationResult {
+  const d = digitsOnly(value);
+  if (!d) return { valid: false, message: "Укажите номер свидетельства о рождении" };
+  if (d.length < 6) {
+    return { valid: false, message: "Номер свидетельства — не менее 6 цифр" };
+  }
+  return { valid: true };
+}
+
+export function formatBirthCertificateNumber(value: string): string {
+  return digitsOnly(value).slice(0, 8);
+}
+
 export function validatePhone(value: string): ValidationResult {
   const d = digitsOnly(value);
   if (!d) return { valid: false, message: "Укажите телефон" };

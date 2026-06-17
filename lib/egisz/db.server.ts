@@ -39,12 +39,19 @@ export async function saveEgiszConfig(
 ): Promise<EgiszClinicConfig> {
   const stored = await readRawEgiszConfig(clinicId);
   const merged = mergeEgiszConfigForSave(stored, config);
-  await withDb(async (client) => {
-    await client.query(`UPDATE clinics SET egisz_config = $2::jsonb WHERE id = $1`, [
+  const updated = await withDb(async (client) => {
+    const res = await client.query(`UPDATE clinics SET egisz_config = $2::jsonb WHERE id = $1`, [
       clinicId,
       JSON.stringify(merged),
     ]);
+    return res.rowCount;
   });
+  if (updated === null) {
+    throw new Error("База данных недоступна");
+  }
+  if (updated === 0) {
+    throw new Error("Клиника не найдена в базе данных");
+  }
   return resolveClinicEgiszConfig(merged);
 }
 
@@ -254,5 +261,15 @@ export async function processEgiszSubmission(
     }
   }
   const { processEgiszSubmissionWorker } = await import("@/lib/egisz/worker.server");
-  await processEgiszSubmissionWorker(submissionId);
+  try {
+    await processEgiszSubmissionWorker(submissionId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const short = msg.length > 500 ? `${msg.slice(0, 500)}…` : msg;
+    await updateEgiszSubmission(submissionId, {
+      status: "error",
+      errorMessage: short,
+    });
+    throw e;
+  }
 }

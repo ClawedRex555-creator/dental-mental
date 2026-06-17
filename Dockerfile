@@ -23,6 +23,7 @@ RUN test -f components/shared/patient-search-select.tsx || (echo "ERROR: missing
 # CACHEBUST сбрасывает кэш next build при каждом деплое (иначе возможен старый bundle + новый DEPLOY_VERSION)
 RUN echo "build cache bust: $CACHEBUST"
 RUN npm run build 2>&1 | tee /tmp/next-build.log || (echo "=== npm run build failed ===" && tail -80 /tmp/next-build.log && exit 1)
+RUN test -d .next/standalone && test -d .next/static || (echo "=== missing .next output ===" && ls -la .next 2>&1 && exit 1)
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production

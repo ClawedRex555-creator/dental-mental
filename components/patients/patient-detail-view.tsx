@@ -34,7 +34,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { logAuditClient } from "@/lib/audit-client";
 import { readFileAsDataUrl } from "@/lib/open-stored-file";
-import { canDeletePatients, canDeleteTreatmentPlans } from "@/lib/rbac";
+import {
+  canDeleteMedicalRecords,
+  canDeletePatients,
+  canDeleteTreatmentPlans,
+} from "@/lib/rbac";
 import {
   CLINIC_VISIT_STATUSES,
   countClinicVisits,
@@ -84,11 +88,13 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
     addPatientFile,
     currentUser,
     deletePatient,
+    deleteMedicalRecord,
     deleteTreatmentPlan,
     syncOtherClinicVisitForPatient,
   } = useClinicStore();
   const canDelete = canDeletePatients(currentUser.role);
   const canDeletePlans = canDeleteTreatmentPlans(currentUser.role);
+  const canDeleteRecords = canDeleteMedicalRecords(currentUser.role);
   const patientName = getFullName(patient.firstName, patient.lastName, patient.middleName);
 
   useEffect(() => {
@@ -261,12 +267,33 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               <p><span className="text-slate-500">Источник:</span> {patient.source}</p>
               <p><span className="text-slate-500">Адрес:</span> {patient.address || "—"}</p>
               <p><span className="text-slate-500">СНИЛС:</span> {patient.snils || "—"}</p>
-              <p>
-                <span className="text-slate-500">Паспорт:</span>{" "}
-                {patient.passportSeries && patient.passportNumber
-                  ? `${patient.passportSeries} ${patient.passportNumber}`
-                  : "—"}
-              </p>
+              {patient.isChild ? (
+                <>
+                  <p>
+                    <span className="text-slate-500">Свидетельство о рождении:</span>{" "}
+                    {patient.birthCertificateSeries && patient.birthCertificateNumber
+                      ? `${patient.birthCertificateSeries} ${patient.birthCertificateNumber}`
+                      : "—"}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Представитель:</span>{" "}
+                    {patient.representativeFullName || "—"}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Паспорт представителя:</span>{" "}
+                    {patient.representativePassportSeries && patient.representativePassportNumber
+                      ? `${patient.representativePassportSeries} ${patient.representativePassportNumber}`
+                      : "—"}
+                  </p>
+                </>
+              ) : (
+                <p>
+                  <span className="text-slate-500">Паспорт:</span>{" "}
+                  {patient.passportSeries && patient.passportNumber
+                    ? `${patient.passportSeries} ${patient.passportNumber}`
+                    : "—"}
+                </p>
+              )}
               <p>
                 <span className="text-slate-500">Инвалидность:</span>{" "}
                 {DISABILITY_LABELS[patient.disability ?? "not_specified"]}
@@ -413,7 +440,39 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
             records.map((r) => (
               <Card key={r.id}>
                 <CardHeader>
-                  <CardTitle className="text-base">{r.diagnosis}</CardTitle>
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-base">{r.diagnosis}</CardTitle>
+                    {canDeleteRecords && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Удалить запись"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Удалить запись медкарты «${r.diagnosis}»?\n\nАкты и планы останутся, привязка к этой записи будет снята.`
+                            )
+                          ) {
+                            return;
+                          }
+                          if (deleteMedicalRecord(r.id)) {
+                            void logAuditClient({
+                              action: "delete",
+                              resourceType: "medical_record",
+                              resourceId: r.id,
+                              metadata: { diagnosis: r.diagnosis, patientId: r.patientId },
+                            });
+                            toast.success("Запись медкарты удалена");
+                          } else {
+                            toast.error("Не удалось удалить запись");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="text-sm space-y-2">
                   <p>

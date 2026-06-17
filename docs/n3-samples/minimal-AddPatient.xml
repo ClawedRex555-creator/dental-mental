@@ -1,0 +1,31 @@
+<!-- заголовки запроса !-->
+POST http://b2b-demo.n3health.ru/emk/PixService.svc HTTP/1.1
+Content-Type: text/xml;charset=UTF-8
+SOAPAction: "http://tempuri.org/IPixService/AddPatient"
+Host: b2b-demo.n3health.ru
+<!-- тело запроса !-->
+<!-- из данного примера ничего из параметров удалить/перемещать/изменять нельзя, он заполнен по минимально обязательному варианту !-->
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Body>
+		<AddPatient xmlns="http://tempuri.org/">
+			<guid></guid>
+			<idLPU></idLPU>
+			<patient xmlns:d4p1="http://schemas.datacontract.org/2004/07/EMKService.Data.Dto"
+			         xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+				<d4p1:BirthDate>1978-03-30</d4p1:BirthDate>
+				<d4p1:Documents>
+					<d4p1:DocumentDto>
+						<d4p1:DocN>здесь_указывается_СНИЛС_без_тире_и_пробелов</d4p1:DocN>
+						<d4p1:IdDocumentType>223</d4p1:IdDocumentType>
+						<d4p1:ProviderName>ПФР</d4p1:ProviderName>
+					</d4p1:DocumentDto>
+				</d4p1:Documents>
+				<d4p1:FamilyName>Фамилия</d4p1:FamilyName>
+				<d4p1:GivenName>Имя</d4p1:GivenName>
+				<d4p1:IdPatientMIS>этот_идентификатор_рекомендуем_формировать_по_стандарту_UUID</d4p1:IdPatientMIS>
+				<d4p1:MiddleName>Отчество</d4p1:MiddleName>
+				<d4p1:Sex>1</d4p1:Sex>
+			</patient>
+		</AddPatient>
+	</s:Body>
+</s:Envelope>	

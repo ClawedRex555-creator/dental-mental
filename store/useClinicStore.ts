@@ -154,6 +154,8 @@ interface ClinicState {
   addAppointment: (appointment: Appointment) => void;
   updateAppointment: (id: string, data: Partial<Appointment>) => void;
   addMedicalRecord: (record: MedicalRecord) => void;
+  /** Удалить запись медкарты и снять ссылки с актов/планов; false — не найдена */
+  deleteMedicalRecord: (id: string) => boolean;
   addTreatmentPlan: (plan: TreatmentPlan) => void;
   updateTreatmentPlan: (id: string, data: Partial<TreatmentPlan>) => void;
   /** Удалить план лечения и связанную заметку; false — не найден */
@@ -519,6 +521,20 @@ export const useClinicStore = create<ClinicState>()(
 
       addMedicalRecord: (record) =>
         set((s) => ({ medicalRecords: [record, ...s.medicalRecords] })),
+
+      deleteMedicalRecord: (id) => {
+        if (!get().medicalRecords.some((r) => r.id === id)) return false;
+        set((s) => ({
+          medicalRecords: s.medicalRecords.filter((r) => r.id !== id),
+          workActs: s.workActs.map((a) =>
+            a.medicalRecordId === id ? { ...a, medicalRecordId: undefined } : a
+          ),
+          treatmentPlans: s.treatmentPlans.map((p) =>
+            p.medicalRecordId === id ? { ...p, medicalRecordId: undefined } : p
+          ),
+        }));
+        return true;
+      },
 
       addTreatmentPlan: (plan) =>
         set((s) => ({ treatmentPlans: [plan, ...s.treatmentPlans] })),

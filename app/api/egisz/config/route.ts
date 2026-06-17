@@ -7,6 +7,7 @@ import {
   getPlatformEgiszSettings,
   maskEgiszConfigForClient,
 } from "@/lib/egisz/platform.server";
+import { isDatabaseEnabled } from "@/lib/db";
 import { getEgiszConfig, listEgiszSubmissions, saveEgiszConfig } from "@/lib/egisz/db.server";
 import { parseEgiszConfig } from "@/lib/egisz/types";
 import { getServerSession } from "@/lib/get-server-session";
@@ -55,9 +56,18 @@ export async function PUT(request: Request) {
   if (!verifySameOrigin(request)) {
     return NextResponse.json({ error: "Запрос отклонён" }, { status: 403 });
   }
+  if (!isDatabaseEnabled()) {
+    return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
+  }
   const ctx = await requireClinicAdmin(request);
   if (!ctx) {
-    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+    return NextResponse.json(
+      {
+        error:
+          "Доступ запрещён. Сохранять настройки ЕГИСЗ может только владелец или админ клиники (войдите на поддомен клиники, не как супер-админ).",
+      },
+      { status: 403 }
+    );
   }
   const deniedPut = await assertClinicModule(ctx.clinicId, "egisz");
   if (deniedPut) return deniedPut;
@@ -69,10 +79,16 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Неверный запрос" }, { status: 400 });
   }
 
-  const incoming = parseEgiszConfig(body);
-  const saved = await saveEgiszConfig(ctx.clinicId, incoming);
-  return NextResponse.json({
-    ok: true,
-    config: maskEgiszConfigForClient(saved),
-  });
+  try {
+    const incoming = parseEgiszConfig(body);
+    const saved = await saveEgiszConfig(ctx.clinicId, incoming);
+    return NextResponse.json({
+      ok: true,
+      config: maskEgiszConfigForClient(saved),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Не удалось сохранить настройки ЕГИСЗ";
+    console.error("[egisz/config PUT]", e);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

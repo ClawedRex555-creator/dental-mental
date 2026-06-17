@@ -182,18 +182,19 @@ function AppointmentDocumentsModalBody({
       if (selectedConsents.includes(d.id)) toPrint.push(d);
     });
     if (sendToEgisz === "no") {
-      if (egiszRefusals.length === 0) {
-        toast.error(
-          `Добавьте документ в юр. отдел → категория «${LEGAL_CATEGORY_EGISZ_REFUSAL}»`
-        );
-        return;
-      }
-      egiszRefusals.forEach((d) => {
-        if (selectedEgiszRefusals.includes(d.id)) toPrint.push(d);
-      });
-      if (toPrint.filter((d) => d.kind === "egisz_refusal").length === 0) {
-        toast.error("Выберите хотя бы один документ отказа от ЕГИСЗ");
-        return;
+      const selectedRefusals = egiszRefusals.filter((d) =>
+        selectedEgiszRefusals.includes(d.id)
+      );
+      if (selectedRefusals.length > 0) {
+        selectedRefusals.forEach((d) => toPrint.push(d));
+      } else {
+        toPrint.push({
+          id: "builtin-egisz-refusal",
+          name: "Отказ от передачи данных в ЕГИСЗ",
+          kind: "egisz_refusal",
+          notes:
+            "Пациент уведомлён о праве на отказ от передачи персональных данных в ЕГИСЗ (140-ФЗ).",
+        });
       }
     }
 
@@ -246,9 +247,9 @@ function AppointmentDocumentsModalBody({
         <DialogTitle>Пациент пришёл — документы</DialogTitle>
       </DialogHeader>
       <p className="text-sm text-slate-500">
-        Документы подгружаются из{" "}
-        <span className="font-medium text-slate-700">Юр. отдела</span>: договоры и согласия — из
-        соответствующих категорий. При отказе от ЕГИСЗ — из категории «
+        Договоры и согласия — из{" "}
+        <span className="font-medium text-slate-700">Юр. отдела</span>. При отказе от ЕГИСЗ
+        можно распечатать стандартную форму или выбрать свою из категории «
         {LEGAL_CATEGORY_EGISZ_REFUSAL}».
       </p>
 
@@ -288,20 +289,23 @@ function AppointmentDocumentsModalBody({
               checked={sendToEgisz === "no"}
               onChange={() => handleEgiszChoice("no")}
             />
-            Нет — печать отказа из юр. отдела
+            Нет — печать отказа (стандартная форма)
           </label>
         </div>
 
-        {sendToEgisz === "no" && (
+        {sendToEgisz === "no" && egiszRefusals.length > 0 && (
           <div className="mt-2 border-t border-slate-100 pt-3">
             <DocList
-              title={LEGAL_CATEGORY_EGISZ_REFUSAL}
+              title={`${LEGAL_CATEGORY_EGISZ_REFUSAL} (необязательно)`}
               items={egiszRefusals}
               selected={selectedEgiszRefusals}
               onToggle={(id) => toggle(id, selectedEgiszRefusals, setSelectedEgiszRefusals)}
-              emptyHint={`Загрузите форму отказа в юр. отдел → «${LEGAL_CATEGORY_EGISZ_REFUSAL}»`}
+              emptyHint=""
               onAttachFile={attachFileToDoc}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Если ничего не выбрано — будет напечатана встроенная форма отказа.
+            </p>
           </div>
         )}
       </div>
