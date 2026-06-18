@@ -3,14 +3,18 @@
 /** Стоматологический осмотр / протокол консультации */
 export const CDA_TEMPLATE_OID = "1.2.643.5.1.13.13.14.1.9.1.181";
 
-/** Код типа документа в справочнике 1.2.643.2.69.1.1.1.195 для AddMedRecord */
+/**
+ * Код типа документа в справочнике 1.2.643.2.69.1.1.1.195 для AddMedRecord.
+ * 119 — «Протокол консультации (CDA) Редакция 4» (актуальный для стоматологии / приёма).
+ * Не путать с суффиксом OID шаблона (.181) — это не код из справочника 195.
+ */
 export const N3_MED_DOCUMENT_TYPE_BY_OID: Record<string, string> = {
-  [CDA_TEMPLATE_OID]: "186",
+  [CDA_TEMPLATE_OID]: "119",
 };
 
 export function resolveN3MedDocumentType(documentOid?: string): string {
   const oid = documentOid?.trim() || CDA_TEMPLATE_OID;
-  return N3_MED_DOCUMENT_TYPE_BY_OID[oid] ?? "186";
+  return N3_MED_DOCUMENT_TYPE_BY_OID[oid] ?? "119";
 }
 
 export const CDA_TYPE_ID_ROOT = "2.16.840.1.113883.1.3";
