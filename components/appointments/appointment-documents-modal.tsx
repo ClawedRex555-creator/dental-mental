@@ -58,15 +58,15 @@ function DocList({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+      <h3 className="text-sm font-semibold text-[var(--foreground)]">{title}</h3>
+      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
         {items.length === 0 ? (
-          <p className="p-2 text-xs text-slate-500">{emptyHint}</p>
+          <p className="p-2 text-xs text-[var(--muted)]">{emptyHint}</p>
         ) : (
           items.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-start gap-2 rounded p-2 hover:bg-slate-50"
+              className="flex items-start gap-2 rounded p-2 hover:bg-[var(--nav-hover-bg)]"
             >
               <input
                 type="checkbox"
@@ -75,14 +75,14 @@ function DocList({
                 className="mt-1"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">{doc.name}</p>
-                {doc.notes && <p className="text-xs text-slate-500">{doc.notes}</p>}
+                <p className="text-sm font-medium text-[var(--foreground)]">{doc.name}</p>
+                {doc.notes && <p className="text-xs text-[var(--muted)]">{doc.notes}</p>}
                 {doc.fileName && (
-                  <p className="text-xs text-teal-700">Файл: {doc.fileName}</p>
+                  <p className="text-xs text-teal-600 dark:text-teal-400">Файл: {doc.fileName}</p>
                 )}
               </div>
-              <label className="cursor-pointer rounded border border-slate-200 p-1 hover:bg-slate-100">
-                <Upload className="h-3.5 w-3.5 text-slate-600" />
+              <label className="cursor-pointer rounded border border-[var(--border)] p-1 hover:bg-[var(--nav-hover-bg)]">
+                <Upload className="h-3.5 w-3.5 text-[var(--muted)]" />
                 <input
                   type="file"
                   accept=".pdf,image/*,.doc,.docx"
@@ -246,9 +246,9 @@ function AppointmentDocumentsModalBody({
       <DialogHeader>
         <DialogTitle>Пациент пришёл — документы</DialogTitle>
       </DialogHeader>
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-[var(--muted)]">
         Договоры и согласия — из{" "}
-        <span className="font-medium text-slate-700">Юр. отдела</span>. При отказе от ЕГИСЗ
+        <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. При отказе от ЕГИСЗ
         можно распечатать стандартную форму или выбрать свою из категории «
         {LEGAL_CATEGORY_EGISZ_REFUSAL}».
       </p>
@@ -272,10 +272,10 @@ function AppointmentDocumentsModalBody({
         />
       </div>
 
-      <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+      <div className="rounded-lg border border-[var(--border)] p-3 space-y-2">
         <Label>Отправка данных в ЕГИСЗ</Label>
         <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-slate-800">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
             <input
               type="radio"
               checked={sendToEgisz === "yes"}
@@ -283,7 +283,7 @@ function AppointmentDocumentsModalBody({
             />
             Да, отправить
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-800">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
             <input
               type="radio"
               checked={sendToEgisz === "no"}
@@ -294,7 +294,7 @@ function AppointmentDocumentsModalBody({
         </div>
 
         {sendToEgisz === "no" && egiszRefusals.length > 0 && (
-          <div className="mt-2 border-t border-slate-100 pt-3">
+          <div className="mt-2 border-t border-[var(--border)] pt-3">
             <DocList
               title={`${LEGAL_CATEGORY_EGISZ_REFUSAL} (необязательно)`}
               items={egiszRefusals}
@@ -303,20 +303,20 @@ function AppointmentDocumentsModalBody({
               emptyHint=""
               onAttachFile={attachFileToDoc}
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-[var(--muted)]">
               Если ничего не выбрано — будет напечатана встроенная форма отказа.
             </p>
           </div>
         )}
       </div>
 
-      <div className="rounded-lg bg-slate-50 p-3 space-y-3">
+      <div className="rounded-lg bg-[var(--callout-neutral-bg)] p-3 space-y-3">
         <Label className="text-xs font-semibold">
           Быстро добавить в юр. отдел (договор или согласие)
         </Label>
         <div className="grid grid-cols-2 gap-2">
           <select
-            className="h-9 rounded-lg border border-slate-200 px-2 text-sm text-slate-900"
+            className="h-9 rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-2 text-sm text-[var(--foreground)]"
             value={newDocCategory}
             onChange={(e) =>
               setNewDocCategory(
@@ -334,7 +334,7 @@ function AppointmentDocumentsModalBody({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm hover:border-teal-400">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] hover:border-teal-400">
             <Upload className="h-4 w-4" />
             {pendingFile ? pendingFile.name : "Файл (PDF, фото)"}
             <input

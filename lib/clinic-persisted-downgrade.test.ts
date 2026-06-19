@@ -307,4 +307,64 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     assert.equal(saved.patients.some((p) => p.id === "p2"), false);
     assert.equal(saved.appointments.some((a) => a.patientId === "p2"), false);
   });
+
+  it("mergeClinicDataForSave persists medical record deletion", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [patient("p1")];
+    existing.doctors = [
+      {
+        id: "d1",
+        name: "Doc",
+        specialization: "T",
+        phone: "",
+        email: "",
+        cabinet: "—",
+        commissionPercent: 0,
+        status: "active",
+        role: "doctor",
+      },
+    ];
+    existing.medicalRecords = Array.from({ length: 8 }, (_, i) => ({
+      id: `mr${i}`,
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-01",
+      diagnosis: `Diag ${i}`,
+      complaints: "—",
+      treatment: "—",
+    }));
+
+    const incoming = {
+      ...existing,
+      medicalRecords: existing.medicalRecords.filter((r) => r.id !== "mr0" && r.id !== "mr1"),
+    };
+
+    assert.equal(isSuspiciousClinicDataDowngrade(existing, incoming), false);
+    const saved = mergeClinicDataForSave(existing, incoming);
+    assert.equal(saved.medicalRecords.length, 6);
+    assert.equal(saved.medicalRecords.some((r) => r.id === "mr0"), false);
+  });
+
+  it("mergeClinicSnapshotWithLocal respects deleted medical records after reload", () => {
+    const remote = createFreshPersistedState();
+    remote.patients = [patient("p1")];
+    remote.medicalRecords = Array.from({ length: 3 }, (_, i) => ({
+      id: `mr${i}`,
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-01",
+      diagnosis: `Diag ${i}`,
+      complaints: "—",
+      treatment: "—",
+    }));
+
+    const local = {
+      ...remote,
+      medicalRecords: remote.medicalRecords.filter((r) => r.id !== "mr1"),
+    };
+
+    const merged = mergeClinicSnapshotWithLocal(remote, local);
+    assert.equal(merged.medicalRecords.length, 2);
+    assert.equal(merged.medicalRecords.some((r) => r.id === "mr1"), false);
+  });
 });

@@ -268,6 +268,31 @@ export function mergeByIdPreferLocal<T extends { id: string }>(remote: T[], loca
   return Array.from(map.values());
 }
 
+/** Явное удаление в local: не поднимать строки, которых уже нет в local */
+export function hasEntityListDeletion<T extends { id: string }>(
+  existing: T[],
+  incoming: T[]
+): boolean {
+  return (
+    isDeletionOnlySubset(existing, incoming) && incoming.length < existing.length
+  );
+}
+
+/** mergeByIdPreferLocal с учётом удалений в local (после reload / до автосохранения) */
+export function mergeByIdPreferLocalRespectingDeletions<T extends { id: string }>(
+  remote: T[],
+  local: T[]
+): T[] {
+  if (!hasEntityListDeletion(remote, local)) {
+    return mergeByIdPreferLocal(remote, local);
+  }
+  const localIds = new Set(local.map((x) => x.id));
+  return mergeByIdPreferLocal(
+    remote.filter((x) => localIds.has(x.id)),
+    local
+  );
+}
+
 export function doctorScheduleKey(schedule: DoctorMonthSchedule): string {
   return `${schedule.doctorId}:${schedule.month}`;
 }
@@ -415,23 +440,53 @@ export function mergeClinicSnapshotWithLocal(
     services: mergeClinicServices(remote.services, local.services),
     cabinets: mergeByIdPreferLocal(remote.cabinets, local.cabinets),
     patients: mergeClinicPatients(remote.patients, local.patients),
-    appointments: mergeByIdPreferLocal(remote.appointments, local.appointments),
-    medicalRecords: mergeByIdPreferLocal(remote.medicalRecords, local.medicalRecords),
-    treatmentPlans: mergeByIdPreferLocal(remote.treatmentPlans, local.treatmentPlans),
-    payments: mergeByIdPreferLocal(remote.payments, local.payments),
-    invoices: mergeByIdPreferLocal(remote.invoices, local.invoices),
-    workActs: mergeByIdPreferLocal(remote.workActs, local.workActs),
-    warehouse: mergeByIdPreferLocal(remote.warehouse, local.warehouse),
-    tasks: mergeByIdPreferLocal(remote.tasks, local.tasks),
-    onlineBookings: mergeByIdPreferLocal(remote.onlineBookings, local.onlineBookings),
-    patientFiles: mergeByIdPreferLocal(remote.patientFiles, local.patientFiles),
-    patientNotes: mergeByIdPreferLocal(remote.patientNotes, local.patientNotes),
+    appointments: mergeByIdPreferLocalRespectingDeletions(
+      remote.appointments,
+      local.appointments
+    ),
+    medicalRecords: mergeByIdPreferLocalRespectingDeletions(
+      remote.medicalRecords,
+      local.medicalRecords
+    ),
+    treatmentPlans: mergeByIdPreferLocalRespectingDeletions(
+      remote.treatmentPlans,
+      local.treatmentPlans
+    ),
+    payments: mergeByIdPreferLocalRespectingDeletions(remote.payments, local.payments),
+    invoices: mergeByIdPreferLocalRespectingDeletions(remote.invoices, local.invoices),
+    workActs: mergeByIdPreferLocalRespectingDeletions(remote.workActs, local.workActs),
+    warehouse: mergeByIdPreferLocalRespectingDeletions(remote.warehouse, local.warehouse),
+    tasks: mergeByIdPreferLocalRespectingDeletions(remote.tasks, local.tasks),
+    onlineBookings: mergeByIdPreferLocalRespectingDeletions(
+      remote.onlineBookings,
+      local.onlineBookings
+    ),
+    patientFiles: mergeByIdPreferLocalRespectingDeletions(
+      remote.patientFiles,
+      local.patientFiles
+    ),
+    patientNotes: mergeByIdPreferLocalRespectingDeletions(
+      remote.patientNotes,
+      local.patientNotes
+    ),
     teethByPatient: { ...remote.teethByPatient, ...local.teethByPatient },
-    documentTemplates: mergeByIdPreferLocal(remote.documentTemplates, local.documentTemplates),
-    clinicExpenses: mergeByIdPreferLocal(remote.clinicExpenses, local.clinicExpenses),
-    legalDocuments: mergeByIdPreferLocal(remote.legalDocuments, local.legalDocuments),
+    documentTemplates: mergeByIdPreferLocalRespectingDeletions(
+      remote.documentTemplates,
+      local.documentTemplates
+    ),
+    clinicExpenses: mergeByIdPreferLocalRespectingDeletions(
+      remote.clinicExpenses,
+      local.clinicExpenses
+    ),
+    legalDocuments: mergeByIdPreferLocalRespectingDeletions(
+      remote.legalDocuments,
+      local.legalDocuments
+    ),
     doctorSchedules: mergeDoctorSchedules(remote.doctorSchedules, local.doctorSchedules),
-    prepayments: mergeByIdPreferLocal(remote.prepayments, local.prepayments),
+    prepayments: mergeByIdPreferLocalRespectingDeletions(
+      remote.prepayments,
+      local.prepayments
+    ),
     actCounter: Math.max(remote.actCounter, local.actCounter),
     clinicSettings: local.clinicSettings ?? remote.clinicSettings,
     userThemePreferences: {
@@ -465,12 +520,19 @@ export function mergeClinicDataForSave(
     if (!incomingPatientIds.has(id)) deletedPatientIds.add(id);
   }
   const hasPatientDeletion = deletedPatientIds.size > 0;
-  const hasLegalDocumentDeletion =
-    isDeletionOnlySubset(existing.legalDocuments, incoming.legalDocuments) &&
-    incoming.legalDocuments.length < existing.legalDocuments.length;
-  const hasServiceDeletion =
-    isDeletionOnlySubset(existing.services, incoming.services) &&
-    incoming.services.length < existing.services.length;
+  const hasLegalDocumentDeletion = hasEntityListDeletion(
+    existing.legalDocuments,
+    incoming.legalDocuments
+  );
+  const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
+  const hasMedicalRecordDeletion = hasEntityListDeletion(
+    existing.medicalRecords,
+    incoming.medicalRecords
+  );
+  const hasTreatmentPlanDeletion = hasEntityListDeletion(
+    existing.treatmentPlans,
+    incoming.treatmentPlans
+  );
 
   const merged: ClinicPersistedState = {
     ...incoming,
@@ -490,12 +552,12 @@ export function mergeClinicDataForSave(
     medicalRecords: mergeArr(
       existing.medicalRecords,
       incoming.medicalRecords,
-      hasPatientDeletion ? undefined : protect
+      hasPatientDeletion || hasMedicalRecordDeletion ? undefined : protect
     ),
     treatmentPlans: mergeArr(
       existing.treatmentPlans,
       incoming.treatmentPlans,
-      hasPatientDeletion ? undefined : protect
+      hasPatientDeletion || hasTreatmentPlanDeletion ? undefined : protect
     ),
     payments: mergeArr(existing.payments, incoming.payments, hasPatientDeletion ? undefined : protect),
     invoices: mergeArr(existing.invoices, incoming.invoices, hasPatientDeletion ? undefined : protect),
@@ -577,15 +639,20 @@ export function isSuspiciousClinicDataDowngrade(
 
   // Важный кейс: при удалении пациента может пропасть большая доля зависимых сущностей
   // (приёмы/акты/платежи/медкарта). Это легитимно и не должно блокироваться защитой.
-  const hasPatientDeletion =
-    isDeletionOnlySubset(existing.patients, incoming.patients) &&
-    incoming.patients.length < existing.patients.length;
-  const hasLegalDocumentDeletion =
-    isDeletionOnlySubset(existing.legalDocuments, incoming.legalDocuments) &&
-    incoming.legalDocuments.length < existing.legalDocuments.length;
-  const hasServiceDeletion =
-    isDeletionOnlySubset(existing.services, incoming.services) &&
-    incoming.services.length < existing.services.length;
+  const hasPatientDeletion = hasEntityListDeletion(existing.patients, incoming.patients);
+  const hasLegalDocumentDeletion = hasEntityListDeletion(
+    existing.legalDocuments,
+    incoming.legalDocuments
+  );
+  const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
+  const hasMedicalRecordDeletion = hasEntityListDeletion(
+    existing.medicalRecords,
+    incoming.medicalRecords
+  );
+  const hasTreatmentPlanDeletion = hasEntityListDeletion(
+    existing.treatmentPlans,
+    incoming.treatmentPlans
+  );
 
   const guarded: Array<{
     existing: { id: string }[];
@@ -602,8 +669,16 @@ export function isSuspiciousClinicDataDowngrade(
 
     // Транзакционные сущности: защищаем от "обнуления" только если пациенты не удалялись.
     { existing: existing.appointments, incoming: incoming.appointments, protectMassLoss: !hasPatientDeletion },
-    { existing: existing.medicalRecords, incoming: incoming.medicalRecords, protectMassLoss: !hasPatientDeletion },
-    { existing: existing.treatmentPlans, incoming: incoming.treatmentPlans, protectMassLoss: !hasPatientDeletion },
+    {
+      existing: existing.medicalRecords,
+      incoming: incoming.medicalRecords,
+      protectMassLoss: !hasPatientDeletion && !hasMedicalRecordDeletion,
+    },
+    {
+      existing: existing.treatmentPlans,
+      incoming: incoming.treatmentPlans,
+      protectMassLoss: !hasPatientDeletion && !hasTreatmentPlanDeletion,
+    },
     { existing: existing.payments, incoming: incoming.payments, protectMassLoss: !hasPatientDeletion },
     { existing: existing.workActs, incoming: incoming.workActs, protectMassLoss: !hasPatientDeletion },
     {
