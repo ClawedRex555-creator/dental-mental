@@ -7,6 +7,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { DiscountType, WorkAct, WorkActItem } from "@/lib/types";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
+import { normalizeServiceFields } from "@/lib/service-categories";
 import { calcWorkActAmounts } from "@/lib/work-act-utils";
 import { printWorkAct } from "@/lib/work-act-print";
 import { canDeleteWorkActs } from "@/lib/rbac";
@@ -130,10 +131,16 @@ export function WorkActModal({
     setDiscount("0");
     setSavedActId(null);
 
-    const mapDefault = (it: { serviceName: string; price: number; serviceId?: string }) => ({
+    const mapDefault = (it: {
+      serviceName: string;
+      price: number;
+      serviceId?: string;
+      serviceCategory?: string;
+    }) => ({
       id: generateId("wai"),
       serviceId: it.serviceId,
       serviceName: it.serviceName,
+      serviceCategory: it.serviceCategory,
       quantity: 1,
       price: it.price,
       total: it.price,
@@ -145,11 +152,13 @@ export function WorkActModal({
       const apt = appointments.find((a) => a.id === defaultAppointmentId);
       const svc = apt ? services.find((s) => s.id === apt.serviceId) : undefined;
       if (apt) {
+        const normalized = svc ? normalizeServiceFields(svc) : null;
         setItems([
           {
             id: generateId("wai"),
             serviceId: svc?.id,
             serviceName: svc?.name ?? apt.reason ?? "Стоматологические услуги",
+            serviceCategory: normalized?.category,
             quantity: 1,
             price: apt.price,
             total: apt.price,
@@ -175,7 +184,16 @@ export function WorkActModal({
   ]);
 
   const persistAct = (submittedToAdmin?: boolean): WorkAct | null => {
-    const filledItems = items.filter((i) => i.serviceId && i.serviceName.trim());
+    const filledItems = items
+      .filter((i) => i.serviceId && i.serviceName.trim())
+      .map((i) => {
+        const quantity = Math.max(1, i.quantity || 1);
+        return {
+          ...i,
+          quantity,
+          total: quantity * (i.price || 0),
+        };
+      });
     if (!patientId || !doctorId || filledItems.length === 0) {
       toast.error("Укажите пациента, врача и услуги из прайса");
       return null;
@@ -342,12 +360,14 @@ export function WorkActModal({
                   onSelect={(service) => {
                     const s = services.find((x) => x.id === service.id);
                     if (!s) return;
+                    const normalized = normalizeServiceFields(s);
                     setItems((prev) => [
                       ...prev,
                       {
                         id: generateId("wai"),
                         serviceId: s.id,
                         serviceName: s.name,
+                        serviceCategory: normalized.category,
                         quantity: 1,
                         price: s.price,
                         total: s.price,
@@ -386,22 +406,37 @@ export function WorkActModal({
                       type="number"
                       min={1}
                       className="text-center"
-                      value={item.quantity}
-                      onChange={(e) =>
+                      value={item.quantity > 0 ? item.quantity : ""}
+                      placeholder="1"
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const qty =
+                          raw === "" ? 0 : Math.max(0, Number(raw.replace(",", ".")) || 0);
                         setItems((prev) =>
                           prev.map((it) =>
                             it.id === item.id
                               ? {
                                   ...it,
-                                  quantity: Math.max(1, Number(e.target.value) || 1),
-                                  total:
-                                    Math.max(1, Number(e.target.value) || 1) *
-                                    (it.price || 0),
+                                  quantity: qty,
+                                  total: qty * (it.price || 0),
                                 }
                               : it
                           )
-                        )
-                      }
+                        );
+                      }}
+                      onBlur={() => {
+                        setItems((prev) =>
+                          prev.map((it) => {
+                            if (it.id !== item.id) return it;
+                            const quantity = Math.max(1, it.quantity || 1);
+                            return {
+                              ...it,
+                              quantity,
+                              total: quantity * (it.price || 0),
+                            };
+                          })
+                        );
+                      }}
                     />
                   )}
                 </div>

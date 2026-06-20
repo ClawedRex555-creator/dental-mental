@@ -1,6 +1,6 @@
-import { calcPaymentSplit } from "@/lib/finance-utils";
+import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { isDateInRange } from "@/lib/salary-period";
-import type { Doctor, Patient, WorkAct } from "@/lib/types";
+import type { Doctor, Patient, Service, WorkAct } from "@/lib/types";
 
 export interface DoctorSalaryLine {
   act: WorkAct;
@@ -53,17 +53,22 @@ export function getPaidServiceActsForDoctor(
 export function buildDoctorSalarySummary(
   doctor: Doctor,
   acts: WorkAct[],
-  patients: Patient[]
+  patients: Patient[],
+  services: Service[] = []
 ): DoctorSalarySummary {
   const patientsTotal = acts.reduce((s, a) => s + a.totalAmount, 0);
-  const split = calcPaymentSplit(patientsTotal, doctor);
+  const doctorAmount = acts.reduce(
+    (s, a) => s + calcDoctorPaymentForAct(a, doctor, services).doctorAmount,
+    0
+  );
+  const clinicAmount = Math.max(0, patientsTotal - doctorAmount);
 
   const lines: DoctorSalaryLine[] = acts.map((act) => {
     const patient = patients.find((p) => p.id === act.patientId);
     const patientName = patient
       ? [patient.lastName, patient.firstName, patient.middleName].filter(Boolean).join(" ")
       : "—";
-    const lineSplit = calcPaymentSplit(act.totalAmount, doctor);
+    const lineSplit = calcDoctorPaymentForAct(act, doctor, services);
     return {
       act,
       patientName,
@@ -76,9 +81,9 @@ export function buildDoctorSalarySummary(
     doctor,
     actsCount: acts.length,
     patientsTotal,
-    doctorAmount: split.doctorAmount,
-    clinicAmount: split.clinicAmount,
-    doctorPercent: split.doctorPercent,
+    doctorAmount,
+    clinicAmount,
+    doctorPercent: doctor.commissionPercent,
     lines,
   };
 }

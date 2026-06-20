@@ -17,6 +17,30 @@ function repairIfOrphans(state: ClinicPersistedState): ClinicPersistedState {
   return repairMissingPatientsInSnapshot(state);
 }
 
+function hasNewIds<T extends { id: string }>(remote: T[], local: T[]): boolean {
+  const remoteIds = new Set(remote.map((x) => x.id));
+  return local.some((x) => !remoteIds.has(x.id));
+}
+
+function clinicExpensesDiffer(
+  remote: ClinicPersistedState["clinicExpenses"],
+  local: ClinicPersistedState["clinicExpenses"]
+): boolean {
+  if (hasNewIds(remote, local)) return true;
+  const remoteById = new Map(remote.map((e) => [e.id, e]));
+  return local.some((e) => {
+    const r = remoteById.get(e.id);
+    if (!r) return false;
+    return (
+      r.amount !== e.amount ||
+      r.date !== e.date ||
+      r.category !== e.category ||
+      r.description !== e.description ||
+      r.paidByStaffId !== e.paidByStaffId
+    );
+  });
+}
+
 /**
  * Подготовка снимка после GET /api/clinic/data.
  * Быстрый путь: серверный снимок как есть (типичный вход после purge localStorage).
@@ -42,11 +66,10 @@ export function shouldPushSnapshotAfterServerFetch(
   if (readPendingClinicSnapshot()) return true;
   if (!needsMergeWithServerOnLoad(hydrated)) return false;
 
-  const remoteIds = new Set(remote.patients.map((p) => p.id));
-  if (hydrated.patients.some((p) => !remoteIds.has(p.id))) return true;
-
-  const remoteApt = new Set(remote.appointments.map((a) => a.id));
-  if (hydrated.appointments.some((a) => !remoteApt.has(a.id))) return true;
+  if (hasNewIds(remote.patients, hydrated.patients)) return true;
+  if (hasNewIds(remote.appointments, hydrated.appointments)) return true;
+  if (hasNewIds(remote.payments, hydrated.payments)) return true;
+  if (clinicExpensesDiffer(remote.clinicExpenses, hydrated.clinicExpenses)) return true;
 
   return findOrphanPatientIds(remote).length > 0 && hydrated.patients.length > remote.patients.length;
 }

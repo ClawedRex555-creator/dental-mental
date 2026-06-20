@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function MyDoctorSalary() {
-  const { currentUser, doctors, workActs, patients } = useClinicStore();
+  const { currentUser, doctors, workActs, patients, services } = useClinicStore();
   const [period, setPeriod] = useState<SalaryPeriod>("month");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -40,8 +40,8 @@ export function MyDoctorSalary() {
   const summary = useMemo(() => {
     if (!doctor) return null;
     const acts = getPaidServiceActsForDoctor(workActs, doctor.id, from, to);
-    return buildDoctorSalarySummary(doctor, acts, patients);
-  }, [doctor, workActs, patients, from, to]);
+    return buildDoctorSalarySummary(doctor, acts, patients, services);
+  }, [doctor, workActs, patients, services, from, to]);
 
   if (!doctorId || !doctor) {
     return (
@@ -63,6 +63,11 @@ export function MyDoctorSalary() {
         <h1 className="text-2xl font-bold text-[var(--foreground)]">Моя зарплата</h1>
         <p className="text-sm text-[var(--muted)]">
           Начисление по оплаченным актам · комиссия {doctor.commissionPercent}%
+          {doctor.implantFee != null && doctor.implantFee > 0
+            ? doctor.implantFeeType === "rubles"
+              ? ` · имплантация ${doctor.implantFee} ₽/ед.`
+              : ` · имплантация ${doctor.implantFee}%`
+            : ""}
         </p>
       </div>
 
@@ -135,10 +140,10 @@ export function MyDoctorSalary() {
                 <CardTitle className="text-sm text-teal-800">Вам начислено</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-teal-700">
+                <p className="text-2xl font-bold salary-accent">
                   {formatCurrency(summary.doctorAmount)}
                 </p>
-                <p className="mt-1 text-xs text-teal-700/80">
+                <p className="mt-1 text-xs text-[var(--muted)]">
                   {summary.doctorPercent}% от оплаченных услуг
                 </p>
               </CardContent>
@@ -179,7 +184,7 @@ export function MyDoctorSalary() {
                         <td className="px-4 py-3 text-right">
                           {formatCurrency(line.total)}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium text-teal-700">
+                        <td className="px-4 py-3 text-right salary-accent">
                           {formatCurrency(line.doctorAmount)}
                         </td>
                       </tr>

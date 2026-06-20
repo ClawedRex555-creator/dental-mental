@@ -163,7 +163,10 @@ export function ClinicDataSync() {
       if (!initialLoadDone.current) return;
       if (saving.current) return;
 
-      const snap = JSON.stringify(pickPersistedState(useClinicStore.getState()));
+      const snapshot = pickPersistedState(useClinicStore.getState());
+      writePendingClinicSnapshot(snapshot);
+
+      const snap = JSON.stringify(snapshot);
       if (snap === lastTrackedSnap.current) return;
       lastTrackedSnap.current = snap;
 

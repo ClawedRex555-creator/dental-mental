@@ -51,6 +51,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
   const [address, setAddress] = useState("");
   const [diplomaCertificate, setDiplomaCertificate] = useState("");
   const [commissionPercent, setCommissionPercent] = useState("25");
+  const [implantFeeType, setImplantFeeType] = useState<"percent" | "rubles">("percent");
+  const [implantFee, setImplantFee] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
   const [snils, setSnils] = useState("");
   const [frmrOid, setFrmrOid] = useState("");
@@ -97,6 +99,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setAddress(member.address ?? "");
       setDiplomaCertificate(member.diplomaCertificate ?? "");
       setCommissionPercent(String(member.commissionPercent ?? 25));
+      setImplantFeeType(member.implantFeeType ?? "percent");
+      setImplantFee(member.implantFee != null ? String(member.implantFee) : "");
       setHourlyRate(member.hourlyRate != null ? String(member.hourlyRate) : "");
       setSnils(member.snils ?? "");
       setFrmrOid(member.frmrOid ?? "");
@@ -116,6 +120,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setAddress("");
       setDiplomaCertificate("");
       setCommissionPercent("25");
+      setImplantFeeType("percent");
+      setImplantFee("");
       setHourlyRate("");
       setSnils("");
       setFrmrOid("");
@@ -184,6 +190,12 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       address: address.trim() || undefined,
       diplomaCertificate: diplomaCertificate.trim() || undefined,
       commissionPercent: role === "doctor" ? Number(commissionPercent) || 0 : 0,
+      implantFeeType:
+        role === "doctor" && implantFee.trim() ? implantFeeType : undefined,
+      implantFee:
+        role === "doctor" && implantFee.trim()
+          ? Number(implantFee.replace(",", ".")) || 0
+          : undefined,
       hourlyRate: role === "assistant" ? Number(hourlyRate) || 0 : undefined,
       snils: snils.trim() || undefined,
       frmrOid: frmrOid.trim() || undefined,
@@ -537,6 +549,36 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
                 value={commissionPercent}
                 onChange={(e) => setCommissionPercent(e.target.value)}
               />
+              <p className="text-xs text-[var(--muted)]">
+                Процент от суммы акта по всем услугам, кроме категории «Имплантация».
+              </p>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Вознаграждение за имплантацию</Label>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="flex h-10 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+                  value={implantFeeType}
+                  onChange={(e) =>
+                    setImplantFeeType(e.target.value as "percent" | "rubles")
+                  }
+                >
+                  <option value="percent">Процент от суммы услуги</option>
+                  <option value="rubles">Фиксированная сумма за единицу, ₽</option>
+                </select>
+                <Input
+                  type="number"
+                  min={0}
+                  className="w-40"
+                  value={implantFee}
+                  onChange={(e) => setImplantFee(e.target.value)}
+                  placeholder={implantFeeType === "percent" ? "например 15" : "например 5000"}
+                />
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                Применяется только к услугам из вкладки «Имплантация» в прайсе. Протезирование
+                на имплантате — отдельная вкладка «Протезирование», считается по общей комиссии %.
+              </p>
             </div>
             <div className="form-panel grid grid-cols-2 gap-3 sm:col-span-2">
               <p className="form-panel-title sm:col-span-2">ЕГИСЗ / N3 (врач)</p>

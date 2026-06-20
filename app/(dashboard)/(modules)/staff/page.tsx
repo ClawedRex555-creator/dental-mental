@@ -162,6 +162,14 @@ export default function StaffPage() {
                   {member.role === "doctor" && (
                     <>
                       <p className="text-teal-700">Комиссия: {member.commissionPercent}%</p>
+                      {member.implantFee != null && member.implantFee > 0 && (
+                        <p className="text-teal-700">
+                          Имплантация:{" "}
+                          {member.implantFeeType === "rubles"
+                            ? `${member.implantFee} ₽/ед.`
+                            : `${member.implantFee}%`}
+                        </p>
+                      )}
                       <Button
                         type="button"
                         variant="outline"

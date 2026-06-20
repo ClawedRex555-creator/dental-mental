@@ -1,11 +1,17 @@
-import type { Service } from "./types";
+import type { Service, WorkActItem } from "./types";
 import { serviceNotes } from "./utils";
+
+export const SERVICE_CATEGORY_IMPLANTATION = "Имплантация";
+export const SERVICE_CATEGORY_PROSTHETICS = "Протезирование";
+/** @deprecated миграция в Имплантация / Протезирование */
+export const LEGACY_IMPLANT_PROSTHETICS_CATEGORY = "Имплантация и протезирование";
 
 export const SERVICE_CATEGORIES = [
   "Терапия",
   "Ортопедия",
   "Хирургия",
-  "Имплантация и протезирование",
+  SERVICE_CATEGORY_IMPLANTATION,
+  SERVICE_CATEGORY_PROSTHETICS,
   "Детская стоматология",
   "Ортодонтия",
   "Диагностика и вспомогательные услуги",
@@ -26,16 +32,15 @@ const CATEGORY_ALIASES: Record<string, ServiceCategory> = {
   хирургическое: "Хирургия",
   "хирургия и имплантация": "Хирургия",
   "имплантация и хирургия": "Хирургия",
-  имплантация: "Имплантация и протезирование",
-  "имплантация и протезирование": "Имплантация и протезирование",
-  имплантология: "Имплантация и протезирование",
-  импланты: "Имплантация и протезирование",
-  "ортопедия и имплантация": "Имплантация и протезирование",
-  "протезирование и имплантация": "Имплантация и протезирование",
-  /** Отдельное «протезирование» без импланта — ортопедия */
-  протезирование: "Ортопедия",
-  "несъемное протезирование": "Ортопедия",
-  "съемное протезирование": "Ортопедия",
+  имплантация: SERVICE_CATEGORY_IMPLANTATION,
+  [LEGACY_IMPLANT_PROSTHETICS_CATEGORY.toLowerCase()]: SERVICE_CATEGORY_IMPLANTATION,
+  имплантология: SERVICE_CATEGORY_IMPLANTATION,
+  импланты: SERVICE_CATEGORY_IMPLANTATION,
+  "ортопедия и имплантация": SERVICE_CATEGORY_IMPLANTATION,
+  "протезирование и имплантация": SERVICE_CATEGORY_PROSTHETICS,
+  протезирование: SERVICE_CATEGORY_PROSTHETICS,
+  "несъемное протезирование": SERVICE_CATEGORY_PROSTHETICS,
+  "съемное протезирование": SERVICE_CATEGORY_PROSTHETICS,
   диагностика: "Диагностика и вспомогательные услуги",
   "диагностика и вспомогательные услуги": "Диагностика и вспомогательные услуги",
   "вспомогательные услуги": "Диагностика и вспомогательные услуги",
@@ -75,8 +80,11 @@ export function normalizeServiceCategory(category: string | undefined): string {
   const lower = trimmed.toLowerCase();
   if (lower.includes("хирург")) return "Хирургия";
   if (lower.includes("ортопед") && !lower.includes("имплант")) return "Ортопедия";
+  if (lower.includes("протез") && !lower.includes("хирург")) {
+    return SERVICE_CATEGORY_PROSTHETICS;
+  }
   if (lower.includes("имплант") && !lower.includes("хирург")) {
-    return "Имплантация и протезирование";
+    return SERVICE_CATEGORY_IMPLANTATION;
   }
   if (
     lower.includes("диагност") ||
@@ -95,11 +103,16 @@ export function isKnownServiceCategory(category: string): boolean {
   return findCanonicalCategory(category) !== null;
 }
 
-/** Нормализация полей услуги без смены категории по названию */
+/** Нормализация полей услуги; старая объединённая категория делится по названию услуги */
 export function normalizeServiceFields(service: Service): Service {
+  const raw = service.category?.trim() ?? "";
+  const category =
+    raw === LEGACY_IMPLANT_PROSTHETICS_CATEGORY
+      ? splitLegacyImplantProstheticsCategory(service.name)
+      : normalizeServiceCategory(service.category);
   return {
     ...service,
-    category: normalizeServiceCategory(service.category),
+    category,
     price: coerceServicePrice(service.price),
   };
 }
@@ -166,4 +179,49 @@ export function groupServicesByCategory(
   }
 
   return groups;
+}
+
+/** Разделение старой объединённой категории по названию услуги */
+export function splitLegacyImplantProstheticsCategory(serviceName: string): ServiceCategory {
+  const lower = serviceName.toLowerCase();
+  if (
+    lower.includes("коронк") ||
+    lower.includes("абатмент") ||
+    lower.includes("винир") ||
+    (lower.includes("протез") && !lower.includes("имплант"))
+  ) {
+    return SERVICE_CATEGORY_PROSTHETICS;
+  }
+  return SERVICE_CATEGORY_IMPLANTATION;
+}
+
+export function isImplantationServiceCategory(category: string | undefined): boolean {
+  if (!category?.trim()) return false;
+  const normalized = normalizeServiceCategory(category);
+  if (normalized === SERVICE_CATEGORY_IMPLANTATION) return true;
+  if (normalized === LEGACY_IMPLANT_PROSTHETICS_CATEGORY) return true;
+  return false;
+}
+
+/** Категория услуги для расчёта комиссии (с учётом legacy и serviceId) */
+export function resolveCommissionServiceCategory(
+  item: Pick<WorkActItem, "serviceId" | "serviceCategory" | "serviceName">,
+  services: Service[]
+): string {
+  if (item.serviceCategory?.trim()) {
+    const cat = item.serviceCategory.trim();
+    if (cat === LEGACY_IMPLANT_PROSTHETICS_CATEGORY) {
+      return splitLegacyImplantProstheticsCategory(item.serviceName);
+    }
+    return normalizeServiceCategory(cat);
+  }
+  const svc = item.serviceId ? services.find((s) => s.id === item.serviceId) : undefined;
+  if (svc) {
+    const cat = normalizeServiceFields(svc).category;
+    if (cat === LEGACY_IMPLANT_PROSTHETICS_CATEGORY) {
+      return splitLegacyImplantProstheticsCategory(svc.name);
+    }
+    return cat;
+  }
+  return normalizeServiceCategory(item.serviceName);
 }

@@ -35,4 +35,20 @@ describe("clinic-snapshot-load", () => {
     assert.equal(prepared.patients.length, 1);
     assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared), false);
   });
+
+  it("pushes when local has new clinic expenses", () => {
+    const remote = createFreshPersistedState();
+    const local = createFreshPersistedState();
+    local.clinicExpenses = [
+      {
+        id: "exp-1",
+        date: "2026-06-20",
+        category: "Аренда",
+        amount: 5000,
+        description: "Аренда",
+      },
+    ];
+    const prepared = prepareSnapshotAfterServerFetch(remote, local);
+    assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared), true);
+  });
 });

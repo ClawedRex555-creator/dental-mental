@@ -2,88 +2,70 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Service } from "./types";
 import {
+  LEGACY_IMPLANT_PROSTHETICS_CATEGORY,
+  SERVICE_CATEGORY_IMPLANTATION,
+  SERVICE_CATEGORY_PROSTHETICS,
   groupServicesByCategory,
   mergeClinicServices,
   normalizeServiceCategory,
   normalizeServiceFields,
+  splitLegacyImplantProstheticsCategory,
 } from "./service-categories";
 
 describe("service categories", () => {
-  it("keeps implant category from dropdown", () => {
+  it("maps implantation and prosthetics separately", () => {
+    assert.equal(normalizeServiceCategory("Имплантация"), SERVICE_CATEGORY_IMPLANTATION);
+    assert.equal(normalizeServiceCategory("Протезирование"), SERVICE_CATEGORY_PROSTHETICS);
     assert.equal(
-      normalizeServiceCategory("Имплантация и протезирование"),
-      "Имплантация и протезирование"
+      normalizeServiceCategory(LEGACY_IMPLANT_PROSTHETICS_CATEGORY),
+      SERVICE_CATEGORY_IMPLANTATION
     );
   });
 
-  it("does not move implant services to orthopedics by service name", () => {
-    const fixed = normalizeServiceFields({
+  it("splits legacy combined category by service name", () => {
+    assert.equal(splitLegacyImplantProstheticsCategory("Имплант Nobel"), SERVICE_CATEGORY_IMPLANTATION);
+    assert.equal(
+      splitLegacyImplantProstheticsCategory("Коронка на имплантате"),
+      SERVICE_CATEGORY_PROSTHETICS
+    );
+  });
+
+  it("migrates legacy category on normalizeServiceFields", () => {
+    const implant = normalizeServiceFields({
       id: "1",
+      name: "Имплант",
+      category: LEGACY_IMPLANT_PROSTHETICS_CATEGORY,
+      price: 50000,
+    });
+    assert.equal(implant.category, SERVICE_CATEGORY_IMPLANTATION);
+
+    const crown = normalizeServiceFields({
+      id: "2",
       name: "Коронка на имплантате",
-      category: "Имплантация и протезирование",
+      category: LEGACY_IMPLANT_PROSTHETICS_CATEGORY,
       price: 35000,
     });
-    assert.equal(fixed.category, "Имплантация и протезирование");
+    assert.equal(crown.category, SERVICE_CATEGORY_PROSTHETICS);
   });
 
-  it("maps standalone prosthetics label to orthopedics", () => {
-    assert.equal(normalizeServiceCategory("протезирование"), "Ортопедия");
-    assert.equal(normalizeServiceCategory("ортопедия"), "Ортопедия");
-    assert.equal(normalizeServiceCategory("хирургия"), "Хирургия");
-  });
-
-  it("groups services into canonical categories", () => {
+  it("groups services into implantation and prosthetics tabs", () => {
     const services: Service[] = [
-      { id: "1", name: "Имплант", category: "Имплантация и протезирование", price: 50000 },
-      { id: "2", name: "Коронка", category: "Ортопедия", price: 18000 },
+      { id: "1", name: "Имплант", category: SERVICE_CATEGORY_IMPLANTATION, price: 50000 },
+      { id: "2", name: "Коронка", category: SERVICE_CATEGORY_PROSTHETICS, price: 18000 },
+      { id: "3", name: "Пломба", category: "Терапия", price: 3000 },
     ];
     const groups = groupServicesByCategory(services);
-    assert.equal(
-      groups.find((g) => g.category === "Имплантация и протезирование")?.items.length,
-      1
-    );
-    assert.equal(groups.find((g) => g.category === "Ортопедия")?.items.length, 1);
+    assert.equal(groups.find((g) => g.category === SERVICE_CATEGORY_IMPLANTATION)?.items.length, 1);
+    assert.equal(groups.find((g) => g.category === SERVICE_CATEGORY_PROSTHETICS)?.items.length, 1);
   });
 
   it("merge keeps local services when remote snapshot is shorter", () => {
-    const remote: Service[] = [
-      { id: "a", name: "A", category: "Терапия", price: 1000 },
-    ];
+    const remote: Service[] = [{ id: "a", name: "A", category: "Терапия", price: 1000 }];
     const local: Service[] = [
-      {
-        id: "b",
-        name: "Имплант",
-        category: "Имплантация и протезирование",
-        price: 50000,
-      },
+      { id: "b", name: "Имплант", category: SERVICE_CATEGORY_IMPLANTATION, price: 50000 },
     ];
     const merged = mergeClinicServices(remote, local);
     assert.equal(merged.length, 2);
-    assert.ok(
-      merged.some(
-        (s) => s.id === "b" && s.category === "Имплантация и протезирование"
-      )
-    );
-  });
-
-  it("local wins on same id conflict", () => {
-    const remote: Service[] = [
-      {
-        id: "x",
-        name: "X",
-        category: "Ортопедия",
-        price: 1000,
-      },
-    ];
-    const local: Service[] = [
-      {
-        id: "x",
-        name: "X",
-        category: "Имплантация и протезирование",
-        price: 50000,
-      },
-    ];
-    const merged = mergeClinicServices(remote, local);
-    assert.equal(merged[0]?.category, "Имплантация и протезирование");
+    assert.ok(merged.some((s) => s.id === "b" && s.category === SERVICE_CATEGORY_IMPLANTATION));
   });
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fillDocumentTemplate } from "./arrival-documents";
+import { fillDocumentTemplate, renderMedicalDocumentFormHtml } from "./arrival-documents";
 import type { Patient } from "./types";
 
 function patient(): Patient {
@@ -64,5 +64,37 @@ describe("fillDocumentTemplate", () => {
     assert.match(text, /7700000000/);
     assert.match(text, /Ленина, 5/);
     assert.match(text, /\+7 \(495\) 111-22-33/);
+  });
+
+  it("renders filled medical contract form with patient and clinic", () => {
+    const html = renderMedicalDocumentFormHtml(
+      { id: "c1", name: "Договор", kind: "contract" },
+      {
+        patient: patient(),
+        clinic: {
+          name: "Стоматология Улыбка",
+          phone: "+74951112233",
+          email: "info@test.ru",
+          address: "г. Москва, ул. Ленина, 5",
+          inn: "7700000000",
+          workHours: "Пн–Пт 9:00–21:00",
+        },
+        doctor: {
+          id: "d1",
+          name: "Иванов И.И.",
+          specialization: "Стоматолог-терапевт",
+          phone: "",
+          email: "",
+          cabinet: "1",
+          commissionPercent: 0,
+          status: "active",
+          role: "doctor",
+        },
+      }
+    );
+    assert.match(html, /Иванов Иван Иванович/);
+    assert.match(html, /Стоматология Улыбка/);
+    assert.match(html, /Иванов И\.И\./);
+    assert.match(html, /7700000000/);
   });
 });

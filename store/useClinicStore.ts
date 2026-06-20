@@ -102,6 +102,8 @@ interface ClinicState {
   legalDocuments: LegalDocument[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
+  /** Ручной ввод часов ассистента в разделе «Зарплаты» */
+  assistantManualHours: Record<string, string>;
   /** Тема интерфейса по id пользователя (сохраняется в localStorage) */
   userThemePreferences: Record<string, ThemeMode>;
   /** Включённые модули (управляются супер-админом платформы) */
@@ -142,6 +144,7 @@ interface ClinicState {
   updateDocumentTemplate: (id: string, data: Partial<ClinicDocumentTemplate>) => void;
   removeDocumentTemplate: (id: string) => void;
   addClinicExpense: (expense: ClinicExpense) => void;
+  removeClinicExpense: (id: string) => void;
   addLegalDocument: (doc: LegalDocument) => void;
   updateLegalDocument: (id: string, data: Partial<LegalDocument>) => void;
   removeLegalDocument: (id: string) => void;
@@ -153,6 +156,7 @@ interface ClinicState {
   deletePatient: (id: string) => boolean;
   addAppointment: (appointment: Appointment) => void;
   updateAppointment: (id: string, data: Partial<Appointment>) => void;
+  setAssistantManualHours: (assistantId: string, hours: string) => void;
   addMedicalRecord: (record: MedicalRecord) => void;
   /** Удалить запись медкарты и снять ссылки с актов/планов; false — не найдена */
   deleteMedicalRecord: (id: string) => boolean;
@@ -222,6 +226,7 @@ export const useClinicStore = create<ClinicState>()(
       legalDocuments: freshState.legalDocuments,
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
+      assistantManualHours: freshState.assistantManualHours,
       userThemePreferences: freshState.userThemePreferences,
       enabledModules: defaultClinicModules(),
       clinicSyncPhase: "loading",
@@ -353,6 +358,9 @@ export const useClinicStore = create<ClinicState>()(
             }
             return a;
           }),
+          assistantManualHours: Object.fromEntries(
+            Object.entries(s.assistantManualHours).filter(([key]) => key !== id)
+          ),
           workActs: s.workActs.map((act) =>
             act.doctorId === id ? { ...act, doctorId: undefined } : act
           ),
@@ -402,6 +410,11 @@ export const useClinicStore = create<ClinicState>()(
 
       addClinicExpense: (expense) =>
         set((s) => ({ clinicExpenses: [expense, ...s.clinicExpenses] })),
+
+      removeClinicExpense: (id) =>
+        set((s) => ({
+          clinicExpenses: s.clinicExpenses.filter((e) => e.id !== id),
+        })),
 
       addLegalDocument: (doc) =>
         set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] })),
@@ -517,6 +530,15 @@ export const useClinicStore = create<ClinicState>()(
                 )
               : s.patients;
           return { appointments, patients };
+        }),
+
+      setAssistantManualHours: (assistantId, hours) =>
+        set((s) => {
+          const next = { ...s.assistantManualHours };
+          const trimmed = hours.trim();
+          if (!trimmed) delete next[assistantId];
+          else next[assistantId] = hours;
+          return { assistantManualHours: next };
         }),
 
       addMedicalRecord: (record) =>
@@ -801,6 +823,7 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: data.legalDocuments ?? [],
           doctorSchedules: data.doctorSchedules ?? [],
           prepayments: data.prepayments ?? [],
+          assistantManualHours: data.assistantManualHours ?? {},
           userThemePreferences: mergeThemePreferences(
             data.userThemePreferences,
             readThemePreferencesFromStorage(),
@@ -836,6 +859,10 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: mergeByIdPreferLocal(data.legalDocuments ?? [], s.legalDocuments),
           doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
           prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
+          assistantManualHours: {
+            ...(data.assistantManualHours ?? {}),
+            ...s.assistantManualHours,
+          },
           userThemePreferences: mergeThemePreferences(
             data.userThemePreferences,
             readThemePreferencesFromStorage(),

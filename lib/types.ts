@@ -170,6 +170,9 @@ export interface Doctor {
   address?: string;
   diplomaCertificate?: string;
   commissionPercent: number;
+  /** Вознаграждение за услуги категории «Имплантация»: процент или фикс. ₽ за единицу */
+  implantFeeType?: "percent" | "rubles";
+  implantFee?: number;
   /** Почасовая ставка для ассистента, ₽/час */
   hourlyRate?: number;
   status: "active" | "vacation" | "inactive";
@@ -244,6 +247,8 @@ export interface ClinicExpense {
   amount: number;
   description: string;
   receiptDataUrl?: string;
+  /** Сотрудник, оплативший расход из личных средств (к возмещению) */
+  paidByStaffId?: string;
 }
 
 export interface LegalDocument {
@@ -332,6 +337,8 @@ export interface WorkActItem {
   total: number;
   /** Скидка по строке, % */
   discountPercent?: number;
+  /** Категория прайса на момент добавления в акт */
+  serviceCategory?: string;
 }
 
 export type WorkActType = "services" | "prepayment";

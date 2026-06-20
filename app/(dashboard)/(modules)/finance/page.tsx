@@ -17,7 +17,7 @@ import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { PayActDialog } from "@/components/finance/pay-act-dialog";
 import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip";
 import type { PaymentMethod, WorkAct } from "@/lib/types";
-import { calcPaymentSplit, calcClinicNetAfterSalaries, computeStaffSalariesForRange, sumPaidPaymentsInRange } from "@/lib/finance-utils";
+import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange } from "@/lib/finance-utils";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
 import { printWorkAct } from "@/lib/work-act-print";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { Label } from "@/components/ui/label";
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { formatCurrency, formatDate, generateId, getFullName } from "@/lib/utils";
 import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
-import { canDeleteWorkActs } from "@/lib/rbac";
+import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
@@ -48,14 +48,18 @@ export default function FinancePage() {
     clinicSettings,
     clinicExpenses,
     addClinicExpense,
+    removeClinicExpense,
     prepayments,
     deleteWorkAct,
     currentUser,
+    services,
+    assistantManualHours,
+    setAssistantManualHours,
   } = useClinicStore();
   const canDeleteActs = canDeleteWorkActs(currentUser.role);
+  const canDeleteExpenses = canDeleteClinicExpenses(currentUser.role);
   const [tab, setTab] = useState<FinanceTab>("payments");
   const [period, setPeriod] = useState<Period>("day");
-  const [manualAssistantHours, setManualAssistantHours] = useState<Record<string, string>>({});
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [salaryPeriod, setSalaryPeriod] = useState<SalaryPeriod>("month");
@@ -64,6 +68,8 @@ export default function FinancePage() {
   const [expenseTitle, setExpenseTitle] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState("Аренда");
+  const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [expensePaidByStaffId, setExpensePaidByStaffId] = useState("");
   const [actModalOpen, setActModalOpen] = useState(false);
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
@@ -163,7 +169,14 @@ export default function FinancePage() {
 
   const periodPayments = payments.filter((p) => inPeriod(p.date));
   const periodActs = workActs.filter((a) => inPeriod(a.actDate));
-  const periodExpenses = clinicExpenses.filter((e) => inPeriod(e.date));
+  const periodExpensesTotal = useMemo(
+    () => sumClinicExpensesInRange(clinicExpenses, from, to),
+    [clinicExpenses, from, to]
+  );
+  const periodStaffReimbursements = useMemo(
+    () => sumStaffPaidExpensesInRange(clinicExpenses, from, to),
+    [clinicExpenses, from, to]
+  );
   const periodRevenue = periodPayments
     .filter((p) => p.status === "paid")
     .reduce((s, p) => s + p.amount, 0);
@@ -181,14 +194,20 @@ export default function FinancePage() {
         appointments,
         from,
         to,
-        manualAssistantHours
+        assistantManualHours,
+        services
       ),
-    [doctors, serviceActs, appointments, from, to, manualAssistantHours]
+    [doctors, serviceActs, appointments, from, to, assistantManualHours, services]
   );
 
   const periodNetAfterSalaries = calcClinicNetAfterSalaries(
     periodRevenue,
     periodSalaries
+  );
+  const periodNetAfterAll = calcClinicNetAfterSalariesAndExpenses(
+    periodRevenue,
+    periodSalaries,
+    periodExpensesTotal
   );
 
   const salaryPeriodRevenue = useMemo(
@@ -204,7 +223,8 @@ export default function FinancePage() {
         appointments,
         salaryRangeFrom,
         salaryRangeTo,
-        manualAssistantHours
+        assistantManualHours,
+        services
       ),
     [
       doctors,
@@ -212,14 +232,51 @@ export default function FinancePage() {
       appointments,
       salaryRangeFrom,
       salaryRangeTo,
-      manualAssistantHours,
+      assistantManualHours,
+      services,
     ]
   );
 
-  const salaryPeriodNet = calcClinicNetAfterSalaries(
+  const salaryPeriodExpensesTotal = useMemo(
+    () => sumClinicExpensesInRange(clinicExpenses, salaryRangeFrom, salaryRangeTo),
+    [clinicExpenses, salaryRangeFrom, salaryRangeTo]
+  );
+  const salaryPeriodStaffReimbursements = useMemo(
+    () => sumStaffPaidExpensesInRange(clinicExpenses, salaryRangeFrom, salaryRangeTo),
+    [clinicExpenses, salaryRangeFrom, salaryRangeTo]
+  );
+
+  const salaryPeriodNetAfterSalaries = calcClinicNetAfterSalaries(
     salaryPeriodRevenue,
     salaryPeriodSalaries
   );
+  const salaryPeriodNet = calcClinicNetAfterSalariesAndExpenses(
+    salaryPeriodRevenue,
+    salaryPeriodSalaries,
+    salaryPeriodExpensesTotal
+  );
+
+  const sortedExpenses = useMemo(
+    () => [...clinicExpenses].sort((a, b) => b.date.localeCompare(a.date)),
+    [clinicExpenses]
+  );
+
+  const buildClinicExpense = (receiptDataUrl?: string) => ({
+    id: generateId("exp"),
+    date: expenseDate,
+    category: expenseCategory,
+    amount: Number(expenseAmount) || 0,
+    description: expenseTitle || expenseCategory,
+    receiptDataUrl,
+    paidByStaffId: expensePaidByStaffId || undefined,
+  });
+
+  const resetExpenseForm = () => {
+    setExpenseTitle("");
+    setExpenseAmount("");
+    setExpensePaidByStaffId("");
+    setExpenseDate(format(new Date(), "yyyy-MM-dd"));
+  };
 
   const periodAppointments = appointments.filter((a) => inPeriod(a.date));
 
@@ -245,10 +302,22 @@ export default function FinancePage() {
       .map((doctor) => {
         const acts = salaryActs.filter((a) => a.doctorId === doctor.id);
         const total = acts.reduce((s, a) => s + a.totalAmount, 0);
-        const split = calcPaymentSplit(total, doctor);
-        return { doctor, acts: acts.length, ...split };
+        const doctorAmount = acts.reduce(
+          (s, a) => s + calcDoctorPaymentForAct(a, doctor, services).doctorAmount,
+          0
+        );
+        return {
+          doctor,
+          acts: acts.length,
+          total,
+          doctorAmount,
+          assistantAmount: 0,
+          clinicAmount: Math.max(0, total - doctorAmount),
+          doctorPercent: doctor.commissionPercent,
+          assistantPercent: 0,
+        };
       });
-  }, [doctors, salaryActs]);
+  }, [doctors, salaryActs, services]);
 
   const assistantSalaryRows = useMemo(() => {
     return doctors
@@ -256,7 +325,7 @@ export default function FinancePage() {
       .map((assistant) => {
         const apts = salaryAppointments.filter((a) => a.assistantId === assistant.id);
         const autoHours = apts.reduce((s, a) => s + (a.assistantHours ?? 0), 0);
-        const manual = manualAssistantHours[assistant.id];
+        const manual = assistantManualHours[assistant.id];
         const hours =
           manual !== undefined && manual !== ""
             ? Number(manual) || 0
@@ -271,7 +340,7 @@ export default function FinancePage() {
           total: Math.round(hours * rate),
         };
       });
-  }, [doctors, salaryAppointments, manualAssistantHours]);
+  }, [doctors, salaryAppointments, assistantManualHours]);
 
   const doctorSalaryDetails = useMemo(() => {
     return salaryActs
@@ -279,7 +348,7 @@ export default function FinancePage() {
         const doctor = doctors.find((d) => d.id === act.doctorId);
         const patient = patients.find((p) => p.id === act.patientId);
         if (!doctor || doctor.role !== "doctor") return null;
-        const split = calcPaymentSplit(act.totalAmount, doctor);
+        const split = calcDoctorPaymentForAct(act, doctor, services);
         return {
           act,
           doctor,
@@ -289,7 +358,7 @@ export default function FinancePage() {
       })
       .filter(Boolean)
       .sort((a, b) => b!.act.actDate.localeCompare(a!.act.actDate));
-  }, [salaryActs, doctors, patients]);
+  }, [salaryActs, doctors, patients, services]);
 
   const assistantSalaryDetails = useMemo(() => {
     return salaryAppointments
@@ -366,11 +435,14 @@ export default function FinancePage() {
           <FinanceSummaryStrip
             revenue={periodRevenue}
             salaries={periodSalaries}
+            expensesTotal={periodExpensesTotal}
+            staffReimbursements={periodStaffReimbursements}
             netAfterSalaries={periodNetAfterSalaries}
+            netAfterAll={periodNetAfterAll}
             netLabel={
               period === "day"
-                ? "Клинике за день после зарплат"
-                : "Клинике после зарплат"
+                ? "Клинике за день (итого)"
+                : "Клинике за период (итого)"
             }
           />
         </CardContent>
@@ -383,6 +455,21 @@ export default function FinancePage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-teal-700">{formatCurrency(totalPaid)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-500">Расходы за период</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-red-600">
+              −{formatCurrency(periodExpensesTotal)}
+            </p>
+            {periodStaffReimbursements > 0 && (
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                к возмещению сотрудникам: {formatCurrency(periodStaffReimbursements)}
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -403,10 +490,10 @@ export default function FinancePage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-500">Транзакции</CardTitle>
+            <CardTitle className="text-sm text-slate-500">Итого клинике</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{payments.length}</p>
+            <p className="text-2xl font-bold text-teal-700">{formatCurrency(periodNetAfterAll)}</p>
           </CardContent>
         </Card>
       </div>
@@ -493,11 +580,14 @@ export default function FinancePage() {
                 <FinanceSummaryStrip
                   revenue={salaryPeriodRevenue}
                   salaries={salaryPeriodSalaries}
-                  netAfterSalaries={salaryPeriodNet}
+                  expensesTotal={salaryPeriodExpensesTotal}
+                  staffReimbursements={salaryPeriodStaffReimbursements}
+                  netAfterSalaries={salaryPeriodNetAfterSalaries}
+                  netAfterAll={salaryPeriodNet}
                   netLabel={
                     salaryPeriod === "day"
-                      ? "Клинике за день после зарплат"
-                      : "Клинике после зарплат"
+                      ? "Клинике за день (итого)"
+                      : "Клинике за период (итого)"
                   }
                 />
               </div>
@@ -530,7 +620,7 @@ export default function FinancePage() {
                             </td>
                             <td className="px-4 py-3 text-right">{row.acts}</td>
                             <td className="px-4 py-3 text-right">{formatCurrency(row.total)}</td>
-                            <td className="px-4 py-3 text-right text-teal-600">
+                            <td className="px-4 py-3 text-right salary-accent">
                               {formatCurrency(row.doctorAmount)}
                             </td>
                             <td className="px-4 py-3 text-right">
@@ -547,7 +637,7 @@ export default function FinancePage() {
                             <td className="px-4 py-3 text-right">
                               {formatCurrency(salaryRows.reduce((s, r) => s + r.total, 0))}
                             </td>
-                            <td className="px-4 py-3 text-right text-teal-600">
+                            <td className="px-4 py-3 text-right salary-accent">
                               {formatCurrency(salaryPeriodSalaries.doctorSalary)}
                             </td>
                             <td className="px-4 py-3 text-right">
@@ -597,21 +687,18 @@ export default function FinancePage() {
                               className="ml-auto w-20 text-right"
                               placeholder={String(row.autoHours || "")}
                               value={
-                                manualAssistantHours[row.assistant.id] ??
+                                assistantManualHours[row.assistant.id] ??
                                 (row.hours === 0 ? "" : String(row.hours))
                               }
                               onChange={(e) =>
-                                setManualAssistantHours((prev) => ({
-                                  ...prev,
-                                  [row.assistant.id]: e.target.value,
-                                }))
+                                setAssistantManualHours(row.assistant.id, e.target.value)
                               }
                             />
                           </td>
                           <td className="px-4 py-3 text-right">
                             {formatCurrency(row.rate)}
                           </td>
-                          <td className="px-4 py-3 text-right font-medium text-teal-700">
+                          <td className="px-4 py-3 text-right salary-accent">
                             {formatCurrency(row.total)}
                           </td>
                         </tr>
@@ -661,7 +748,7 @@ export default function FinancePage() {
                           <td className="px-4 py-3 text-right">
                             {formatCurrency(row!.total)}
                           </td>
-                          <td className="px-4 py-3 text-right text-teal-700">
+                          <td className="px-4 py-3 text-right salary-accent">
                             {formatCurrency(row!.doctorAmount)}
                           </td>
                         </tr>
@@ -716,19 +803,23 @@ export default function FinancePage() {
                               min={0}
                               step={0.5}
                               className="ml-auto w-20 text-right"
-                              value={row.hours === 0 ? "" : row.hours}
+                              value={
+                                row.hours > 0 ? row.hours : ""
+                              }
                               placeholder="0"
                               onChange={(e) => {
-                                const val = e.target.value;
+                                const raw = e.target.value;
                                 updateAppointment(row.apt.id, {
                                   assistantHours:
-                                    val === "" ? undefined : Number(val) || 0,
+                                    raw === ""
+                                      ? undefined
+                                      : Math.max(0, Number(raw.replace(",", ".")) || 0),
                                 });
                               }}
                             />
                           </td>
                           <td className="px-4 py-3 text-right">{formatCurrency(row.rate)}</td>
-                          <td className="px-4 py-3 text-right font-medium text-teal-700">
+                          <td className="px-4 py-3 text-right salary-accent">
                             {formatCurrency(row.earned)}
                           </td>
                         </tr>
@@ -740,7 +831,19 @@ export default function FinancePage() {
             </div>
           ) : tab === "expenses" ? (
             <div className="p-4 space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <p className="text-xs text-[var(--muted)]">
+                Расходы синхронизируются между компьютерами. В сводке выше учитываются только за
+                выбранный период ({format(from, "d.MM.yyyy")} — {format(to, "d.MM.yyyy")}).
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-1">
+                  <Label>Дата расхода</Label>
+                  <Input
+                    type="date"
+                    value={expenseDate}
+                    onChange={(e) => setExpenseDate(e.target.value)}
+                  />
+                </div>
                 <div className="space-y-1">
                   <Label>Статья</Label>
                   <Input
@@ -749,19 +852,36 @@ export default function FinancePage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Описание</Label>
-                  <Input value={expenseTitle} onChange={(e) => setExpenseTitle(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Сумма</Label>
+                  <Label>Сумма, ₽</Label>
                   <Input
                     type="number"
+                    min={0}
                     value={expenseAmount}
                     onChange={(e) => setExpenseAmount(e.target.value)}
                   />
                 </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>Описание</Label>
+                  <Input value={expenseTitle} onChange={(e) => setExpenseTitle(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Оплатил сотрудник (из личных средств)</Label>
+                  <select
+                    className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+                    value={expensePaidByStaffId}
+                    onChange={(e) => setExpensePaidByStaffId(e.target.value)}
+                  >
+                    <option value="">Клиника / не указано</option>
+                    {doctors.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                        {member.role === "assistant" ? " (ассистент)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-[var(--muted)]">
                 <Plus className="h-4 w-4" />
                 Прикрепить чек (фото)
                 <input
@@ -773,53 +893,76 @@ export default function FinancePage() {
                     if (!file || !expenseAmount) return;
                     const reader = new FileReader();
                     reader.onload = () => {
-                      addClinicExpense({
-                        id: generateId("exp"),
-                        date: format(new Date(), "yyyy-MM-dd"),
-                        category: expenseCategory,
-                        amount: Number(expenseAmount) || 0,
-                        description: expenseTitle || expenseCategory,
-                        receiptDataUrl: reader.result as string,
-                      });
+                      addClinicExpense(buildClinicExpense(reader.result as string));
                       toast.success("Расход добавлен");
-                      setExpenseTitle("");
-                      setExpenseAmount("");
+                      resetExpenseForm();
                     };
                     reader.readAsDataURL(file);
+                    e.target.value = "";
                   }}
                 />
               </label>
               <Button
                 onClick={() => {
                   if (!expenseAmount) return;
-                  addClinicExpense({
-                    id: generateId("exp"),
-                    date: format(new Date(), "yyyy-MM-dd"),
-                    category: expenseCategory,
-                    amount: Number(expenseAmount) || 0,
-                    description: expenseTitle || expenseCategory,
-                  });
+                  addClinicExpense(buildClinicExpense());
                   toast.success("Расход добавлен");
-                  setExpenseTitle("");
-                  setExpenseAmount("");
+                  resetExpenseForm();
                 }}
               >
                 Добавить расход
               </Button>
-              <div className="divide-y rounded-lg border">
-                {periodExpenses.map((e) => (
-                  <div key={e.id} className="flex justify-between px-4 py-3 text-sm">
-                    <div>
-                      <p className="font-medium">{e.description}</p>
-                      <p className="text-slate-500">
-                        {e.category} · {formatDate(e.date)}
-                      </p>
-                    </div>
-                    <span className="font-medium text-red-600">
-                      −{formatCurrency(e.amount)}
-                    </span>
-                  </div>
-                ))}
+              <div className="divide-y rounded-lg border border-[var(--border)]">
+                {sortedExpenses.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-[var(--muted)]">
+                    Расходов пока нет
+                  </p>
+                ) : (
+                  sortedExpenses.map((e) => {
+                    const payer = e.paidByStaffId
+                      ? doctors.find((d) => d.id === e.paidByStaffId)
+                      : undefined;
+                    const inSelectedPeriod = inPeriod(e.date);
+                    return (
+                      <div
+                        key={e.id}
+                        className={`flex justify-between gap-3 px-4 py-3 text-sm ${inSelectedPeriod ? "" : "opacity-70"}`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-[var(--foreground)]">{e.description}</p>
+                          <p className="text-[var(--muted)]">
+                            {e.category} · {formatDate(e.date)}
+                          </p>
+                          {payer && (
+                            <p className="mt-1 text-xs text-amber-700">
+                              Оплатил: {payer.name} — к возмещению
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-start gap-2">
+                          <span className="font-medium text-red-600">
+                            −{formatCurrency(e.amount)}
+                          </span>
+                          {canDeleteExpenses && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Удалить расход"
+                              onClick={() => {
+                                removeClinicExpense(e.id);
+                                toast.success("Расход удалён");
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           ) : tab === "prepayments" ? (

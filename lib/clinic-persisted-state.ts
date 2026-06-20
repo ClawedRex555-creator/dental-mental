@@ -60,6 +60,8 @@ export interface ClinicPersistedState {
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
+  /** Ручной ввод часов ассистента (зарплаты), ключ — id сотрудника */
+  assistantManualHours: Record<string, string>;
 }
 
 export const CLINIC_DATA_SCHEMA_VERSION = 1;
@@ -93,6 +95,7 @@ export function createFreshPersistedState(): ClinicPersistedState {
     doctorSchedules: [],
     prepayments: [],
     userThemePreferences: {},
+    assistantManualHours: {},
   };
 }
 
@@ -121,6 +124,7 @@ type PersistPickSource = {
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
+  assistantManualHours?: Record<string, string>;
 };
 
 /** Только безопасные для localStorage поля (production + DATABASE_URL) */
@@ -165,6 +169,17 @@ function sanitizeLegalDocuments(docs: LegalDocument[]): LegalDocument[] {
   });
 }
 
+function sanitizeClinicExpenses(expenses: ClinicExpense[]): ClinicExpense[] {
+  return expenses.map((e) => {
+    if (!e.receiptDataUrl) return e;
+    if (!isAllowedDataUrl(e.receiptDataUrl)) {
+      const { receiptDataUrl: _removed, ...rest } = e;
+      return rest;
+    }
+    return e;
+  });
+}
+
 export function pickPersistedState(state: PersistPickSource): ClinicPersistedState {
   return {
     doctors: state.doctors ?? [],
@@ -186,11 +201,12 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     teethByPatient: state.teethByPatient ?? {},
     clinicSettings: state.clinicSettings,
     documentTemplates: state.documentTemplates ?? [],
-    clinicExpenses: state.clinicExpenses ?? [],
+    clinicExpenses: sanitizeClinicExpenses(state.clinicExpenses ?? []),
     legalDocuments: sanitizeLegalDocuments(state.legalDocuments ?? []),
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
+    assistantManualHours: state.assistantManualHours ?? {},
   };
 }
 
@@ -246,7 +262,8 @@ export function hasClinicData(state: ClinicPersistedState): boolean {
     state.workActs.length > 0 ||
     state.payments.length > 0 ||
     state.treatmentPlans.length > 0 ||
-    state.medicalRecords.length > 0
+    state.medicalRecords.length > 0 ||
+    state.clinicExpenses.length > 0
   );
 }
 
@@ -493,6 +510,10 @@ export function mergeClinicSnapshotWithLocal(
       ...remote.userThemePreferences,
       ...local.userThemePreferences,
     },
+    assistantManualHours: {
+      ...(remote.assistantManualHours ?? {}),
+      ...(local.assistantManualHours ?? {}),
+    },
   };
   if (!findOrphanPatientIds(merged).length) return merged;
   return repairMissingPatientsInSnapshot(merged);
@@ -590,6 +611,10 @@ export function mergeClinicDataForSave(
     ),
     teethByPatient: { ...existing.teethByPatient, ...incoming.teethByPatient },
     actCounter: Math.max(existing.actCounter, incoming.actCounter),
+    assistantManualHours: {
+      ...(existing.assistantManualHours ?? {}),
+      ...(incoming.assistantManualHours ?? {}),
+    },
   };
 
   if (!hasPatientDeletion) {
@@ -725,10 +750,14 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     teethByPatient: (d.teethByPatient as Record<string, ToothRecord[]>) ?? {},
     clinicSettings: (d.clinicSettings as ClinicSettings) ?? fresh.clinicSettings,
     documentTemplates: (d.documentTemplates as ClinicDocumentTemplate[]) ?? [],
-    clinicExpenses: (d.clinicExpenses as ClinicExpense[]) ?? [],
+    clinicExpenses: sanitizeClinicExpenses((d.clinicExpenses as ClinicExpense[]) ?? []),
     legalDocuments: sanitizeLegalDocuments((d.legalDocuments as LegalDocument[]) ?? []),
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],
     userThemePreferences: (d.userThemePreferences as Record<string, ThemeMode>) ?? {},
+    assistantManualHours:
+      d.assistantManualHours && typeof d.assistantManualHours === "object"
+        ? (d.assistantManualHours as Record<string, string>)
+        : {},
   };
 }

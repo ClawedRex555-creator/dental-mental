@@ -61,13 +61,15 @@ export function PatientSearchSelect({
 
   return (
     <div ref={containerRef} className="relative min-w-0 flex-1 space-y-1">
-      {label && <label className="text-sm font-medium text-slate-700">{label}</label>}
+      {label && (
+        <label className="text-sm font-medium text-[var(--foreground)]">{label}</label>
+      )}
       <input
         type="text"
         disabled={disabled}
         className={cn(
-          "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20",
-          disabled && "bg-slate-50 text-slate-500"
+          "w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20",
+          disabled && "opacity-60"
         )}
         value={open ? query : displayLabel || query}
         placeholder={placeholder}
@@ -105,38 +107,53 @@ export function PatientSearchSelect({
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-56 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
         >
-          {suggestions.map((patient, i) => (
+          {suggestions.map((patient, i) => {
+            const isActive = i === highlight;
+            return (
             <li key={patient.id}>
               <button
                 type="button"
                 role="option"
-                aria-selected={i === highlight}
+                aria-selected={isActive}
                 tabIndex={-1}
                 className={cn(
-                  "flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-slate-50",
-                  i === highlight && "bg-teal-50 text-teal-900"
+                  "flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-[var(--nav-hover-bg)]",
+                  isActive && "bg-[var(--nav-active-bg)]"
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   pick(patient);
                 }}
               >
-                <span className="font-medium">
+                <span
+                  className={cn(
+                    "font-medium",
+                    isActive ? "text-[var(--nav-active-fg)]" : "text-[var(--foreground)]"
+                  )}
+                >
                   {getFullName(patient.firstName, patient.lastName, patient.middleName)}
                 </span>
-                <span className={cn("text-xs", i === highlight ? "text-teal-800/80" : "text-slate-500")}>
+                <span
+                  className={cn(
+                    "text-xs",
+                    isActive
+                      ? "text-[var(--nav-active-fg)] opacity-80"
+                      : "text-[var(--muted)]"
+                  )}
+                >
                   {formatPhone(patient.phone)}
                   {patient.email ? ` · ${patient.email}` : ""}
                 </span>
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       {showList && query.trim() && suggestions.length === 0 && (
-        <p className="absolute left-0 right-0 top-full z-[200] mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-lg">
+        <p className="absolute left-0 right-0 top-full z-[200] mt-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--muted)] shadow-lg">
           Пациент не найден
         </p>
       )}

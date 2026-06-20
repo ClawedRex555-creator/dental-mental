@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { LEGAL_CATEGORIES, type LegalCategory } from "@/lib/legal-categories";
+import { LEGAL_PDF_FIELD_HINTS } from "@/lib/legal-pdf-fill";
 
 export default function LegalPage() {
   const { legalDocuments, addLegalDocument, updateLegalDocument, removeLegalDocument } =
@@ -100,8 +101,11 @@ export default function LegalPage() {
             <Label>Примечание</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
             <p className="text-xs text-slate-500">
-              При печати при приходе пациента: {"{{patient.fullName}}"}, {"{{patient.passport}}"},{" "}
-              {"{{clinic.name}}"}, {"{{clinic.inn}}"}, {"{{clinic.address}}"}, {"{{clinic.phone}}"}.
+              Для PDF при печати данные подставляются в <strong>поля формы</strong> внутри файла.
+              В Word/LibreOffice добавьте поля с именами: patient.fullName, patient.phone,
+              clinic.name, clinic.inn, clinic.address и т.д. (список — в подсказке ниже).
+              Скан или бланк только с подчёркиваниями заполнить нельзя. В примечании — плейсхолдеры{" "}
+              {"{{patient.fullName}}"} для текстовых документов без PDF.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -131,6 +135,28 @@ export default function LegalPage() {
               />
             </label>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Имена полей для PDF-бланков</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-slate-600">
+          <p>
+            При статусе «Пришёл» система заполняет загруженный PDF, если в нём есть поля формы
+            (AcroForm). Создайте бланк в Word: «Разработчик» → «Режим конструктора» → «Простые
+            поля» → «Текстовое поле», в свойствах укажите имя, например{" "}
+            <code className="text-xs">patient.fullName</code>. Сохраните как PDF.
+          </p>
+          <p className="text-xs text-slate-500">
+            Поддерживаемые имена:{" "}
+            {LEGAL_PDF_FIELD_HINTS.map((h) => (
+              <code key={h} className="mr-1 text-xs">
+                {h}
+              </code>
+            ))}
+          </p>
         </CardContent>
       </Card>
 

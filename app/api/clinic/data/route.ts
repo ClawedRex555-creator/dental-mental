@@ -89,7 +89,7 @@ export async function PUT(request: Request) {
   const role = authUser?.role ?? session.role;
   if (!canWriteClinicDataSync(role)) {
     return NextResponse.json(
-      { error: "Сохранение данных доступно владельцу, администратору, врачу и ассистенту" },
+      { error: "Сохранение данных доступно владельцу, администратору, бухгалтеру, врачу и ассистенту" },
       { status: 403 }
     );
   }

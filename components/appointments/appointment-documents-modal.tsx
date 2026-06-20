@@ -14,8 +14,15 @@ import {
 import {
   buildArrivalDocumentsPrintHtml,
   buildArrivalDocumentTokens,
+  isPdfArrivalDocument,
 } from "@/lib/arrival-documents";
-import { openStoredFile } from "@/lib/open-stored-file";
+import { fillLegalPdf } from "@/lib/legal-pdf-fill";
+import {
+  openPdfBytesInTab,
+  openStoredFileInTab,
+  readFileAsDataUrl,
+  reserveBrowserTab,
+} from "@/lib/open-stored-file";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
@@ -36,15 +43,6 @@ interface AppointmentDocumentsModalProps {
   patientId: string;
   doctorId?: string;
   appointmentDate?: string;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 function DocList({
@@ -196,14 +194,18 @@ function AppointmentDocumentsModalBody({
 
   const attachFileToDoc = useCallback(
     async (docId: string, file: File) => {
-      const dataUrl = await readFileAsDataUrl(file);
-      updateLegalDocument(docId, { fileDataUrl: dataUrl, fileName: file.name });
-      toast.success("Файл прикреплён");
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        updateLegalDocument(docId, { fileDataUrl: dataUrl, fileName: file.name });
+        toast.success("Файл прикреплён");
+      } catch {
+        toast.error("Поддерживаются только PDF и изображения (PNG, JPEG, WebP)");
+      }
     },
     [updateLegalDocument]
   );
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!patient) {
       toast.error("Пациент не найден — обновите страницу");
       return;
@@ -239,32 +241,99 @@ function AppointmentDocumentsModalBody({
       return;
     }
 
-    const withFiles = toPrint.filter((d) => d.fileDataUrl);
+    const ctx = {
+      patient,
+      clinic: clinicSettings,
+      doctor,
+      appointmentDate,
+    };
 
-    withFiles.forEach((d) => {
-      openStoredFile(d.fileDataUrl, d.fileName ?? d.name);
+    const pdfDocs = toPrint.filter((d) => isPdfArrivalDocument(d));
+    const imageDocs = toPrint.filter(
+      (d) => d.fileDataUrl?.startsWith("data:image/") && !isPdfArrivalDocument(d)
+    );
+    const htmlDocs = toPrint.filter(
+      (d) => !isPdfArrivalDocument(d) && !d.fileDataUrl?.startsWith("data:image/")
+    );
+
+    // Вкладки резервируем сразу по клику — после await браузер блокирует window.open
+    const pdfTabs = pdfDocs.map(() => reserveBrowserTab());
+    const imageTabs = imageDocs.map(() => reserveBrowserTab());
+    const htmlTab = htmlDocs.length > 0 ? reserveBrowserTab() : null;
+
+    let openedCount = 0;
+
+    for (let i = 0; i < pdfDocs.length; i++) {
+      const doc = pdfDocs[i];
+      const tab = pdfTabs[i];
+      if (!doc.fileDataUrl) {
+        tab?.close();
+        continue;
+      }
+
+      const fileName = doc.fileName ?? `${doc.name}.pdf`;
+      const result = await fillLegalPdf(doc.fileDataUrl, ctx);
+
+      if (result.ok) {
+        if (openPdfBytesInTab(tab, result.bytes, fileName)) {
+          openedCount++;
+        }
+        if (result.unmatchedFields.length > 0) {
+          toast.warning(
+            `${doc.name}: заполнено ${result.filledCount} из ${result.fieldCount} полей`
+          );
+        }
+        continue;
+      }
+
+      toast.warning(
+        `${doc.name}: ${result.error} Открываем исходный файл без подстановки.`
+      );
+      if (result.fieldNames?.length) {
+        console.info("[legal-pdf] поля в документе:", result.fieldNames.join(", "));
+      }
+      if (openStoredFileInTab(tab, doc.fileDataUrl, fileName)) {
+        openedCount++;
+      }
+    }
+
+    imageDocs.forEach((doc, i) => {
+      if (
+        openStoredFileInTab(imageTabs[i], doc.fileDataUrl, doc.fileName ?? doc.name)
+      ) {
+        openedCount++;
+      }
     });
 
-    const html = buildArrivalDocumentsPrintHtml({
-      documents: toPrint,
-      ctx: {
-        patient,
-        clinic: clinicSettings,
-        doctor,
-        appointmentDate,
-      },
-      sendToEgisz,
-    });
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-    } else {
-      toast.error("Разрешите всплывающие окна для печати");
+    if (htmlDocs.length > 0) {
+      const html = buildArrivalDocumentsPrintHtml({
+        documents: htmlDocs,
+        ctx,
+        sendToEgisz,
+      });
+      if (htmlTab && !htmlTab.closed) {
+        htmlTab.document.open();
+        htmlTab.document.write(html);
+        htmlTab.document.close();
+        openedCount++;
+      } else {
+        const w = window.open("", "_blank");
+        if (w) {
+          w.document.write(html);
+          w.document.close();
+          openedCount++;
+        }
+      }
+    }
+
+    if (openedCount === 0) {
+      toast.error(
+        "Документы не открылись. Разрешите всплывающие окна для этого сайта и попробуйте снова."
+      );
       return;
     }
 
-    toast.success(`Выбрано: ${toPrint.length} (${withFiles.length} с файлом)`);
+    toast.success(`Открыто документов: ${openedCount} из ${toPrint.length}`);
     onDone();
     onOpenChange(false);
   };
@@ -313,15 +382,16 @@ function AppointmentDocumentsModalBody({
       )}
       <p className="text-sm text-[var(--muted)]">
         Договоры и согласия — из{" "}
-        <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. При отказе от ЕГИСЗ
-        можно распечатать стандартную форму или выбрать свою из категории «
-        {LEGAL_CATEGORY_EGISZ_REFUSAL}».
-        В примечании к документу в юр. отделе можно использовать плейсхолдеры:{" "}
-        <code className="text-xs">{"{{patient.fullName}}"}</code>,{" "}
-        <code className="text-xs">{"{{patient.passport}}"}</code>,{" "}
-        <code className="text-xs">{"{{clinic.name}}"}</code>,{" "}
-        <code className="text-xs">{"{{clinic.inn}}"}</code>,{" "}
-        <code className="text-xs">{"{{clinic.address}}"}</code>.
+        <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. PDF заполняется
+        данными пациента и клиники <strong>внутри загруженного файла</strong>, если в нём есть
+        поля формы с именами вроде{" "}
+        <code className="text-xs">patient.fullName</code>,{" "}
+        <code className="text-xs">clinic.name</code>. Скан с подчёркиваниями не подставляется
+        автоматически — см. инструкцию в юр. отделе.
+      </p>
+
+      <p className="text-sm text-[var(--muted)]">
+        При отказе от ЕГИСЗ — стандартная форма или документы из «{LEGAL_CATEGORY_EGISZ_REFUSAL}».
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -415,8 +485,12 @@ function AppointmentDocumentsModalBody({
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const dataUrl = await readFileAsDataUrl(file);
-                setPendingFile({ dataUrl, name: file.name });
+                try {
+                  const dataUrl = await readFileAsDataUrl(file);
+                  setPendingFile({ dataUrl, name: file.name });
+                } catch {
+                  toast.error("Поддерживаются только PDF и изображения (PNG, JPEG, WebP)");
+                }
               }}
             />
           </label>

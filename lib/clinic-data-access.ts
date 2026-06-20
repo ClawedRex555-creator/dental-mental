@@ -14,7 +14,13 @@ export function canReadClinicDataSync(role: UserRole): boolean {
 
 /** Автосохранение полного snapshot (PUT /api/clinic/data) */
 export function canWriteClinicDataSync(role: UserRole): boolean {
-  return role === "owner" || role === "admin" || role === "doctor" || role === "assistant";
+  return (
+    role === "owner" ||
+    role === "admin" ||
+    role === "doctor" ||
+    role === "assistant" ||
+    role === "accountant"
+  );
 }
 
 /** @deprecated используйте canReadClinicDataSync / canWriteClinicDataSync */
@@ -75,5 +81,6 @@ export function filterClinicSnapshotForAccountant(
     doctorSchedules: [],
     prepayments: state.prepayments,
     userThemePreferences: {},
+    assistantManualHours: state.assistantManualHours ?? {},
   };
 }

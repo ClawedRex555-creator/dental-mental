@@ -126,8 +126,20 @@ body {
   border-color: var(--border) !important;
 }
 
+[data-theme="dark"] .text-teal-600,
 [data-theme="dark"] .text-teal-700,
 [data-theme="dark"] .text-teal-800 {
+  color: #5eead4 !important;
+}
+
+/** Суммы в разделе «Зарплаты» */
+.salary-accent {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0f766e;
+}
+
+[data-theme="dark"] .salary-accent {
   color: #5eead4 !important;
 }
 

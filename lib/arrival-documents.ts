@@ -44,6 +44,13 @@ function formatClinicPhone(phone: string | undefined): string {
   return trimmed;
 }
 
+function formatRepresentativePassport(patient: Patient): string {
+  const series = patient.representativePassportSeries?.trim();
+  const number = patient.representativePassportNumber?.trim();
+  if (series && number) return `${series} ${number}`;
+  return series || number || "—";
+}
+
 /** Плейсхолдеры для текста в юр. отделе (поле «Примечание») и встроенных форм */
 export function buildArrivalDocumentTokens(
   ctx: ArrivalDocumentContext
@@ -81,6 +88,7 @@ export function buildArrivalDocumentTokens(
     "patient.passportNumber": dash(patient.passportNumber),
     "patient.contractNumber": contractNumber,
     "patient.representativeFullName": dash(patient.representativeFullName),
+    "patient.representativePassport": formatRepresentativePassport(patient),
     "patient.birthCertificate": formatBirthCertificate(patient),
     "patient.isChild": patient.isChild ? "да" : "нет",
     "clinic.name": dash(clinic.name),
@@ -269,22 +277,16 @@ export function renderArrivalDocumentSectionHtml(
   doc: ArrivalPrintDocument,
   ctx: ArrivalDocumentContext
 ): string {
-  if (doc.fileDataUrl) {
-    return `
-      <section class="doc-section page-break">
-        <h2>${escapeHtml(doc.name)}</h2>
-        <p class="file-note">Файл «${escapeHtml(doc.fileName ?? "документ")}» открыт в отдельной вкладке. Ниже — реквизиты клиники и пациента для подписания комплекта.</p>
-        ${renderPartiesSummaryHtml(ctx)}
-        ${renderSignatureBlockHtml(ctx)}
-      </section>`;
-  }
-
   return `
     <section class="doc-section page-break">
       <h2>${escapeHtml(doc.name)}</h2>
       ${documentBodyHtml(doc, ctx)}
       ${renderSignatureBlockHtml(ctx)}
     </section>`;
+}
+
+export function isPdfArrivalDocument(doc: ArrivalPrintDocument): boolean {
+  return Boolean(doc.fileDataUrl?.startsWith("data:application/pdf;base64,"));
 }
 
 export function buildArrivalDocumentsPrintHtml(options: {
@@ -298,6 +300,7 @@ export function buildArrivalDocumentsPrintHtml(options: {
       : "Отказ от передачи данных в ЕГИСЗ — печать формы";
 
   const sections = options.documents
+    .filter((doc) => !isPdfArrivalDocument(doc))
     .map((doc) => renderArrivalDocumentSectionHtml(doc, options.ctx))
     .join("");
 
