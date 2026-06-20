@@ -11,7 +11,10 @@ import {
   arrivalDocumentsFromLegal,
   type ArrivalPrintDocument,
 } from "@/lib/legal-categories";
-import { escapeHtml } from "@/lib/escape-html";
+import {
+  buildArrivalDocumentsPrintHtml,
+  buildArrivalDocumentTokens,
+} from "@/lib/arrival-documents";
 import { openStoredFile } from "@/lib/open-stored-file";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -30,6 +33,9 @@ interface AppointmentDocumentsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDone: () => void;
+  patientId: string;
+  doctorId?: string;
+  appointmentDate?: string;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -105,11 +111,36 @@ function DocList({
 function AppointmentDocumentsModalBody({
   onDone,
   onOpenChange,
+  patientId,
+  doctorId,
+  appointmentDate,
 }: {
   onDone: () => void;
   onOpenChange: (open: boolean) => void;
+  patientId: string;
+  doctorId?: string;
+  appointmentDate?: string;
 }) {
-  const { legalDocuments, addLegalDocument, updateLegalDocument } = useClinicStore();
+  const { legalDocuments, addLegalDocument, updateLegalDocument, patients, clinicSettings, doctors } =
+    useClinicStore();
+
+  const patient = useMemo(
+    () => patients.find((p) => p.id === patientId),
+    [patients, patientId]
+  );
+  const doctor = useMemo(
+    () => (doctorId ? doctors.find((d) => d.id === doctorId) : undefined),
+    [doctors, doctorId]
+  );
+  const patientTokens = useMemo(() => {
+    if (!patient) return null;
+    return buildArrivalDocumentTokens({
+      patient,
+      clinic: clinicSettings,
+      doctor,
+      appointmentDate,
+    });
+  }, [patient, clinicSettings, doctor, appointmentDate]);
 
   const { contracts, consents, egiszRefusals } = useMemo(
     () => arrivalDocumentsFromLegal(legalDocuments),
@@ -173,6 +204,11 @@ function AppointmentDocumentsModalBody({
   );
 
   const handlePrint = () => {
+    if (!patient) {
+      toast.error("Пациент не найден — обновите страницу");
+      return;
+    }
+
     const toPrint: ArrivalPrintDocument[] = [];
 
     contracts.forEach((d) => {
@@ -204,36 +240,28 @@ function AppointmentDocumentsModalBody({
     }
 
     const withFiles = toPrint.filter((d) => d.fileDataUrl);
-    const withoutFiles = toPrint.filter((d) => !d.fileDataUrl);
 
     withFiles.forEach((d) => {
       openStoredFile(d.fileDataUrl, d.fileName ?? d.name);
     });
 
-    if (withoutFiles.length > 0 || toPrint.length === withFiles.length) {
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Документы</title>
-      <style>body{font-family:Arial,sans-serif;padding:24px}h2{margin-top:24px}p{color:#444;font-size:12px}.file-note{color:teal}</style></head><body>
-      <h1>Комплект документов</h1>
-      <p>ЕГИСЗ: ${
-        sendToEgisz === "yes"
-          ? "отправить данные"
-          : "отказ — печать формы из юр. отдела"
-      }</p>
-      ${toPrint
-        .map((d) => {
-          if (d.fileDataUrl) {
-            return `<h2>${escapeHtml(d.name)}</h2><p class="file-note">Файл «${escapeHtml(d.fileName ?? "документ")}» открыт в отдельной вкладке</p>`;
-          }
-          return `<h2>${escapeHtml(d.name)}</h2>${d.notes ? `<p>${escapeHtml(d.notes)}</p>` : ""}<p style="margin:48px 0;border-top:1px solid #ccc">Подпись _________________ Дата _______</p>`;
-        })
-        .join("")}
-      ${withoutFiles.length > 0 ? "<script>window.onload=()=>window.print()</script>" : ""}
-      </body></html>`;
-      const w = window.open("", "_blank");
-      if (w) {
-        w.document.write(html);
-        w.document.close();
-      }
+    const html = buildArrivalDocumentsPrintHtml({
+      documents: toPrint,
+      ctx: {
+        patient,
+        clinic: clinicSettings,
+        doctor,
+        appointmentDate,
+      },
+      sendToEgisz,
+    });
+    const w = window.open("", "_blank");
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    } else {
+      toast.error("Разрешите всплывающие окна для печати");
+      return;
     }
 
     toast.success(`Выбрано: ${toPrint.length} (${withFiles.length} с файлом)`);
@@ -246,11 +274,54 @@ function AppointmentDocumentsModalBody({
       <DialogHeader>
         <DialogTitle>Пациент пришёл — документы</DialogTitle>
       </DialogHeader>
+      {patient && patientTokens ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--callout-neutral-bg)] p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              Пациент
+            </p>
+            <p className="mt-1 font-medium text-[var(--foreground)]">
+              {patientTokens["patient.fullName"]}
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              {patientTokens["patient.birthDate"]} · {patientTokens["patient.phone"]}
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Договор № {patientTokens["patient.contractNumber"]} · визит {patientTokens["appointment.date"]}
+            </p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--callout-neutral-bg)] p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+              Клиника
+            </p>
+            <p className="mt-1 font-medium text-[var(--foreground)]">
+              {patientTokens["clinic.name"]}
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">{patientTokens["clinic.address"]}</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              ИНН {patientTokens["clinic.inn"]} · {patientTokens["clinic.phone"]}
+            </p>
+            {patientTokens["doctor.name"] !== "—" && (
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Врач: {patientTokens["doctor.name"]}
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-red-600">Пациент не найден в базе клиники</p>
+      )}
       <p className="text-sm text-[var(--muted)]">
         Договоры и согласия — из{" "}
         <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. При отказе от ЕГИСЗ
         можно распечатать стандартную форму или выбрать свою из категории «
         {LEGAL_CATEGORY_EGISZ_REFUSAL}».
+        В примечании к документу в юр. отделе можно использовать плейсхолдеры:{" "}
+        <code className="text-xs">{"{{patient.fullName}}"}</code>,{" "}
+        <code className="text-xs">{"{{patient.passport}}"}</code>,{" "}
+        <code className="text-xs">{"{{clinic.name}}"}</code>,{" "}
+        <code className="text-xs">{"{{clinic.inn}}"}</code>,{" "}
+        <code className="text-xs">{"{{clinic.address}}"}</code>.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -367,6 +438,9 @@ export function AppointmentDocumentsModal({
   open,
   onOpenChange,
   onDone,
+  patientId,
+  doctorId,
+  appointmentDate,
 }: AppointmentDocumentsModalProps) {
   const legalEnabled = useIsModuleEnabled("legal");
 
@@ -381,9 +455,12 @@ export function AppointmentDocumentsModal({
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         {open ? (
           <AppointmentDocumentsModalBody
-            key="appointment-documents-open"
+            key={`appointment-documents-${patientId}`}
             onDone={onDone}
             onOpenChange={onOpenChange}
+            patientId={patientId}
+            doctorId={doctorId}
+            appointmentDate={appointmentDate}
           />
         ) : null}
       </DialogContent>

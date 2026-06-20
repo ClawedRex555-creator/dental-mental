@@ -486,6 +486,9 @@ export function AppointmentModal({
           open={docsModalOpen}
           onOpenChange={setDocsModalOpen}
           onDone={() => undefined}
+          patientId={patientId}
+          doctorId={doctorId || undefined}
+          appointmentDate={date}
         />
       )}
 

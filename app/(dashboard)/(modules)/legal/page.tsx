@@ -99,6 +99,10 @@ export default function LegalPage() {
           <div className="space-y-2 sm:col-span-2">
             <Label>Примечание</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <p className="text-xs text-slate-500">
+              При печати при приходе пациента: {"{{patient.fullName}}"}, {"{{patient.passport}}"},{" "}
+              {"{{clinic.name}}"}, {"{{clinic.inn}}"}, {"{{clinic.address}}"}, {"{{clinic.phone}}"}.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => handleAdd()}>
