@@ -34,6 +34,7 @@ import type {
   WorkAct,
 } from "@/lib/types";
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 import {
   createFreshPersistedState,
   mergeByIdPreferLocal,
@@ -549,8 +550,10 @@ export const useClinicStore = create<ClinicState>()(
           return { assistantManualHours: next };
         }),
 
-      addMedicalRecord: (record) =>
-        set((s) => ({ medicalRecords: [record, ...s.medicalRecords] })),
+      addMedicalRecord: (record) => {
+        set((s) => ({ medicalRecords: [record, ...s.medicalRecords] }));
+        requestClinicDataFlush();
+      },
 
       deleteMedicalRecord: (id) => {
         if (!get().medicalRecords.some((r) => r.id === id)) return false;
@@ -563,6 +566,7 @@ export const useClinicStore = create<ClinicState>()(
             p.medicalRecordId === id ? { ...p, medicalRecordId: undefined } : p
           ),
         }));
+        requestClinicDataFlush();
         return true;
       },
 

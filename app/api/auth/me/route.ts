@@ -12,6 +12,8 @@ import { verifySameOrigin } from "@/lib/csrf-origin";
 import { resolveClinicIdForSession } from "@/lib/clinic-session.server";
 import { buildSessionCookieOptions } from "@/lib/session-cookie.server";
 import { clinicSlugMismatch, parseClinicSlugFromHost } from "@/lib/clinic-host";
+import { defaultClinicModules } from "@/lib/modules";
+import { getClinicModules } from "@/lib/platform-modules.server";
 import { resolveAuthUserFromSession } from "@/lib/resolve-auth-user.server";
 import { isDatabaseEnabled } from "@/lib/db";
 
@@ -60,12 +62,25 @@ export async function GET(request: Request) {
       return res;
     }
 
+    const hostSlug = parseClinicSlugFromHost(host);
+    const clinic =
+      hostSlug && session.clinicId
+        ? {
+            slug: hostSlug,
+            database: isDatabaseEnabled(),
+            modules: isDatabaseEnabled()
+              ? await getClinicModules(session.clinicId)
+              : defaultClinicModules(),
+          }
+        : undefined;
+
     const res = NextResponse.json({
       user: {
         ...user,
         clinicId: session.clinicId,
         clinicSlug: session.clinicSlug,
       },
+      clinic,
     });
 
     if (sessionPatch) {

@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
+import {
+  clearClinicBootstrapCache,
+  setClinicBootstrapCache,
+} from "@/lib/clinic-bootstrap.client";
 import { ROLE_LABELS } from "@/lib/constants";
 import { parseClinicModules } from "@/lib/modules";
 import { subscribeSessionChanged } from "@/lib/session-sync.client";
@@ -52,13 +56,23 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
 
         if (res.ok) {
-          const data = await res.json();
+          const data = (await res.json()) as {
+            user: ClinicUser;
+            clinic?: { slug?: string; database?: boolean; modules?: unknown };
+          };
           notifySessionReplaced(data.user);
           setSessionUser(data.user);
-          const modRes = await fetch("/api/clinic/modules", { credentials: "include" });
-          if (modRes.ok) {
-            const modData = await modRes.json();
-            setEnabledModules(parseClinicModules(modData.modules));
+          if (data.clinic) {
+            setClinicBootstrapCache({
+              usesDb: data.clinic.database === true,
+              slug: data.clinic.slug ?? null,
+              modules: data.clinic.modules
+                ? parseClinicModules(data.clinic.modules)
+                : undefined,
+            });
+            if (data.clinic.modules) {
+              setEnabledModules(parseClinicModules(data.clinic.modules));
+            }
           }
           setState("authed");
           return;
@@ -74,6 +88,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
         clearSession();
         clearPersistedClinicData();
+        clearClinicBootstrapCache();
         setState("denied");
         if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
           router.replace("/login");
@@ -83,6 +98,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         if (!redirectOnFail) return;
         clearSession();
         clearPersistedClinicData();
+        clearClinicBootstrapCache();
         setState("denied");
         if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
           router.replace("/login");
@@ -101,6 +117,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       if (reason === "logout") {
         clearSession();
         clearPersistedClinicData();
+        clearClinicBootstrapCache();
         setState("denied");
         if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
           router.replace("/login");

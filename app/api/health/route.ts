@@ -24,6 +24,7 @@ export async function GET() {
     clinicCrossDeviceSync: true,
     clinicSyncBaselineFix: true,
     clinicSyncFastPull: true,
+    clinicBootstrapBundle: true,
   };
 
   try {

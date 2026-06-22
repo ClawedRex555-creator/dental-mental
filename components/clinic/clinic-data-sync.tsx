@@ -38,6 +38,7 @@ import {
   readPendingClinicSnapshot,
   writePendingClinicSnapshot,
 } from "@/lib/clinic-pending-sync";
+import { resolveClinicBootstrap } from "@/lib/clinic-bootstrap.client";
 import { CLINIC_SAVE_RETRY_DELAYS_MS, sleep } from "@/lib/clinic-save-retry";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
@@ -93,6 +94,7 @@ export function ClinicDataSync() {
     };
 
     const hasPendingLocalEdits = () => {
+      if (readPendingClinicSnapshot()) return true;
       const store = useClinicStore.getState();
       if (store.clinicDataUnsaved) return true;
       if (saveTimer.current) return true;
@@ -324,25 +326,11 @@ export function ClinicDataSync() {
 
     void (async () => {
       try {
-        let hostSlug: string | null = null;
-        let serverUsesDb = isClinicServerDatabaseMode();
-        try {
-          const ctxRes = await fetch("/api/clinic/context", { credentials: "include" });
-          if (ctxRes.ok) {
-            const ctx = (await ctxRes.json()) as {
-              slug?: string;
-              mode?: string;
-              database?: boolean;
-            };
-            if (ctx.mode === "clinic" && ctx.slug) hostSlug = ctx.slug;
-            if (ctx.mode === "clinic" && ctx.database === true) {
-              serverUsesDb = true;
-              setClinicServerDatabaseMode(true);
-            }
-          }
-        } catch {
-          /* scope check best-effort */
-        }
+        const bootstrap = await resolveClinicBootstrap();
+        let hostSlug = bootstrap.slug;
+        let serverUsesDb = bootstrap.usesDb || isClinicServerDatabaseMode();
+        if (serverUsesDb) setClinicServerDatabaseMode(true);
+
         if (hostSlug && !ensureClinicStorageScope(hostSlug)) {
           useClinicStore.getState().replacePersistedState(createFreshPersistedState());
         }
