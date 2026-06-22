@@ -47,7 +47,7 @@ import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { useClinicStore } from "@/store/useClinicStore";
 
-const SAVE_DEBOUNCE_MS = 800;
+const SAVE_DEBOUNCE_MS = 400;
 const PERIODIC_FLUSH_MS = 60_000;
 /** Лёгкий опрос meta (только updatedAt) — полный snapshot только при изменениях */
 const PERIODIC_PULL_MS = 4_000;

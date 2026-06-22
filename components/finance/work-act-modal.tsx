@@ -10,7 +10,6 @@ import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { normalizeServiceFields } from "@/lib/service-categories";
 import { calcWorkActAmounts } from "@/lib/work-act-utils";
 import { printWorkAct } from "@/lib/work-act-print";
-import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
@@ -254,8 +253,14 @@ export function WorkActModal({
       updateAppointment(defaultAppointmentId, { workActId: actId });
     }
 
-    requestClinicDataFlush();
     return act;
+  };
+
+  const handleSaveOnly = () => {
+    const act = persistAct(mode === "doctor" ? false : undefined);
+    if (!act) return;
+    toast.success(`Акт № ${act.actNumber} сохранён`);
+    if (mode !== "doctor") onOpenChange(false);
   };
 
   const handleSaveAndPrint = () => {
@@ -612,6 +617,9 @@ export function WorkActModal({
             )}
             {!readOnly && mode === "doctor" && (
               <>
+                <Button variant="outline" onClick={handleSaveOnly}>
+                  Сохранить
+                </Button>
                 <Button variant="secondary" onClick={handleSaveAndPrint}>
                   Сохранить и печать
                 </Button>
