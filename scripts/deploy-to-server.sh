@@ -28,6 +28,10 @@ if ! grep -q 'egiszCdaSnilsDigits' "$ROOT/app/api/health/route.ts" 2>/dev/null; 
   echo "ОШИБКА: в app/api/health/route.ts нет egiszCdaSnilsDigits — git pull и повторите деплой."
   exit 1
 fi
+if ! grep -q 'egiszDocumentUuidAlign' "$ROOT/app/api/health/route.ts" 2>/dev/null; then
+  echo "ОШИБКА: в app/api/health/route.ts нет egiszDocumentUuidAlign — git pull и повторите деплой."
+  exit 1
+fi
 echo "$BRANCH $COMMIT $(date -u +%Y-%m-%dT%H:%MZ)" > "$ROOT/.deploy-version"
 
 echo ">>> Сборка архива..."

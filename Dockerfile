@@ -20,6 +20,8 @@ RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env 
 RUN chmod +x scripts/fix-stale-routes.sh && sh scripts/fix-stale-routes.sh /app
 RUN grep -q 'patientAppointmentSearch' app/api/health/route.ts || (echo "ERROR: stale source — redeploy fresh tar from Mac" && exit 1)
 RUN grep -q 'egiszCdaSnilsDigits' app/api/health/route.ts || (echo "ERROR: health route без egiszCdaSnilsDigits — задеплойте свежий tar" && exit 1)
+RUN grep -q 'egiszDocumentUuidAlign' app/api/health/route.ts || (echo "ERROR: health route без egiszDocumentUuidAlign" && exit 1)
+RUN grep -q 'documentUuid' lib/egisz/worker.server.ts || (echo "ERROR: worker без documentUuid для N3" && exit 1)
 RUN grep -q 'normalizeSnilsDigits' lib/egisz/cda/builder.ts || (echo "ERROR: CDA builder без normalizeSnilsDigits" && exit 1)
 RUN test -f components/shared/patient-search-select.tsx || (echo "ERROR: missing patient-search-select.tsx" && exit 1)
 # CACHEBUST сбрасывает кэш next build при каждом деплое (иначе возможен старый bundle + новый DEPLOY_VERSION)
