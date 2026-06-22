@@ -52,6 +52,9 @@ if [ -f "$ARCHIVE" ]; then
   if [ -f "$ROOT/.deploy-version" ]; then
     echo ">>> Версия деплоя: $(cat "$ROOT/.deploy-version")"
   fi
+  if ! grep -q 'normalizeSnilsDigits' "$ROOT/lib/egisz/cda/builder.ts" 2>/dev/null; then
+    echo "ПРЕДУПРЕЖДЕНИЕ: lib/egisz/cda/builder.ts без normalizeSnilsDigits — AddMedRecord N3 может падать на СНИЛС"
+  fi
   if ! grep -q 'doctor' "$ROOT/lib/constants.ts" 2>/dev/null || \
      ! grep -q '/warehouse' "$ROOT/lib/constants.ts" 2>/dev/null; then
     echo "ПРЕДУПРЕЖДЕНИЕ: lib/constants.ts на сервере без доступа врача к Услугам — задеплойте свежий код с Mac"
@@ -87,6 +90,11 @@ fetch('http://127.0.0.1:3000/api/health').then(r=>r.json()).then(j=>console.log(
 
 if echo "$health_json" | grep -q 'patientAppointmentSearch'; then
   echo "OK: новый bundle (patientAppointmentSearch в /api/health)"
+  if echo "$health_json" | grep -q 'egiszCdaSnilsDigits'; then
+    echo "OK: fix СНИЛС в CDA (egiszCdaSnilsDigits)"
+  else
+    echo "ПРЕДУПРЕЖДЕНИЕ: нет egiszCdaSnilsDigits в /api/health — пересоберите app без кэша"
+  fi
 else
   echo "ОШИБКА: контейнер со старым Next.js bundle."
   echo "Ответ /api/health: $health_json"

@@ -25,6 +25,8 @@ export async function GET() {
     clinicSyncBaselineFix: true,
     clinicSyncFastPull: true,
     clinicBootstrapBundle: true,
+    /** CDA: СНИЛС пациента только цифрами (N3 AddMedRecord) */
+    egiszCdaSnilsDigits: true,
   };
 
   try {
