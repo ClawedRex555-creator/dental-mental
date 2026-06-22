@@ -68,7 +68,7 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
       const { usesDb, slug } = await resolveClinicBootstrap();
       if (cancelled) return;
       applyServerBootstrap(usesDb, slug);
-      void useClinicStore.persist.rehydrate().then(() => {
+      void Promise.resolve(useClinicStore.persist.rehydrate()).then(() => {
         if (!cancelled) finish();
       });
     })();
