@@ -367,7 +367,7 @@ export function EgiszSettingsPanel() {
               }
             >
               <option value="stub">Stub (тест N3 без CryptoPro)</option>
-              <option value="cryptopro">CryptoPro (промышленный)</option>
+              <option value="cryptopro">CryptoPro (тестовый / боевой контур N3)</option>
             </select>
           </div>
           <div className="space-y-2">

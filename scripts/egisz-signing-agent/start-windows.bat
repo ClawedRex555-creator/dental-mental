@@ -10,6 +10,9 @@ if "%EGISZ_SIGNING_SECRET%"=="" (
 if "%CRYPTOPRO_CRYPTCP%"=="" (
   set "CRYPTOPRO_CRYPTCP=C:\Program Files\Crypto Pro\CSP\cryptcp.exe"
 )
+if "%CRYPTOPRO_CSPTEST%"=="" (
+  set "CRYPTOPRO_CSPTEST=C:\Program Files\Crypto Pro\CSP\csptest.exe"
+)
 
 echo Агент подписи Emkaro — порт %EGISZ_SIGNING_PORT%
 node server.mjs

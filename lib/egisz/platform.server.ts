@@ -113,6 +113,16 @@ export function getClinicEgiszReadiness(
   if (!resolved.n3?.login?.trim()) missingForLive.push("Login N3");
   if (!resolved.n3?.password?.trim()) missingForLive.push("Password N3");
 
+  const signingMode = resolved.signing?.mode ?? "stub";
+  if (signingMode === "cryptopro") {
+    if (!resolved.signing?.orgCertThumbprint?.trim()) {
+      missingForLive.push("Отпечаток КЭП организации");
+    }
+    if (!process.env.EGISZ_SIGNING_URL?.trim()) {
+      missingForLive.push("EGISZ_SIGNING_URL на сервере (агент КриптоПро)");
+    }
+  }
+
   return {
     connectionMode: resolved.connectionMode ?? "stub",
     stubMode,
