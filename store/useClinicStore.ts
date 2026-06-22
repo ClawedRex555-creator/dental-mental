@@ -83,6 +83,10 @@ import {
 } from "@/lib/modules";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
+  isWorkActAlreadyPaid,
+  syncAppointmentsAfterActPaid,
+} from "@/lib/appointment-act-payment";
+import {
   mergeThemePreferences,
   persistThemePreferencesToStorage,
   readThemePreferencesFromStorage,
@@ -193,6 +197,8 @@ interface ClinicState {
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
   payWorkAct: (actId: string, method?: PaymentMethod) => boolean;
+  /** ready_for_payment → completed, если акт уже оплачен */
+  repairPaidActAppointments: () => void;
   /** Удалить акт (ожидает оплаты или оплачен); false — не найден */
   deleteWorkAct: (actId: string) => boolean;
   getNextActNumber: () => string;
@@ -706,7 +712,20 @@ export const useClinicStore = create<ClinicState>()(
       payWorkAct: (actId, method = "cash") => {
         const state = get();
         const act = state.workActs.find((a) => a.id === actId);
-        if (!act || act.paymentStatus === "paid") return false;
+        if (!act) return false;
+
+        if (isWorkActAlreadyPaid(act, state.payments)) {
+          set((s) => ({
+            workActs: s.workActs.map((a) =>
+              a.id === actId && a.paymentStatus !== "paid"
+                ? { ...a, paymentStatus: "paid" as const }
+                : a
+            ),
+            appointments: syncAppointmentsAfterActPaid(s.appointments, act),
+          }));
+          scheduleClinicDataFlush();
+          return true;
+        }
 
         const invoice =
           (act.invoiceId
@@ -752,9 +771,22 @@ export const useClinicStore = create<ClinicState>()(
                 }
               : p
           ),
+          appointments: syncAppointmentsAfterActPaid(s.appointments, act),
         }));
         scheduleClinicDataFlush();
         return true;
+      },
+
+      repairPaidActAppointments: () => {
+        const state = get();
+        let appointments = state.appointments;
+        for (const act of state.workActs) {
+          if (!isWorkActAlreadyPaid(act, state.payments)) continue;
+          appointments = syncAppointmentsAfterActPaid(appointments, act);
+        }
+        if (appointments === state.appointments) return;
+        set({ appointments });
+        scheduleClinicDataFlush();
       },
 
       deleteWorkAct: (actId) => {

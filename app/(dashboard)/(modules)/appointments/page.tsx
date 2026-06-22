@@ -43,7 +43,7 @@ import type { Appointment } from "@/lib/types";
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
-  const { appointments, patients, doctors, cabinets, doctorSchedules, currentUser } =
+  const { appointments, patients, doctors, cabinets, doctorSchedules, currentUser, repairPaidActAppointments } =
     useClinicStore();
   const isAssistant = currentUser.role === "assistant";
   const assistantProfile = useMemo(
@@ -66,6 +66,10 @@ export default function AppointmentsPage() {
   const [newSlotDate, setNewSlotDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [newSlotTime, setNewSlotTime] = useState<string>();
   const [newSlotDoctorId, setNewSlotDoctorId] = useState<string>();
+
+  useEffect(() => {
+    repairPaidActAppointments();
+  }, [repairPaidActAppointments]);
 
   const effectiveView: ViewMode = isMobile ? "day" : view;
 
