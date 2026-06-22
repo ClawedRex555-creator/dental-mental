@@ -95,6 +95,8 @@ export interface EgiszSubmissionPayload {
   validationErrors?: string[];
   /** Последний колбэк N3 webhook */
   webhook?: Record<string, unknown>;
+  /** UUID документа: один и тот же в CDA и в IdDocumentMis (требование N3 с 05/2026) */
+  egiszDocumentUuid?: string;
 }
 
 export function defaultEgiszConfig(): EgiszClinicConfig {

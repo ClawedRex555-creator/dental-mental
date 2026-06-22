@@ -29,11 +29,13 @@ export interface CdaBuildInput {
   record: MedicalRecord;
   clinic: ClinicSettings;
   config: EgiszClinicConfig;
+  /** UUID СЭМД = IdDocumentMis в AddMedRecord (N3 требует совпадения с <id extension>) */
+  documentUuid: string;
 }
 
 /** Сборка CDA R2 (упрощённый протокол консультации / стоматологический осмотр) */
 export function buildCdaDocument(input: CdaBuildInput): string {
-  const docId = randomUUID();
+  const docId = input.documentUuid.trim();
   const setId = randomUUID();
   const now = new Date().toISOString();
   const templateOid = input.config.documentOid ?? CDA_TEMPLATE_OID;
