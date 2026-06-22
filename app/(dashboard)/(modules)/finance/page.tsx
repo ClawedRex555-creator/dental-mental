@@ -18,6 +18,7 @@ import { PayActDialog } from "@/components/finance/pay-act-dialog";
 import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip";
 import type { PaymentMethod, WorkAct } from "@/lib/types";
 import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange } from "@/lib/finance-utils";
+import { calcAssistantHoursInRange, normalizeAssistantManualHours } from "@/lib/assistant-hours";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
 import { printWorkAct } from "@/lib/work-act-print";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,9 @@ export default function FinancePage() {
   const [expenseCategory, setExpenseCategory] = useState("Аренда");
   const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expensePaidByStaffId, setExpensePaidByStaffId] = useState("");
+  const [manualShiftAssistantId, setManualShiftAssistantId] = useState("");
+  const [manualShiftDate, setManualShiftDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [manualShiftHours, setManualShiftHours] = useState("");
   const [actModalOpen, setActModalOpen] = useState(false);
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
@@ -186,6 +190,11 @@ export default function FinancePage() {
     [workActs]
   );
 
+  const normalizedAssistantManualHours = useMemo(
+    () => normalizeAssistantManualHours(assistantManualHours),
+    [assistantManualHours]
+  );
+
   const periodSalaries = useMemo(
     () =>
       computeStaffSalariesForRange(
@@ -194,10 +203,10 @@ export default function FinancePage() {
         appointments,
         from,
         to,
-        assistantManualHours,
+        normalizedAssistantManualHours,
         services
       ),
-    [doctors, serviceActs, appointments, from, to, assistantManualHours, services]
+    [doctors, serviceActs, appointments, from, to, normalizedAssistantManualHours, services]
   );
 
   const periodNetAfterSalaries = calcClinicNetAfterSalaries(
@@ -223,7 +232,7 @@ export default function FinancePage() {
         appointments,
         salaryRangeFrom,
         salaryRangeTo,
-        assistantManualHours,
+        normalizedAssistantManualHours,
         services
       ),
     [
@@ -232,7 +241,7 @@ export default function FinancePage() {
       appointments,
       salaryRangeFrom,
       salaryRangeTo,
-      assistantManualHours,
+      normalizedAssistantManualHours,
       services,
     ]
   );
@@ -324,23 +333,60 @@ export default function FinancePage() {
       .filter((d) => d.role === "assistant")
       .map((assistant) => {
         const apts = salaryAppointments.filter((a) => a.assistantId === assistant.id);
-        const autoHours = apts.reduce((s, a) => s + (a.assistantHours ?? 0), 0);
-        const manual = assistantManualHours[assistant.id];
-        const hours =
-          manual !== undefined && manual !== ""
-            ? Number(manual) || 0
-            : autoHours;
+        const appointmentHours = apts.reduce((s, a) => s + (a.assistantHours ?? 0), 0);
+        const hours = calcAssistantHoursInRange(
+          assistant.id,
+          salaryAppointments,
+          salaryRangeFrom,
+          salaryRangeTo,
+          normalizedAssistantManualHours
+        );
         const rate = assistant.hourlyRate ?? 0;
         return {
           assistant,
           visits: apts.length,
           hours,
-          autoHours,
+          appointmentHours,
           rate,
           total: Math.round(hours * rate),
         };
       });
-  }, [doctors, salaryAppointments, assistantManualHours]);
+  }, [
+    doctors,
+    salaryAppointments,
+    salaryRangeFrom,
+    salaryRangeTo,
+    normalizedAssistantManualHours,
+  ]);
+
+  const assistantManualShiftRows = useMemo(() => {
+    const rows: Array<{
+      assistantId: string;
+      assistantName: string;
+      date: string;
+      hours: number;
+      rate: number;
+      total: number;
+    }> = [];
+    for (const assistant of doctors.filter((d) => d.role === "assistant")) {
+      const byDay = normalizedAssistantManualHours[assistant.id] ?? {};
+      const rate = assistant.hourlyRate ?? 0;
+      for (const [date, hoursStr] of Object.entries(byDay)) {
+        if (!inSalaryPeriod(date)) continue;
+        const hours = Number(hoursStr.replace(",", ".")) || 0;
+        if (hours <= 0) continue;
+        rows.push({
+          assistantId: assistant.id,
+          assistantName: assistant.name,
+          date,
+          hours,
+          rate,
+          total: Math.round(hours * rate),
+        });
+      }
+    }
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  }, [doctors, normalizedAssistantManualHours, salaryRangeFrom, salaryRangeTo, salaryPeriod, salaryFrom, salaryTo]);
 
   const doctorSalaryDetails = useMemo(() => {
     return salaryActs
@@ -398,56 +444,6 @@ export default function FinancePage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="space-y-4 pt-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-wrap gap-2">
-              {(["day", "week", "month", "custom"] as Period[]).map((p) => (
-                <Button
-                  key={p}
-                  size="sm"
-                  variant={period === p ? "default" : "outline"}
-                  onClick={() => {
-                  setPeriod(p);
-                  setSalaryPeriod(p);
-                }}
-                >
-                  {p === "day"
-                    ? "День"
-                    : p === "week"
-                      ? "Неделя"
-                      : p === "month"
-                        ? "Месяц"
-                        : "Период"}
-                </Button>
-              ))}
-            </div>
-            {period === "custom" && (
-              <>
-                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-              </>
-            )}
-            <p className="text-xs text-[var(--muted)]">
-              {format(from, "d.MM.yyyy")} — {format(to, "d.MM.yyyy")}
-            </p>
-          </div>
-          <FinanceSummaryStrip
-            revenue={periodRevenue}
-            salaries={periodSalaries}
-            expensesTotal={periodExpensesTotal}
-            staffReimbursements={periodStaffReimbursements}
-            netAfterSalaries={periodNetAfterSalaries}
-            netAfterAll={periodNetAfterAll}
-            netLabel={
-              period === "day"
-                ? "Клинике за день (итого)"
-                : "Клинике за период (итого)"
-            }
-          />
-        </CardContent>
-      </Card>
-
       <div className="grid gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
@@ -497,6 +493,56 @@ export default function FinancePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap gap-2">
+              {(["day", "week", "month", "custom"] as Period[]).map((p) => (
+                <Button
+                  key={p}
+                  size="sm"
+                  variant={period === p ? "default" : "outline"}
+                  onClick={() => {
+                  setPeriod(p);
+                  setSalaryPeriod(p);
+                }}
+                >
+                  {p === "day"
+                    ? "День"
+                    : p === "week"
+                      ? "Неделя"
+                      : p === "month"
+                        ? "Месяц"
+                        : "Период"}
+                </Button>
+              ))}
+            </div>
+            {period === "custom" && (
+              <>
+                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+              </>
+            )}
+            <p className="text-xs text-[var(--muted)]">
+              {format(from, "d.MM.yyyy")} — {format(to, "d.MM.yyyy")}
+            </p>
+          </div>
+          <FinanceSummaryStrip
+            revenue={periodRevenue}
+            salaries={periodSalaries}
+            expensesTotal={periodExpensesTotal}
+            staffReimbursements={periodStaffReimbursements}
+            netAfterSalaries={periodNetAfterSalaries}
+            netAfterAll={periodNetAfterAll}
+            netLabel={
+              period === "day"
+                ? "Клинике за день (итого)"
+                : "Клинике за период (итого)"
+            }
+          />
+        </CardContent>
+      </Card>
 
       <div className="flex gap-2">
         {(
@@ -655,7 +701,7 @@ export default function FinancePage() {
                   Ассистенты (почасовая оплата)
                 </h3>
                 <p className="mb-3 text-xs text-[var(--muted)]">
-                  Укажите часы вручную для расчёта зарплаты (или оставьте из приёмов ниже)
+                  Итого за выбранный период: часы с приёмов + смены по дням ниже
                 </p>
                 <table className="w-full text-sm">
                   <thead>
@@ -679,27 +725,147 @@ export default function FinancePage() {
                         <tr key={row.assistant.id} className="border-b border-slate-50">
                           <td className="px-4 py-3 font-medium">{row.assistant.name}</td>
                           <td className="px-4 py-3 text-right">{row.visits}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{row.hours}</td>
+                          <td className="px-4 py-3 text-right">
+                            {formatCurrency(row.rate)}
+                          </td>
+                          <td className="px-4 py-3 text-right salary-accent">
+                            {formatCurrency(row.total)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">
+                  Смены по дням (без приёма)
+                </h3>
+                <p className="mb-3 text-xs text-[var(--muted)]">
+                  Укажите дату и часы, если ассистент работал в день без записи в расписании
+                </p>
+                <div className="mb-4 flex flex-wrap items-end gap-3">
+                  <div className="space-y-1">
+                    <Label>Ассистент</Label>
+                    <select
+                      className="select-field min-w-[12rem]"
+                      value={manualShiftAssistantId}
+                      onChange={(e) => setManualShiftAssistantId(e.target.value)}
+                    >
+                      <option value="">Выберите</option>
+                      {doctors
+                        .filter((d) => d.role === "assistant")
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{UI.date}</Label>
+                    <Input
+                      type="date"
+                      value={manualShiftDate}
+                      onChange={(e) => setManualShiftDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Часов</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      className="w-24"
+                      value={manualShiftHours}
+                      onChange={(e) => setManualShiftHours(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (!manualShiftAssistantId) {
+                        toast.error("Выберите ассистента");
+                        return;
+                      }
+                      if (!manualShiftDate) {
+                        toast.error("Укажите дату");
+                        return;
+                      }
+                      const hours = Number(manualShiftHours.replace(",", "."));
+                      if (!Number.isFinite(hours) || hours <= 0) {
+                        toast.error("Укажите количество часов");
+                        return;
+                      }
+                      setAssistantManualHours(
+                        manualShiftAssistantId,
+                        manualShiftDate,
+                        String(hours)
+                      );
+                      setManualShiftHours("");
+                      toast.success("Смена сохранена");
+                    }}
+                  >
+                    Добавить смену
+                  </Button>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-slate-500">
+                      <th className="px-4 py-3">{UI.date}</th>
+                      <th className="px-4 py-3">Ассистент</th>
+                      <th className="px-4 py-3 text-right">Часов</th>
+                      <th className="px-4 py-3 text-right">Ставка</th>
+                      <th className="px-4 py-3 text-right">Начислено</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assistantManualShiftRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                          Нет смен за выбранный период
+                        </td>
+                      </tr>
+                    ) : (
+                      assistantManualShiftRows.map((row) => (
+                        <tr key={`${row.assistantId}-${row.date}`} className="border-b border-slate-50">
+                          <td className="px-4 py-3">{formatDate(row.date)}</td>
+                          <td className="px-4 py-3">{row.assistantName}</td>
                           <td className="px-4 py-3 text-right">
                             <Input
                               type="number"
                               min={0}
                               step={0.5}
                               className="ml-auto w-20 text-right"
-                              placeholder={String(row.autoHours || "")}
-                              value={
-                                assistantManualHours[row.assistant.id] ??
-                                (row.hours === 0 ? "" : String(row.hours))
-                              }
+                              value={row.hours > 0 ? row.hours : ""}
                               onChange={(e) =>
-                                setAssistantManualHours(row.assistant.id, e.target.value)
+                                setAssistantManualHours(
+                                  row.assistantId,
+                                  row.date,
+                                  e.target.value
+                                )
                               }
                             />
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            {formatCurrency(row.rate)}
-                          </td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.rate)}</td>
                           <td className="px-4 py-3 text-right salary-accent">
                             {formatCurrency(row.total)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                setAssistantManualHours(row.assistantId, row.date, "")
+                              }
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
                           </td>
                         </tr>
                       ))

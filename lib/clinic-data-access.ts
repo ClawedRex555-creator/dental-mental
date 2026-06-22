@@ -18,8 +18,7 @@ export function canWriteClinicDataSync(role: UserRole): boolean {
     role === "owner" ||
     role === "admin" ||
     role === "doctor" ||
-    role === "assistant" ||
-    role === "accountant"
+    role === "assistant"
   );
 }
 

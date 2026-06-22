@@ -72,6 +72,11 @@ import {
   readThemePreferencesFromStorage,
 } from "@/lib/user-theme-storage";
 import { canManageServices } from "@/lib/rbac";
+import {
+  mergeAssistantManualHours,
+  normalizeAssistantManualHours,
+  type AssistantManualHoursMap,
+} from "@/lib/assistant-hours";
 
 const freshState = createFreshPersistedState();
 
@@ -102,8 +107,8 @@ interface ClinicState {
   legalDocuments: LegalDocument[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
-  /** Ручной ввод часов ассистента в разделе «Зарплаты» */
-  assistantManualHours: Record<string, string>;
+  /** Ручные часы ассистента по датам (yyyy-MM-dd), если смена не привязана к приёму */
+  assistantManualHours: AssistantManualHoursMap;
   /** Тема интерфейса по id пользователя (сохраняется в localStorage) */
   userThemePreferences: Record<string, ThemeMode>;
   /** Включённые модули (управляются супер-админом платформы) */
@@ -156,7 +161,7 @@ interface ClinicState {
   deletePatient: (id: string) => boolean;
   addAppointment: (appointment: Appointment) => void;
   updateAppointment: (id: string, data: Partial<Appointment>) => void;
-  setAssistantManualHours: (assistantId: string, hours: string) => void;
+  setAssistantManualHours: (assistantId: string, date: string, hours: string) => void;
   addMedicalRecord: (record: MedicalRecord) => void;
   /** Удалить запись медкарты и снять ссылки с актов/планов; false — не найдена */
   deleteMedicalRecord: (id: string) => boolean;
@@ -532,12 +537,15 @@ export const useClinicStore = create<ClinicState>()(
           return { appointments, patients };
         }),
 
-      setAssistantManualHours: (assistantId, hours) =>
+      setAssistantManualHours: (assistantId, date, hours) =>
         set((s) => {
-          const next = { ...s.assistantManualHours };
+          const next: AssistantManualHoursMap = { ...s.assistantManualHours };
+          const byDay = { ...(next[assistantId] ?? {}) };
           const trimmed = hours.trim();
-          if (!trimmed) delete next[assistantId];
-          else next[assistantId] = hours;
+          if (!trimmed) delete byDay[date];
+          else byDay[date] = hours;
+          if (Object.keys(byDay).length === 0) delete next[assistantId];
+          else next[assistantId] = byDay;
           return { assistantManualHours: next };
         }),
 
@@ -823,7 +831,7 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: data.legalDocuments ?? [],
           doctorSchedules: data.doctorSchedules ?? [],
           prepayments: data.prepayments ?? [],
-          assistantManualHours: data.assistantManualHours ?? {},
+          assistantManualHours: normalizeAssistantManualHours(data.assistantManualHours),
           userThemePreferences: mergeThemePreferences(
             data.userThemePreferences,
             readThemePreferencesFromStorage(),
@@ -859,10 +867,10 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: mergeByIdPreferLocal(data.legalDocuments ?? [], s.legalDocuments),
           doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
           prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
-          assistantManualHours: {
-            ...(data.assistantManualHours ?? {}),
-            ...s.assistantManualHours,
-          },
+          assistantManualHours: mergeAssistantManualHours(
+            s.assistantManualHours,
+            data.assistantManualHours ?? {}
+          ),
           userThemePreferences: mergeThemePreferences(
             data.userThemePreferences,
             readThemePreferencesFromStorage(),

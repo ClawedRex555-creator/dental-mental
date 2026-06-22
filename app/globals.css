@@ -11,6 +11,7 @@
   --muted: #64748b;
   --sidebar: #0f172a;
   --sidebar-fg: #e2e8f0;
+  --sidebar-nav-fg: #475569;
   --input-bg: #ffffff;
   --schedule-grid-bg: #f8fafc;
   --schedule-header-bg: #e2e8f0;
@@ -47,6 +48,7 @@
   --muted: #94a3b8;
   --sidebar: #020617;
   --sidebar-fg: #cbd5e1;
+  --sidebar-nav-fg: #e2e8f0;
   --input-bg: #0f172a;
   --schedule-grid-bg: #1e293b;
   --schedule-header-bg: #334155;
@@ -85,6 +87,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
 }
 
 * {
@@ -154,6 +157,10 @@ body {
 [data-theme="dark"] .hover\:bg-teal-50:hover {
   background-color: var(--nav-hover-bg) !important;
   color: var(--nav-hover-fg) !important;
+}
+
+.nav-sidebar-link {
+  color: var(--sidebar-nav-fg);
 }
 
 .nav-sidebar-link:hover {

@@ -3,6 +3,11 @@ import {
   resolveCommissionServiceCategory,
 } from "@/lib/service-categories";
 import { calcWorkActAmounts, calcWorkActLine } from "@/lib/work-act-utils";
+import {
+  type AssistantManualHoursMap,
+  calcAssistantHoursInRange,
+  normalizeAssistantManualHours,
+} from "./assistant-hours";
 import type { Appointment, ClinicExpense, Doctor, Payment, Service, WorkAct, WorkActItem } from "./types";
 
 export interface PaymentSplit {
@@ -155,9 +160,10 @@ export function computeStaffSalariesForRange(
   appointments: Appointment[],
   from: Date,
   to: Date,
-  manualAssistantHours: Record<string, string> = {},
+  manualAssistantHours: AssistantManualHoursMap | Record<string, string> = {},
   services: Service[] = []
 ): StaffSalariesSummary {
+  const manualByDay = normalizeAssistantManualHours(manualAssistantHours);
   const acts = serviceActs.filter(
     (a) => a.paymentStatus === "paid" && isDateInRange(a.actDate, from, to)
   );
@@ -181,11 +187,13 @@ export function computeStaffSalariesForRange(
 
   let assistantSalary = 0;
   for (const assistant of doctors.filter((d) => d.role === "assistant")) {
-    const assistantApts = apts.filter((a) => a.assistantId === assistant.id);
-    const autoHours = assistantApts.reduce((s, a) => s + (a.assistantHours ?? 0), 0);
-    const manual = manualAssistantHours[assistant.id];
-    const hours =
-      manual !== undefined && manual !== "" ? Number(manual) || 0 : autoHours;
+    const hours = calcAssistantHoursInRange(
+      assistant.id,
+      apts,
+      from,
+      to,
+      manualByDay
+    );
     assistantSalary += Math.round(hours * (assistant.hourlyRate ?? 0));
   }
 

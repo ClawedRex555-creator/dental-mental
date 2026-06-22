@@ -110,7 +110,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-[var(--background)]">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-[var(--border)] bg-[var(--card)] lg:static",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-[var(--border)] bg-[var(--card)]",
+          "lg:relative lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:self-start",
           "transition-[width] duration-300 ease-in-out",
           sidebarExpanded
             ? "w-64 translate-x-0"
@@ -155,7 +156,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 }}
                 className={cn(
                   "nav-sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  active ? "nav-sidebar-link-active" : "text-[var(--muted)]"
+                  active ? "nav-sidebar-link-active" : undefined
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" />
@@ -191,7 +192,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col lg:pl-0">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-4 lg:px-6">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-3 sm:h-16 sm:px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={toggleSidebar}>
               <Menu className="h-5 w-5" />
@@ -221,7 +222,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </Button>
           </div>
         </header>
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 p-3 sm:p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

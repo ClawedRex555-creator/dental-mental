@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   APPOINTMENT_STATUS_COLORS,
-  APPOINTMENT_STATUS_LABELS,
   UI,
   VIEW_MODE_LABELS,
   WEEKDAY_SHORT,
@@ -58,17 +57,33 @@ export default function AppointmentsPage() {
   }, [isAssistant, assistantProfile, appointments]);
 
   const [view, setView] = useState<ViewMode>("day");
+  const [isMobile, setIsMobile] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [doctorFilter, setDoctorFilter] = useState<string>("all");
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<Appointment | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newSlotDate, setNewSlotDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [newSlotTime, setNewSlotTime] = useState<string>();
   const [newSlotDoctorId, setNewSlotDoctorId] = useState<string>();
 
+  const effectiveView: ViewMode = isMobile ? "day" : view;
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const selected = useMemo(
+    () => (selectedId ? appointments.find((a) => a.id === selectedId) ?? null : null),
+    [appointments, selectedId]
+  );
+
   const scheduleDate =
-    view === "day" ? format(currentDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    effectiveView === "day" ? format(currentDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
 
   const scheduleReminder = useMemo(
     () => needsScheduleReminder(doctorSchedules, allDoctors.map((d) => d.id)),
@@ -100,16 +115,16 @@ export default function AppointmentsPage() {
   ]);
 
   const rangeStart =
-    view === "day"
+    effectiveView === "day"
       ? currentDate
-      : view === "week"
+      : effectiveView === "week"
         ? startOfWeek(currentDate, { weekStartsOn: 1 })
         : startOfMonth(currentDate);
 
   const rangeEnd =
-    view === "day"
+    effectiveView === "day"
       ? currentDate
-      : view === "week"
+      : effectiveView === "week"
         ? endOfWeek(currentDate, { weekStartsOn: 1 })
         : endOfMonth(currentDate);
 
@@ -129,8 +144,16 @@ export default function AppointmentsPage() {
       const inCabinet = getDoctorsInCabinet(cabinetFilter, doctors, cabinets);
       list = inCabinet.length > 0 ? inCabinet : [];
     }
-    if (view !== "day") return list;
-    return list.filter((d) => isDoctorWorkingOnDate(d.id, scheduleDate, doctorSchedules));
+    if (effectiveView !== "day") return list;
+    const dayDoctorIds = new Set(
+      rangeAppointments
+        .filter((a) => isSameDay(parseISO(a.date), currentDate) && a.doctorId)
+        .map((a) => a.doctorId as string)
+    );
+    return list.filter(
+      (d) =>
+        isDoctorWorkingOnDate(d.id, scheduleDate, doctorSchedules) || dayDoctorIds.has(d.id)
+    );
   }, [
     isAssistant,
     rangeAppointments,
@@ -141,17 +164,15 @@ export default function AppointmentsPage() {
     cabinets,
     doctorSchedules,
     scheduleDate,
-    view,
+    effectiveView,
+    currentDate,
   ]);
 
-  const gridDoctorIds = useMemo(
-    () => new Set(gridDoctors.map((d) => d.id)),
-    [gridDoctors]
-  );
-
   const navigate = (dir: -1 | 1) => {
-    if (view === "day") setCurrentDate((d) => addDays(d, dir));
-    else if (view === "week") setCurrentDate((d) => (dir === 1 ? addWeeks(d, 1) : subWeeks(d, 1)));
+    if (effectiveView === "day") setCurrentDate((d) => addDays(d, dir));
+    else if (effectiveView === "week") {
+      setCurrentDate((d) => (dir === 1 ? addWeeks(d, 1) : subWeeks(d, 1)));
+    }
     else setCurrentDate((d) => (dir === 1 ? addMonths(d, 1) : subMonths(d, 1)));
   };
 
@@ -166,7 +187,7 @@ export default function AppointmentsPage() {
   }, [currentDate]);
 
   const openNew = (date?: string, time?: string, doctorId?: string) => {
-    setSelected(null);
+    setSelectedId(null);
     const slot = date ?? format(currentDate, "yyyy-MM-dd");
     setNewSlotDate(slot);
     setNewSlotTime(time);
@@ -176,7 +197,7 @@ export default function AppointmentsPage() {
   };
 
   const openEdit = (apt: Appointment) => {
-    setSelected(apt);
+    setSelectedId(apt.id);
     setModalOpen(true);
   };
 
@@ -191,9 +212,9 @@ export default function AppointmentsPage() {
   };
 
   const titleLabel =
-    view === "day"
+    effectiveView === "day"
       ? format(currentDate, "d MMMM yyyy", { locale: ru })
-      : view === "week"
+      : effectiveView === "week"
         ? `${format(weekDays[0], "d MMM", { locale: ru })} - ${format(weekDays[6], "d MMM yyyy", { locale: ru })}`
         : format(currentDate, "LLLL yyyy", { locale: ru });
 
@@ -253,18 +274,20 @@ export default function AppointmentsPage() {
               {UI.today}
             </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {(["day", "week", "month"] as ViewMode[]).map((v) => (
-              <Button
-                key={v}
-                variant={view === v ? "default" : "outline"}
-                size="sm"
-                onClick={() => setView(v)}
-              >
-                {VIEW_MODE_LABELS[v]}
-              </Button>
-            ))}
-          </div>
+          {!isMobile ? (
+            <div className="flex flex-wrap gap-2">
+              {(["day", "week", "month"] as ViewMode[]).map((v) => (
+                <Button
+                  key={v}
+                  variant={view === v ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setView(v)}
+                >
+                  {VIEW_MODE_LABELS[v]}
+                </Button>
+              ))}
+            </div>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-3 border-t border-slate-100 pt-4">
           <p className="text-sm font-medium text-teal-800">{filterHint}</p>
@@ -273,7 +296,7 @@ export default function AppointmentsPage() {
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <span className="shrink-0 font-medium">Врач:</span>
               <select
-                className="h-10 min-w-[200px] rounded-lg border border-slate-200 px-3 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
+                className="h-10 min-w-[11rem] rounded-lg border border-slate-200 px-3 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
                 value={doctorFilter}
                 onChange={(e) => handleDoctorFilter(e.target.value)}
                 disabled={cabinetFilter !== "all"}
@@ -309,7 +332,7 @@ export default function AppointmentsPage() {
         </CardContent>
       </Card>
 
-      {view === "month" && (
+      {effectiveView === "month" && !isMobile && (
         <Card>
           <CardContent className="p-4">
             <div className="mb-2 grid grid-cols-7 gap-1 text-center text-sm font-medium text-slate-500">
@@ -386,7 +409,7 @@ export default function AppointmentsPage() {
         </Card>
       )}
 
-      {(view === "week" || view === "day") && (
+      {(effectiveView === "week" || effectiveView === "day") && (
         <>
           {gridDoctors.length === 0 && cabinetFilter !== "all" ? (
             <Card>
@@ -397,7 +420,7 @@ export default function AppointmentsPage() {
             </Card>
           ) : (
             <ScheduleGrid
-              days={view === "day" ? [currentDate] : weekDays}
+              days={effectiveView === "day" ? [currentDate] : weekDays}
               doctors={gridDoctors}
               appointments={filtered}
               patients={patients}
@@ -409,7 +432,7 @@ export default function AppointmentsPage() {
         </>
       )}
 
-      {view === "day" && rangeAppointments.length > 0 && (
+      {effectiveView === "day" && rangeAppointments.length > 0 && (
         <p className="text-sm text-slate-500">{rangeAppointments.length} записей за день</p>
       )}
 

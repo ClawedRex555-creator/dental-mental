@@ -12,6 +12,34 @@ export interface ClinicDataFetchResult {
   forbidden?: boolean;
 }
 
+export interface ClinicDataMetaResult {
+  updatedAt: string | null;
+  database: boolean;
+  forbidden?: boolean;
+}
+
+export async function fetchClinicDataMetaFromServer(): Promise<ClinicDataMetaResult | null> {
+  const res = await fetchWithTimeout("/api/clinic/data?meta=1", {
+    credentials: "same-origin",
+  });
+  if (res.status === 503) return null;
+  if (res.status === 403) {
+    return { updatedAt: null, database: true, forbidden: true };
+  }
+  if (!res.ok) return null;
+
+  const json = (await res.json()) as {
+    updatedAt?: string | null;
+    database?: boolean;
+  };
+
+  if (!json.database) return { updatedAt: null, database: false };
+  return {
+    updatedAt: json.updatedAt ?? null,
+    database: true,
+  };
+}
+
 export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult | null> {
   const res = await fetchWithTimeout("/api/clinic/data", { credentials: "same-origin" });
   if (res.status === 503) return null;
@@ -43,7 +71,7 @@ export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult
 export async function saveClinicDataToServer(
   data: ClinicPersistedState,
   options?: { keepalive?: boolean; expectedUpdatedAt?: string | null }
-): Promise<{ ok: boolean; error?: string; updatedAt?: string; forbidden?: boolean }> {
+): Promise<{ ok: boolean; error?: string; updatedAt?: string; forbidden?: boolean; merged?: boolean }> {
   const res = await fetchWithTimeout(
     "/api/clinic/data",
     {
@@ -61,6 +89,7 @@ export async function saveClinicDataToServer(
   const json = (await res.json().catch(() => ({}))) as {
     error?: string;
     updatedAt?: string;
+    merged?: boolean;
   };
   if (res.status === 403) {
     return { ok: false, forbidden: true, error: json.error ?? "Доступ запрещён" };
@@ -68,5 +97,5 @@ export async function saveClinicDataToServer(
   if (!res.ok) {
     return { ok: false, error: json.error ?? "Не удалось сохранить данные" };
   }
-  return { ok: true, updatedAt: json.updatedAt };
+  return { ok: true, updatedAt: json.updatedAt, merged: json.merged === true };
 }

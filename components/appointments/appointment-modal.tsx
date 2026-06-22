@@ -18,6 +18,7 @@ import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
+import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,7 @@ export function AppointmentModal({
       addAppointment(payload);
       toast.success("Запись создана");
     }
+    requestClinicDataFlush();
 
     prevStatus.current = status;
 

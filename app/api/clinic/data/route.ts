@@ -6,6 +6,7 @@ import { assertClinicHost } from "@/lib/assert-clinic-host";
 import {
   CLINIC_DATA_SCHEMA_VERSION,
   mergeClinicDataForSave,
+  mergeClinicDataOnWriteConflict,
   parseClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
@@ -54,9 +55,24 @@ export async function GET(request: Request) {
     );
   }
 
+  const metaOnly = new URL(request.url).searchParams.get("meta") === "1";
+
   const record = await getClinicDataDbWithLegacyStaff(session.clinicId);
   if (!record) {
-    return NextResponse.json({ data: null, database: true, version: CLINIC_DATA_SCHEMA_VERSION });
+    return NextResponse.json({
+      data: metaOnly ? undefined : null,
+      database: true,
+      version: CLINIC_DATA_SCHEMA_VERSION,
+      updatedAt: null,
+    });
+  }
+
+  if (metaOnly) {
+    return NextResponse.json({
+      database: true,
+      updatedAt: record.updatedAt,
+      version: record.version,
+    });
   }
 
   const data =
@@ -89,7 +105,7 @@ export async function PUT(request: Request) {
   const role = authUser?.role ?? session.role;
   if (!canWriteClinicDataSync(role)) {
     return NextResponse.json(
-      { error: "Сохранение данных доступно владельцу, администратору, бухгалтеру, врачу и ассистенту" },
+      { error: "Сохранение данных доступно владельцу, администратору, врачу и ассистенту" },
       { status: 403 }
     );
   }
@@ -114,12 +130,14 @@ export async function PUT(request: Request) {
   try {
     const existing = await getClinicDataDbWithLegacyStaff(session.clinicId);
     let toPersist = parsed;
+    let mergedConflict = false;
     if (
       existing?.data &&
       body.expectedUpdatedAt &&
       existing.updatedAt > body.expectedUpdatedAt
     ) {
-      toPersist = mergeClinicDataForSave(existing.data, parsed);
+      toPersist = mergeClinicDataOnWriteConflict(existing.data, parsed);
+      mergedConflict = true;
     }
     toPersist = preserveServicesForReadOnlyRoles(
       role,
@@ -145,6 +163,7 @@ export async function PUT(request: Request) {
       ok: true,
       updatedAt: saved.updatedAt,
       version: saved.version,
+      merged: mergedConflict,
     });
   } catch (e) {
     console.error("[clinic/data] save failed", e);

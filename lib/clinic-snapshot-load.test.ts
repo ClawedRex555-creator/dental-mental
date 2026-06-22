@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createFreshPersistedState } from "./clinic-persisted-state";
+import { createFreshPersistedState, mergeDoctorSchedules } from "./clinic-persisted-state";
 import type { Patient } from "./types";
 import {
   needsMergeWithServerOnLoad,
@@ -36,6 +36,19 @@ describe("clinic-snapshot-load", () => {
     assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared), false);
   });
 
+  it("server database mode: in-memory local does not force merge without pending", () => {
+    const remote = createFreshPersistedState();
+    remote.patients = [patient("p1")];
+    const local = createFreshPersistedState();
+    local.patients = [patient("p2")];
+    const opts = { serverDatabaseMode: true as const };
+    assert.equal(needsMergeWithServerOnLoad(local, opts), false);
+    const prepared = prepareSnapshotAfterServerFetch(remote, local, opts);
+    assert.equal(prepared.patients.length, 1);
+    assert.equal(prepared.patients[0]?.id, "p1");
+    assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared, opts), false);
+  });
+
   it("pushes when local has new clinic expenses", () => {
     const remote = createFreshPersistedState();
     const local = createFreshPersistedState();
@@ -50,5 +63,54 @@ describe("clinic-snapshot-load", () => {
     ];
     const prepared = prepareSnapshotAfterServerFetch(remote, local);
     assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared), true);
+  });
+
+  it("pushes when local doctor schedule differs from remote", () => {
+    const remote = createFreshPersistedState();
+    remote.doctorSchedules = [
+      {
+        doctorId: "d1",
+        month: "2026-06",
+        days: { "2026-06-01": { working: false, startTime: "09:00", endTime: "18:00" } },
+        updatedAt: "2026-06-01",
+      },
+    ];
+    const local = createFreshPersistedState();
+    local.patients = [patient("p1")];
+    local.doctorSchedules = [
+      {
+        doctorId: "d1",
+        month: "2026-06",
+        days: { "2026-06-01": { working: true, startTime: "09:00", endTime: "18:00" } },
+        updatedAt: "2026-06-22",
+      },
+    ];
+    const prepared = prepareSnapshotAfterServerFetch(remote, local);
+    assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared), true);
+  });
+
+  it("mergeDoctorSchedules keeps schedule with newer updatedAt", () => {
+    const stale = {
+      doctorId: "d1",
+      month: "2026-06",
+      days: { "2026-06-01": { working: false, startTime: "09:00", endTime: "18:00" } },
+      updatedAt: "2026-06-01",
+    };
+    const fresh = {
+      doctorId: "d1",
+      month: "2026-06",
+      days: { "2026-06-01": { working: true, startTime: "09:00", endTime: "18:00" } },
+      updatedAt: "2026-06-22",
+    };
+    const merged = mergeDoctorSchedules([stale], [fresh]);
+    assert.equal(
+      (merged[0]?.days["2026-06-01"] as { working: boolean }).working,
+      true
+    );
+    const mergedFromServer = mergeDoctorSchedules([fresh], [stale]);
+    assert.equal(
+      (mergedFromServer[0]?.days["2026-06-01"] as { working: boolean }).working,
+      true
+    );
   });
 });

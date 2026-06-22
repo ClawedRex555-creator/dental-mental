@@ -21,6 +21,9 @@ export async function GET() {
     patientAppointmentSearch: true,
     treatmentPlanQuantity: true,
     treatmentPlansAllDoctors: true,
+    clinicCrossDeviceSync: true,
+    clinicSyncBaselineFix: true,
+    clinicSyncFastPull: true,
   };
 
   try {

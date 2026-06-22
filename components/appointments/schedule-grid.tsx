@@ -89,7 +89,10 @@ export function ScheduleGrid({
                 return (
                   <th
                     key={`${day.toISOString()}-${doc.id}`}
-                    className="min-w-[140px] border-b-2 border-r px-2 py-3 text-center last:border-r-0"
+                    className={cn(
+                      "border-b-2 border-r px-2 py-3 text-center last:border-r-0",
+                      isDayView ? "min-w-[120px] sm:min-w-[140px]" : "min-w-[140px]"
+                    )}
                     style={{
                       borderColor: "var(--schedule-border)",
                       backgroundColor: "var(--schedule-header-bg)",

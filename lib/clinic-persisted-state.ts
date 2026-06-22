@@ -1,5 +1,10 @@
 import { mergeClinicServices, migrateServices } from "@/lib/service-categories";
 import {
+  mergeAssistantManualHours,
+  normalizeAssistantManualHours,
+  type AssistantManualHoursMap,
+} from "@/lib/assistant-hours";
+import {
   findOrphanPatientIds,
   patientsLostButAppointmentsRemain,
   repairMissingPatientsInSnapshot,
@@ -61,7 +66,7 @@ export interface ClinicPersistedState {
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
   /** Ручной ввод часов ассистента (зарплаты), ключ — id сотрудника */
-  assistantManualHours: Record<string, string>;
+  assistantManualHours: AssistantManualHoursMap;
 }
 
 export const CLINIC_DATA_SCHEMA_VERSION = 1;
@@ -124,7 +129,7 @@ type PersistPickSource = {
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
-  assistantManualHours?: Record<string, string>;
+  assistantManualHours?: AssistantManualHoursMap;
 };
 
 /** Только безопасные для localStorage поля (production + DATABASE_URL) */
@@ -206,7 +211,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
-    assistantManualHours: state.assistantManualHours ?? {},
+    assistantManualHours: normalizeAssistantManualHours(state.assistantManualHours),
   };
 }
 
@@ -314,14 +319,28 @@ export function doctorScheduleKey(schedule: DoctorMonthSchedule): string {
   return `${schedule.doctorId}:${schedule.month}`;
 }
 
-/** Графики врачей: ключ doctorId + month (без поля id) */
+function pickNewerDoctorSchedule(
+  current: DoctorMonthSchedule | undefined,
+  next: DoctorMonthSchedule
+): DoctorMonthSchedule {
+  if (!current) return next;
+  const curAt = current.updatedAt ?? "";
+  const nextAt = next.updatedAt ?? "";
+  return nextAt >= curAt ? next : current;
+}
+
+/** Графики врачей: ключ doctorId + month; при конфликте — более свежий updatedAt */
 export function mergeDoctorSchedules(
   remote: DoctorMonthSchedule[],
   local: DoctorMonthSchedule[]
 ): DoctorMonthSchedule[] {
   const map = new Map<string, DoctorMonthSchedule>();
-  for (const x of remote) map.set(doctorScheduleKey(x), x);
-  for (const x of local) map.set(doctorScheduleKey(x), x);
+  for (const x of remote) {
+    map.set(doctorScheduleKey(x), pickNewerDoctorSchedule(map.get(doctorScheduleKey(x)), x));
+  }
+  for (const x of local) {
+    map.set(doctorScheduleKey(x), pickNewerDoctorSchedule(map.get(doctorScheduleKey(x)), x));
+  }
   return Array.from(map.values());
 }
 
@@ -510,10 +529,10 @@ export function mergeClinicSnapshotWithLocal(
       ...remote.userThemePreferences,
       ...local.userThemePreferences,
     },
-    assistantManualHours: {
-      ...(remote.assistantManualHours ?? {}),
-      ...(local.assistantManualHours ?? {}),
-    },
+    assistantManualHours: mergeAssistantManualHours(
+      remote.assistantManualHours ?? {},
+      local.assistantManualHours ?? {}
+    ),
   };
   if (!findOrphanPatientIds(merged).length) return merged;
   return repairMissingPatientsInSnapshot(merged);
@@ -611,10 +630,10 @@ export function mergeClinicDataForSave(
     ),
     teethByPatient: { ...existing.teethByPatient, ...incoming.teethByPatient },
     actCounter: Math.max(existing.actCounter, incoming.actCounter),
-    assistantManualHours: {
-      ...(existing.assistantManualHours ?? {}),
-      ...(incoming.assistantManualHours ?? {}),
-    },
+    assistantManualHours: mergeAssistantManualHours(
+      existing.assistantManualHours ?? {},
+      incoming.assistantManualHours ?? {}
+    ),
   };
 
   if (!hasPatientDeletion) {
@@ -643,6 +662,53 @@ export function mergeClinicDataForSave(
     patientNotes: filterByPatient(merged.patientNotes),
     teethByPatient: nextTeeth,
   });
+}
+
+/**
+ * Гонка PUT: на сервере уже более свежий снимок.
+ * Новые id из клиента сохраняем, для совпадающих id — приоритет у сервера.
+ */
+export function mergeClinicDataOnWriteConflict(
+  existing: ClinicPersistedState,
+  incoming: ClinicPersistedState
+): ClinicPersistedState {
+  const preferServer = <T extends { id: string }>(inc: T[], ex: T[]) =>
+    mergeByIdPreferLocal(inc, ex);
+
+  return {
+    ...incoming,
+    doctors: preferServer(incoming.doctors, existing.doctors),
+    services: preferServer(incoming.services, existing.services),
+    cabinets: preferServer(incoming.cabinets, existing.cabinets),
+    patients: preferServer(incoming.patients, existing.patients),
+    appointments: preferServer(incoming.appointments, existing.appointments),
+    medicalRecords: preferServer(incoming.medicalRecords, existing.medicalRecords),
+    treatmentPlans: preferServer(incoming.treatmentPlans, existing.treatmentPlans),
+    payments: preferServer(incoming.payments, existing.payments),
+    invoices: preferServer(incoming.invoices, existing.invoices),
+    workActs: preferServer(incoming.workActs, existing.workActs),
+    warehouse: preferServer(incoming.warehouse, existing.warehouse),
+    tasks: preferServer(incoming.tasks, existing.tasks),
+    onlineBookings: preferServer(incoming.onlineBookings, existing.onlineBookings),
+    patientFiles: preferServer(incoming.patientFiles, existing.patientFiles),
+    patientNotes: preferServer(incoming.patientNotes, existing.patientNotes),
+    documentTemplates: preferServer(incoming.documentTemplates, existing.documentTemplates),
+    clinicExpenses: preferServer(incoming.clinicExpenses, existing.clinicExpenses),
+    legalDocuments: preferServer(incoming.legalDocuments, existing.legalDocuments),
+    prepayments: preferServer(incoming.prepayments, existing.prepayments),
+    doctorSchedules: mergeDoctorSchedules(incoming.doctorSchedules, existing.doctorSchedules),
+    teethByPatient: { ...incoming.teethByPatient, ...existing.teethByPatient },
+    actCounter: Math.max(existing.actCounter, incoming.actCounter),
+    assistantManualHours: mergeAssistantManualHours(
+      incoming.assistantManualHours ?? {},
+      existing.assistantManualHours ?? {}
+    ),
+    clinicSettings: existing.clinicSettings ?? incoming.clinicSettings,
+    userThemePreferences: {
+      ...incoming.userThemePreferences,
+      ...existing.userThemePreferences,
+    },
+  };
 }
 
 /**
@@ -755,9 +821,6 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],
     userThemePreferences: (d.userThemePreferences as Record<string, ThemeMode>) ?? {},
-    assistantManualHours:
-      d.assistantManualHours && typeof d.assistantManualHours === "object"
-        ? (d.assistantManualHours as Record<string, string>)
-        : {},
+    assistantManualHours: normalizeAssistantManualHours(d.assistantManualHours),
   };
 }

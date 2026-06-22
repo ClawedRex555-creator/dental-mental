@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PATIENT_STATUS_LABELS, UI } from "@/lib/constants";
 import type { Patient, PatientStatus } from "@/lib/types";
-import { formatCurrency, formatDate, getAge, getFullName } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, getAge, getFullName } from "@/lib/utils";
 import { canDeletePatients } from "@/lib/rbac";
 import { logAuditClient } from "@/lib/audit-client";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -90,7 +90,88 @@ export default function PatientsPage() {
       </Card>
 
       <Card>
-        <div className="overflow-x-auto">
+        {/* Mobile: cards instead of a wide table */}
+        <div className="sm:hidden">
+          <div className="divide-y divide-[var(--border)]">
+            {filtered.map((p) => {
+              const name = getFullName(p.firstName, p.lastName, p.middleName);
+              return (
+                <div key={p.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/patients/${p.id}`}
+                        className="block truncate text-base font-semibold text-teal-700"
+                      >
+                        {name}
+                      </Link>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                        <span className="tabular-nums">{p.phone}</span>
+                        <span>·</span>
+                        <span>{getAge(p.birthDate)} лет</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{PATIENT_STATUS_LABELS[p.status]}</Badge>
+                        <span className={cn("text-sm font-medium", p.balance < 0 ? "text-red-600" : "text-slate-700")}>
+                          {formatCurrency(p.balance)}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          {UI.lastVisit}: {formatDate(p.lastVisitDate)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(p);
+                          setModalOpen(true);
+                        }}
+                      >
+                        {UI.edit}
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Удалить пациента «${name}»?\n\nБудут удалены записи, медкарта, планы, акты, платежи и файлы. Действие нельзя отменить.`
+                              )
+                            ) {
+                              return;
+                            }
+                            if (deletePatient(p.id)) {
+                              logAuditClient({
+                                action: "delete",
+                                resourceType: "patient",
+                                resourceId: p.id,
+                              });
+                              toast.success("Пациент удалён");
+                            } else {
+                              toast.error("Не удалось удалить пациента");
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <p className="px-4 py-8 text-center text-slate-500">Пациенты не найдены</p>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop/tablet: table */}
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-slate-500">

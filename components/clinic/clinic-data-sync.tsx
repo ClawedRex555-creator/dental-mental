@@ -4,9 +4,13 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   fetchClinicDataFromServer,
+  fetchClinicDataMetaFromServer,
   saveClinicDataToServer,
 } from "@/lib/clinic-data-client";
-import { setClinicServerDatabaseMode } from "@/lib/clinic-client-mode";
+import {
+  isClinicServerDatabaseMode,
+  setClinicServerDatabaseMode,
+} from "@/lib/clinic-client-mode";
 import {
   canReadClinicDataSync,
   canWriteClinicDataSync,
@@ -15,9 +19,15 @@ import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import {
   createFreshPersistedState,
   hasClinicData,
+  mergeClinicSnapshotWithLocal,
   pickPersistedState,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import {
+  notifyClinicDataChanged,
+  registerClinicDataFlush,
+  subscribeClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 import {
   needsMergeWithServerOnLoad,
   prepareSnapshotAfterServerFetch,
@@ -33,8 +43,10 @@ import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { useClinicStore } from "@/store/useClinicStore";
 
-const SAVE_DEBOUNCE_MS = 2000;
+const SAVE_DEBOUNCE_MS = 800;
 const PERIODIC_FLUSH_MS = 60_000;
+/** Лёгкий опрос meta (только updatedAt) — полный snapshot только при изменениях */
+const PERIODIC_PULL_MS = 4_000;
 
 function syncErrorMessage(error: unknown): string {
   if (error instanceof FetchTimeoutError) return error.message;
@@ -57,10 +69,14 @@ export function ClinicDataSync() {
   const syncForbidden = useRef(false);
   const canWrite = useRef(false);
   const saving = useRef(false);
+  /** replacePersistedState синхронно дергает subscribe — не считать это правкой пользователя */
+  const suppressPersistedChange = useRef(false);
   const lastSavedJson = useRef("");
   const lastServerUpdatedAt = useRef<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const periodicTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pullTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flushAfterBaseline = useRef(false);
   /** Снимок для подписки — без clinicDataUnsaved, иначе бесконечный subscribe */
   const lastTrackedSnap = useRef("");
 
@@ -76,14 +92,69 @@ export function ClinicDataSync() {
       if (!cancelled) setClinicSyncPhase(phase);
     };
 
-    const armSaveBaseline = () => {
-      scheduleIdleWork(() => {
-        if (cancelled) return;
-        const json = JSON.stringify(pickPersistedState(useClinicStore.getState()));
+    const hasPendingLocalEdits = () => {
+      const store = useClinicStore.getState();
+      if (store.clinicDataUnsaved) return true;
+      if (saveTimer.current) return true;
+      const json = JSON.stringify(pickPersistedState(store));
+      return json !== lastSavedJson.current;
+    };
+
+    const applyRemoteSnapshot = (remote: ClinicPersistedState, updatedAt?: string | null) => {
+      const local = pickPersistedState(useClinicStore.getState());
+      // При pull с сервера приоритет у remote; локальные id, которых нет на сервере, сохраняем
+      const snapshot = mergeClinicSnapshotWithLocal(local, remote);
+      const json = JSON.stringify(snapshot);
+      if (json === lastSavedJson.current) return;
+      suppressPersistedChange.current = true;
+      try {
         lastSavedJson.current = json;
         lastTrackedSnap.current = json;
-        initialLoadDone.current = true;
-      });
+        useClinicStore.getState().replacePersistedState(snapshot);
+        if (updatedAt) lastServerUpdatedAt.current = updatedAt;
+        setClinicDataUnsaved(false);
+        setClinicDataSaveError(null);
+      } finally {
+        suppressPersistedChange.current = false;
+      }
+    };
+
+    const pullRemoteSnapshot = async (options?: { force?: boolean }) => {
+      if (!syncReady.current || syncForbidden.current || saving.current) return;
+      if (hasPendingLocalEdits()) return;
+      try {
+        if (!options?.force && lastServerUpdatedAt.current) {
+          const meta = await fetchClinicDataMetaFromServer();
+          if (!meta || cancelled || meta.forbidden) return;
+          if (hasPendingLocalEdits()) return;
+          if (
+            meta.updatedAt &&
+            lastServerUpdatedAt.current &&
+            meta.updatedAt <= lastServerUpdatedAt.current
+          ) {
+            return;
+          }
+        }
+
+        const remote = await fetchClinicDataFromServer();
+        if (!remote?.data || cancelled) return;
+        if (hasPendingLocalEdits()) return;
+        applyRemoteSnapshot(remote.data, remote.updatedAt);
+      } catch {
+        /* ignore background refresh */
+      }
+    };
+
+    const armSaveBaseline = () => {
+      if (cancelled) return;
+      const json = JSON.stringify(pickPersistedState(useClinicStore.getState()));
+      lastSavedJson.current = json;
+      lastTrackedSnap.current = json;
+      initialLoadDone.current = true;
+      if (flushAfterBaseline.current) {
+        flushAfterBaseline.current = false;
+        void flushSave();
+      }
     };
 
     const saveWithRetry = async (
@@ -105,7 +176,10 @@ export function ClinicDataSync() {
       if (!syncReady.current || syncForbidden.current || !canWrite.current || saving.current) {
         return;
       }
-      if (!initialLoadDone.current) return;
+      if (!initialLoadDone.current) {
+        flushAfterBaseline.current = true;
+        return;
+      }
 
       const storeNow = useClinicStore.getState();
       if (storeNow.clinicSyncPhase !== "ready") return;
@@ -127,27 +201,29 @@ export function ClinicDataSync() {
       setClinicDataSaveError(null);
 
       saving.current = true;
+      let saveResult: Awaited<ReturnType<typeof saveWithRetry>> | undefined;
       try {
-        const result = await saveWithRetry(snapshot, {
+        saveResult = await saveWithRetry(snapshot, {
           keepalive: options?.keepalive,
           expectedUpdatedAt: lastServerUpdatedAt.current,
         });
 
-      if (result.ok) {
+      if (saveResult.ok) {
         lastSavedJson.current = json;
         lastTrackedSnap.current = json;
-        if (result.updatedAt) lastServerUpdatedAt.current = result.updatedAt;
+        if (saveResult.updatedAt) lastServerUpdatedAt.current = saveResult.updatedAt;
         clearPendingClinicSnapshot();
         setClinicDataUnsaved(false);
         setClinicDataSaveError(null);
-        } else if (result.forbidden) {
+        notifyClinicDataChanged();
+        } else if (saveResult.forbidden) {
           syncForbidden.current = true;
           syncReady.current = false;
           canWrite.current = false;
           finishPhase("read_only");
-        } else if (result.error) {
-          setClinicDataSaveError(result.error);
-          toast.error(result.error);
+        } else if (saveResult.error) {
+          setClinicDataSaveError(saveResult.error);
+          toast.error(saveResult.error);
         }
       } catch (e) {
         const msg = syncErrorMessage(e);
@@ -155,16 +231,24 @@ export function ClinicDataSync() {
         toast.error(msg);
       } finally {
         saving.current = false;
+        if (saveResult?.ok && saveResult.merged) {
+          void pullRemoteSnapshot();
+        }
       }
     };
 
     const onPersistedDataChange = () => {
+      if (suppressPersistedChange.current) return;
       if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
-      if (!initialLoadDone.current) return;
       if (saving.current) return;
 
       const snapshot = pickPersistedState(useClinicStore.getState());
       writePendingClinicSnapshot(snapshot);
+
+      if (!initialLoadDone.current) {
+        flushAfterBaseline.current = true;
+        return;
+      }
 
       const snap = JSON.stringify(snapshot);
       if (snap === lastTrackedSnap.current) return;
@@ -188,9 +272,22 @@ export function ClinicDataSync() {
     window.addEventListener("pagehide", onLeavePage);
     window.addEventListener("beforeunload", onLeavePage);
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") void flushSave({ keepalive: true });
+      if (document.visibilityState === "hidden") {
+        void flushSave({ keepalive: true });
+        return;
+      }
+      if (document.visibilityState === "visible") {
+        void pullRemoteSnapshot({ force: true });
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
+
+    const onWindowFocus = () => {
+      if (document.visibilityState === "visible") {
+        void pullRemoteSnapshot({ force: true });
+      }
+    };
+    window.addEventListener("focus", onWindowFocus);
 
     periodicTimer.current = setInterval(() => {
       if (!syncReady.current || !canWrite.current || !initialLoadDone.current) return;
@@ -198,23 +295,50 @@ export function ClinicDataSync() {
       if (json !== lastSavedJson.current) void flushSave();
     }, PERIODIC_FLUSH_MS);
 
+    pullTimer.current = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void pullRemoteSnapshot();
+    }, PERIODIC_PULL_MS);
+
+    registerClinicDataFlush(() => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      void flushSave();
+    });
+
     const applySnapshot = (snapshot: ClinicPersistedState, mergedWithLocal: boolean) => {
       const store = useClinicStore.getState();
-      if (mergedWithLocal) {
-        store.hydratePersistedState(snapshot);
-      } else {
-        store.replacePersistedState(snapshot);
+      suppressPersistedChange.current = true;
+      try {
+        if (mergedWithLocal) {
+          store.hydratePersistedState(snapshot);
+        } else {
+          store.replacePersistedState(snapshot);
+        }
+      } finally {
+        suppressPersistedChange.current = false;
       }
     };
 
     void (async () => {
       try {
         let hostSlug: string | null = null;
+        let serverUsesDb = isClinicServerDatabaseMode();
         try {
           const ctxRes = await fetch("/api/clinic/context", { credentials: "include" });
           if (ctxRes.ok) {
-            const ctx = (await ctxRes.json()) as { slug?: string; mode?: string };
+            const ctx = (await ctxRes.json()) as {
+              slug?: string;
+              mode?: string;
+              database?: boolean;
+            };
             if (ctx.mode === "clinic" && ctx.slug) hostSlug = ctx.slug;
+            if (ctx.mode === "clinic" && ctx.database === true) {
+              serverUsesDb = true;
+              setClinicServerDatabaseMode(true);
+            }
           }
         } catch {
           /* scope check best-effort */
@@ -223,10 +347,21 @@ export function ClinicDataSync() {
           useClinicStore.getState().replacePersistedState(createFreshPersistedState());
         }
 
-        const remote = await fetchClinicDataFromServer();
+        let remote = await fetchClinicDataFromServer();
         if (cancelled) return;
 
-        if (remote === null || !remote.database) {
+        if (!remote && serverUsesDb) {
+          for (const delayMs of CLINIC_SAVE_RETRY_DELAYS_MS) {
+            if (cancelled) return;
+            if (delayMs > 0) await sleep(delayMs);
+            remote = await fetchClinicDataFromServer();
+            if (remote) break;
+          }
+        }
+
+        if (cancelled) return;
+
+        if (!serverUsesDb && (remote === null || !remote.database)) {
           setClinicServerDatabaseMode(false);
           syncReady.current = true;
           canWrite.current = canWriteClinicDataSync(
@@ -236,6 +371,17 @@ export function ClinicDataSync() {
           armSaveBaseline();
           return;
         }
+
+        if (serverUsesDb && !remote) {
+          syncReady.current = false;
+          finishPhase("error");
+          setClinicDataSaveError(
+            "Не удалось загрузить данные с сервера. Обновите страницу (F5)."
+          );
+          return;
+        }
+
+        if (!remote) return;
 
         setClinicServerDatabaseMode(true);
 
@@ -253,8 +399,9 @@ export function ClinicDataSync() {
 
         if (remote.data) {
           const local = pickPersistedState(useClinicStore.getState());
-          const mustMerge = needsMergeWithServerOnLoad(local);
-          const snapshot = prepareSnapshotAfterServerFetch(remote.data, local);
+          const serverDbOpts = { serverDatabaseMode: true as const };
+          const mustMerge = needsMergeWithServerOnLoad(local, serverDbOpts);
+          const snapshot = prepareSnapshotAfterServerFetch(remote.data, local, serverDbOpts);
 
           applySnapshot(snapshot, mustMerge);
           syncReady.current = true;
@@ -266,30 +413,44 @@ export function ClinicDataSync() {
             );
           }
 
-          armSaveBaseline();
+          const needsPush =
+            canWrite.current &&
+            shouldPushSnapshotAfterServerFetch(remote.data, snapshot, serverDbOpts);
 
-          if (canWrite.current && shouldPushSnapshotAfterServerFetch(remote.data, snapshot)) {
-            scheduleIdleWork(() => {
-              if (cancelled) return;
-              void (async () => {
-                try {
-                  const saved = await saveWithRetry(snapshot, {
-                    expectedUpdatedAt: remote.updatedAt,
-                  });
-                  if (cancelled || !saved.ok) return;
+          if (needsPush) {
+            void (async () => {
+              let pushed = false;
+              try {
+                const saved = await saveWithRetry(snapshot, {
+                  expectedUpdatedAt: remote.updatedAt,
+                });
+                if (cancelled) return;
+                if (saved.ok) {
+                  pushed = true;
                   if (saved.updatedAt) lastServerUpdatedAt.current = saved.updatedAt;
                   const json = JSON.stringify(snapshot);
                   lastSavedJson.current = json;
                   lastTrackedSnap.current = json;
                   clearPendingClinicSnapshot();
                   setClinicDataUnsaved(false);
-                } catch (e) {
-                  toast.error(syncErrorMessage(e));
+                  notifyClinicDataChanged();
+                } else {
+                  setClinicDataUnsaved(true);
+                  if (saved.error) toast.error(saved.error);
                 }
-              })();
-            });
+              } catch (e) {
+                setClinicDataUnsaved(true);
+                toast.error(syncErrorMessage(e));
+              } finally {
+                if (!cancelled) {
+                  armSaveBaseline();
+                  if (!pushed) void flushSave();
+                }
+              }
+            })();
           } else {
             clearPendingClinicSnapshot();
+            armSaveBaseline();
           }
           return;
         }
@@ -349,15 +510,22 @@ export function ClinicDataSync() {
     })();
 
     const unsub = useClinicStore.subscribe(onPersistedDataChange);
+    const unsubBroadcast = subscribeClinicDataChanged(() => {
+      void pullRemoteSnapshot();
+    });
 
     return () => {
       cancelled = true;
+      registerClinicDataFlush(null);
       unsub();
+      unsubBroadcast();
       window.removeEventListener("pagehide", onLeavePage);
       window.removeEventListener("beforeunload", onLeavePage);
+      window.removeEventListener("focus", onWindowFocus);
       document.removeEventListener("visibilitychange", onVisibility);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       if (periodicTimer.current) clearInterval(periodicTimer.current);
+      if (pullTimer.current) clearInterval(pullTimer.current);
       if (syncReady.current && canWrite.current && !syncForbidden.current) {
         void flushSave({ keepalive: true });
       }
