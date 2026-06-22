@@ -8,8 +8,8 @@ import {
   CDA_TYPE_ID_ROOT,
   HL7_NS,
   XSI_NS,
-  formatSnilsForCda,
   mapGenderToEgisz,
+  normalizeSnilsDigits,
 } from "@/lib/egisz/cda/constants";
 import { mapDoctorAuthorName } from "@/lib/egisz/n3/mappers";
 import type { EgiszClinicConfig } from "@/lib/egisz/types";
@@ -42,7 +42,8 @@ export function buildCdaDocument(input: CdaBuildInput): string {
   const productName =
     process.env.EGISZ_PRODUCT_NAME?.trim() || "Emkaro";
   const author = mapDoctorAuthorName(input.doctor);
-  const snils = formatSnilsForCda(input.patient.snils ?? "");
+  // N3 сравнивает СНИЛС в CDA с AddPatient — только цифры (без дефисов/пробела)
+  const snils = normalizeSnilsDigits(input.patient.snils ?? "");
   const sex = mapGenderToEgisz(input.patient.gender);
 
   const sections = [
