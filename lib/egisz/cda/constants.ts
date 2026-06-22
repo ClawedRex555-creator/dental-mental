@@ -30,8 +30,13 @@ export function mapGenderToEgisz(gender: string): "1" | "2" {
   return "1";
 }
 
+/** 11 цифр без разделителей — как в AddPatient (DocN) и в CDA extension для N3 */
+export function normalizeSnilsDigits(snils: string): string {
+  return snils.replace(/\D/g, "");
+}
+
 export function formatSnilsForCda(snils: string): string {
-  const digits = snils.replace(/\D/g, "");
+  const digits = normalizeSnilsDigits(snils);
   if (digits.length !== 11) return snils.trim();
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)} ${digits.slice(9)}`;
 }
