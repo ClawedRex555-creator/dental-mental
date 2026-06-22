@@ -19,6 +19,7 @@ import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import {
   createFreshPersistedState,
   hasClinicData,
+  hasEntityIdsNotInIncoming,
   mergeClinicSnapshotWithLocal,
   pickPersistedState,
   type ClinicPersistedState,
@@ -26,6 +27,7 @@ import {
 import {
   notifyClinicDataChanged,
   registerClinicDataFlush,
+  registerClinicDataPull,
   subscribeClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
 import {
@@ -35,6 +37,7 @@ import {
 } from "@/lib/clinic-snapshot-load";
 import {
   clearPendingClinicSnapshot,
+  discardStalePendingClinicSnapshot,
   readPendingClinicSnapshot,
   writePendingClinicSnapshot,
 } from "@/lib/clinic-pending-sync";
@@ -94,13 +97,21 @@ export function ClinicDataSync() {
     };
 
     const hasPendingLocalEdits = () => {
-      if (readPendingClinicSnapshot()) return true;
       const store = useClinicStore.getState();
       if (store.clinicDataUnsaved) return true;
       if (saveTimer.current) return true;
       const json = JSON.stringify(pickPersistedState(store));
-      return json !== lastSavedJson.current;
+      if (json !== lastSavedJson.current) return true;
+      return Boolean(readPendingClinicSnapshot());
     };
+
+    const serverHasNewFinancialData = (
+      remote: ClinicPersistedState,
+      local: ClinicPersistedState
+    ) =>
+      hasEntityIdsNotInIncoming(remote.workActs, local.workActs) ||
+      hasEntityIdsNotInIncoming(remote.payments, local.payments) ||
+      hasEntityIdsNotInIncoming(remote.invoices, local.invoices);
 
     const applyRemoteSnapshot = (remote: ClinicPersistedState, updatedAt?: string | null) => {
       const local = pickPersistedState(useClinicStore.getState());
@@ -140,7 +151,12 @@ export function ClinicDataSync() {
 
         const remote = await fetchClinicDataFromServer();
         if (!remote?.data || cancelled) return;
-        if (hasPendingLocalEdits()) return;
+        discardStalePendingClinicSnapshot(remote.data);
+        const localNow = pickPersistedState(useClinicStore.getState());
+        const applyDespitePending =
+          Boolean(options?.force) && serverHasNewFinancialData(remote.data, localNow);
+        if (applyDespitePending) clearPendingClinicSnapshot();
+        if (!applyDespitePending && hasPendingLocalEdits()) return;
         applyRemoteSnapshot(remote.data, remote.updatedAt);
       } catch {
         /* ignore background refresh */
@@ -310,6 +326,10 @@ export function ClinicDataSync() {
       void flushSave();
     });
 
+    registerClinicDataPull((options) => {
+      void pullRemoteSnapshot(options);
+    });
+
     const applySnapshot = (snapshot: ClinicPersistedState, mergedWithLocal: boolean) => {
       const store = useClinicStore.getState();
       suppressPersistedChange.current = true;
@@ -386,6 +406,7 @@ export function ClinicDataSync() {
         if (remote.updatedAt) lastServerUpdatedAt.current = remote.updatedAt;
 
         if (remote.data) {
+          discardStalePendingClinicSnapshot(remote.data);
           const local = pickPersistedState(useClinicStore.getState());
           const serverDbOpts = { serverDatabaseMode: true as const };
           const mustMerge = needsMergeWithServerOnLoad(local, serverDbOpts);
@@ -505,6 +526,7 @@ export function ClinicDataSync() {
     return () => {
       cancelled = true;
       registerClinicDataFlush(null);
+      registerClinicDataPull(null);
       unsub();
       unsubBroadcast();
       window.removeEventListener("pagehide", onLeavePage);

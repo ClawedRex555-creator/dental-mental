@@ -10,6 +10,7 @@ import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { normalizeServiceFields } from "@/lib/service-categories";
 import { calcWorkActAmounts } from "@/lib/work-act-utils";
 import { printWorkAct } from "@/lib/work-act-print";
+import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
@@ -253,6 +254,7 @@ export function WorkActModal({
       updateAppointment(defaultAppointmentId, { workActId: actId });
     }
 
+    requestClinicDataFlush();
     return act;
   };
 

@@ -30,6 +30,7 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, UI } from "@/lib/constant
 import { formatCurrency, formatDate, generateId, getFullName } from "@/lib/utils";
 import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
 import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
+import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
@@ -77,6 +78,10 @@ export default function FinancePage() {
   const [actModalOpen, setActModalOpen] = useState(false);
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
+
+  useEffect(() => {
+    requestClinicDataPull({ force: true });
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

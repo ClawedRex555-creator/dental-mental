@@ -3,14 +3,24 @@
 export const CLINIC_DATA_SYNC_CHANNEL = "dc-clinic-data-sync";
 
 let flushClinicDataSave: (() => void) | null = null;
+let pullClinicDataFromServer: ((options?: { force?: boolean }) => void) | null = null;
 
 /** Регистрируется из ClinicDataSync — немедленный PUT после важных правок */
 export function registerClinicDataFlush(fn: (() => void) | null): void {
   flushClinicDataSave = fn;
 }
 
+/** Регистрируется из ClinicDataSync — немедленный GET с сервера */
+export function registerClinicDataPull(fn: ((options?: { force?: boolean }) => void) | null): void {
+  pullClinicDataFromServer = fn;
+}
+
 export function requestClinicDataFlush(): void {
   flushClinicDataSave?.();
+}
+
+export function requestClinicDataPull(options?: { force?: boolean }): void {
+  pullClinicDataFromServer?.(options);
 }
 
 export function notifyClinicDataChanged(): void {

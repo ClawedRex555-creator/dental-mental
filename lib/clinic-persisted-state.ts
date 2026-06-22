@@ -282,6 +282,15 @@ export function isDeletionOnlySubset<T extends { id: string }>(
   return incoming.every((x) => existingIds.has(x.id));
 }
 
+/** На сервере есть id, которых нет в локальном снимке (другое устройство сохранило данные) */
+export function hasEntityIdsNotInIncoming<T extends { id: string }>(
+  existing: T[],
+  incoming: T[]
+): boolean {
+  const incomingIds = new Set(incoming.map((x) => x.id));
+  return existing.some((x) => !incomingIds.has(x.id));
+}
+
 /** Объединение по id: записи из local (вторая коллекция) перекрывают remote */
 export function mergeByIdPreferLocal<T extends { id: string }>(remote: T[], local: T[]): T[] {
   const map = new Map<string, T>();
@@ -465,6 +474,14 @@ function mergeEntityArraysForSave<T extends { id: string }>(
   return incoming;
 }
 
+/** merge с сервера: новые акты/оплаты с другого устройства не отбрасываются */
+function mergeFinancialEntityList<T extends { id: string }>(remote: T[], local: T[]): T[] {
+  if (hasEntityIdsNotInIncoming(remote, local)) {
+    return mergeByIdPreferLocal(remote, local);
+  }
+  return mergeByIdPreferLocalRespectingDeletions(remote, local);
+}
+
 /** Слияние remote + local перед hydrate (загрузка с сервера) */
 export function mergeClinicSnapshotWithLocal(
   remote: ClinicPersistedState,
@@ -488,9 +505,9 @@ export function mergeClinicSnapshotWithLocal(
       remote.treatmentPlans,
       local.treatmentPlans
     ),
-    payments: mergeByIdPreferLocalRespectingDeletions(remote.payments, local.payments),
-    invoices: mergeByIdPreferLocalRespectingDeletions(remote.invoices, local.invoices),
-    workActs: mergeByIdPreferLocalRespectingDeletions(remote.workActs, local.workActs),
+    payments: mergeFinancialEntityList(remote.payments, local.payments),
+    invoices: mergeFinancialEntityList(remote.invoices, local.invoices),
+    workActs: mergeFinancialEntityList(remote.workActs, local.workActs),
     warehouse: mergeByIdPreferLocalRespectingDeletions(remote.warehouse, local.warehouse),
     tasks: mergeByIdPreferLocalRespectingDeletions(remote.tasks, local.tasks),
     onlineBookings: mergeByIdPreferLocalRespectingDeletions(
