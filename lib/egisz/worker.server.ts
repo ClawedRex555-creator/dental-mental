@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "crypto";
 import { buildCdaDocument } from "@/lib/egisz/cda/builder";
 import {
   getEgiszConfig,
@@ -154,12 +155,16 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
 
   if (!patient || !record || !doctor) return;
 
+  const documentUuid = payload.egiszDocumentUuid?.trim() || randomUUID();
+  payload.egiszDocumentUuid = documentUuid;
+
   const cdaXml = buildCdaDocument({
     patient,
     doctor,
     record,
     clinic: snapshot.data.clinicSettings,
     config,
+    documentUuid,
   });
   payload.cdaXml = cdaXml;
 
@@ -198,6 +203,7 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
     config,
     signed,
     doctor,
+    documentUuid,
   });
 
   const addRecord = await client.addMedRecord({

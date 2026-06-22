@@ -81,6 +81,25 @@ function parseGuidFromResponse(xml: string, tag: string): string | undefined {
   return xml.match(re)?.[1]?.trim();
 }
 
+const EGISZ_DOCUMENT_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseAddMedRecordDocumentId(xml: string): string | undefined {
+  const tags = [
+    "IdDocument",
+    "DocumentId",
+    "IdGlobal",
+    "AddMedRecordResult",
+    "localUid",
+    "LocalUid",
+  ];
+  for (const tag of tags) {
+    const value = parseGuidFromResponse(xml, tag);
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function normalizeSnilsDocN(snils: string): string {
   return snils.replace(/\D/g, "");
 }
@@ -255,15 +274,25 @@ export class N3IemkClient {
       };
     }
 
-    const documentId =
-      parseGuidFromResponse(xml, "IdDocument") ??
-      parseGuidFromResponse(xml, "DocumentId") ??
-      parseGuidFromResponse(xml, "IdGlobal");
+    const documentId = parseAddMedRecordDocumentId(xml);
 
     if (!documentId) {
+      const misId = input.document.idDocumentMis.trim();
+      // N3 demo часто возвращает пустой <AddMedRecordResponse/> без SOAP Fault
+      if (
+        /<AddMedRecordResponse/i.test(xml) &&
+        EGISZ_DOCUMENT_UUID_RE.test(misId)
+      ) {
+        return {
+          success: true,
+          documentId: misId,
+          rawResponse: xml,
+        };
+      }
       return {
         success: false,
-        errorMessage: "N3: не получен ID документа",
+        errorMessage:
+          "N3: не получен ID документа — IdDocumentMis должен быть UUID и совпадать с id в CDA",
         rawResponse: xml,
       };
     }

@@ -79,10 +79,11 @@ export function mapMedDocumentToN3(input: {
   config: EgiszClinicConfig;
   signed: SignedDocument;
   doctor: Doctor;
+  documentUuid: string;
 }): N3MedDocumentDto {
   const docOid = input.config.documentOid ?? "1.2.643.5.1.13.13.14.1.9.1.181";
   return {
-    idDocumentMis: input.record.id,
+    idDocumentMis: input.documentUuid.trim(),
     idMedDocumentType: resolveN3MedDocumentType(docOid),
     header: `Протокол консультации / ${input.record.serviceName ?? "стоматологический приём"}`,
     creationDate: formatN3CreationDate(input.record),
