@@ -19,6 +19,8 @@ ENV NODE_OPTIONS=--max-old-space-size=2048
 RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env before docker compose build" && exit 1)
 RUN chmod +x scripts/fix-stale-routes.sh && sh scripts/fix-stale-routes.sh /app
 RUN grep -q 'patientAppointmentSearch' app/api/health/route.ts || (echo "ERROR: stale source — redeploy fresh tar from Mac" && exit 1)
+RUN grep -q 'egiszCdaSnilsDigits' app/api/health/route.ts || (echo "ERROR: health route без egiszCdaSnilsDigits — задеплойте свежий tar" && exit 1)
+RUN grep -q 'normalizeSnilsDigits' lib/egisz/cda/builder.ts || (echo "ERROR: CDA builder без normalizeSnilsDigits" && exit 1)
 RUN test -f components/shared/patient-search-select.tsx || (echo "ERROR: missing patient-search-select.tsx" && exit 1)
 # CACHEBUST сбрасывает кэш next build при каждом деплое (иначе возможен старый bundle + новый DEPLOY_VERSION)
 RUN echo "build cache bust: $CACHEBUST"

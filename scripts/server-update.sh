@@ -93,7 +93,14 @@ if echo "$health_json" | grep -q 'patientAppointmentSearch'; then
   if echo "$health_json" | grep -q 'egiszCdaSnilsDigits'; then
     echo "OK: fix СНИЛС в CDA (egiszCdaSnilsDigits)"
   else
-    echo "ПРЕДУПРЕЖДЕНИЕ: нет egiszCdaSnilsDigits в /api/health — пересоберите app без кэша"
+    echo "ОШИБКА: нет egiszCdaSnilsDigits в /api/health — контейнер со старым bundle."
+    echo "Ответ: $health_json"
+    if grep -q 'egiszCdaSnilsDigits' "$ROOT/app/api/health/route.ts" 2>/dev/null; then
+      echo "На диске код новый — пересоберите: DEPLOY_NO_CACHE=1 docker compose build --no-cache app && docker compose up -d --force-recreate app"
+    else
+      echo "На диске код старый — задеплойте свежий tar с Mac: bash scripts/deploy-to-server.sh"
+    fi
+    exit 1
   fi
 else
   echo "ОШИБКА: контейнер со старым Next.js bundle."

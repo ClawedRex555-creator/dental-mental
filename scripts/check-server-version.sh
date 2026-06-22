@@ -15,3 +15,9 @@ else
   echo "На сервере: cd /opt/emkaro && export DEPLOY_NO_CACHE=1 DEPLOY_VERSION=\"\$(cat .deploy-version)\" && docker compose build --no-cache app && docker compose up -d --force-recreate app"
   exit 1
 fi
+if echo "$json" | grep -q 'egiszCdaSnilsDigits'; then
+  echo "OK: fix СНИЛС в CDA (egiszCdaSnilsDigits)"
+else
+  echo "ПРОБЛЕМА: bundle старый — нет egiszCdaSnilsDigits (версия в .deploy-version могла обновиться без пересборки)."
+  exit 1
+fi
