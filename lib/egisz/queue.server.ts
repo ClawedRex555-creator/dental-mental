@@ -4,7 +4,7 @@ import { getEgiszConfig, queueEgiszSubmission } from "@/lib/egisz/db.server";
 import { buildDentalSemdDraft } from "@/lib/egisz/export";
 import type { EgiszDocumentType } from "@/lib/egisz/types";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
-import { hasPatientEgiszTransferConsent } from "@/lib/patient-consents.server";
+import { getPatientEgiszTransferConsentStatus } from "@/lib/patient-consents.server";
 import type { MedicalRecord, Patient } from "@/lib/types";
 
 function requiresEgiszTransferConsent(config: Awaited<ReturnType<typeof getEgiszConfig>>): boolean {
@@ -31,11 +31,17 @@ export async function queueMedicalRecordEgisz(input: {
   if (!patient) return { submissionId: null, skipped: "Пациент не найден" };
 
   if (requiresEgiszTransferConsent(config)) {
-    const hasConsent = await hasPatientEgiszTransferConsent(input.clinicId, record.patientId);
-    if (!hasConsent) {
+    const consentStatus = await getPatientEgiszTransferConsentStatus(
+      input.clinicId,
+      record.patientId
+    );
+    if (consentStatus !== "granted") {
       return {
         submissionId: null,
-        skipped: "Нет согласия пациента на передачу данных в ЕГИСЗ",
+        skipped:
+          consentStatus === "refused"
+            ? "Пациент отказался от передачи в ЕГИСЗ"
+            : "Нет согласия на передачу в ЕГИСЗ — оформите документы при статусе «Пришёл»",
       };
     }
   }

@@ -205,6 +205,33 @@ function AppointmentDocumentsModalBody({
     [updateLegalDocument]
   );
 
+  const persistEgiszConsent = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/patients/${patientId}/consents`, {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consentType: "egisz_transfer",
+          granted: sendToEgisz === "yes",
+          notes:
+            sendToEgisz === "yes"
+              ? "Согласие при визите (документы при статусе «Пришёл»)"
+              : "Отказ при визите (документы при статусе «Пришёл»)",
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.warning(data.error ?? "Решение по ЕГИСЗ не сохранено в системе");
+        return false;
+      }
+      return true;
+    } catch {
+      toast.warning("Решение по ЕГИСЗ не сохранено — проверьте сеть");
+      return false;
+    }
+  }, [patientId, sendToEgisz]);
+
   const handlePrint = async () => {
     if (!patient) {
       toast.error("Пациент не найден — обновите страницу");
@@ -334,6 +361,7 @@ function AppointmentDocumentsModalBody({
     }
 
     toast.success(`Открыто документов: ${openedCount} из ${toPrint.length}`);
+    await persistEgiszConsent();
     onDone();
     onOpenChange(false);
   };

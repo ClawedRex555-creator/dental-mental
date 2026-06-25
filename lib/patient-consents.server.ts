@@ -27,12 +27,21 @@ const CONSENT_LABELS: Record<PatientConsentType, string> = {
 export { CONSENT_LABELS };
 
 /** Согласие на передачу в ЕГИСЗ (таблица patient_consents, тип egisz_transfer). */
+export async function getPatientEgiszTransferConsentStatus(
+  clinicId: string,
+  patientId: string
+): Promise<"granted" | "refused" | "unknown"> {
+  const consents = await listPatientConsents(clinicId, patientId);
+  const row = consents.find((c) => c.consentType === "egisz_transfer");
+  if (!row) return "unknown";
+  return row.granted ? "granted" : "refused";
+}
+
 export async function hasPatientEgiszTransferConsent(
   clinicId: string,
   patientId: string
 ): Promise<boolean> {
-  const consents = await listPatientConsents(clinicId, patientId);
-  return consents.some((c) => c.consentType === "egisz_transfer" && c.granted);
+  return (await getPatientEgiszTransferConsentStatus(clinicId, patientId)) === "granted";
 }
 
 export async function listPatientConsents(

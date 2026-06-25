@@ -22,7 +22,7 @@ import { isN3StubMode, resolveGatewayUrl, type EgiszClinicConfig } from "@/lib/e
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
 import { clinicHasModule } from "@/lib/module-access.server";
-import { hasPatientEgiszTransferConsent } from "@/lib/patient-consents.server";
+import { getPatientEgiszTransferConsentStatus } from "@/lib/patient-consents.server";
 import type { Doctor, MedicalRecord, Patient } from "@/lib/types";
 
 function requiresEgiszTransferConsent(config: EgiszClinicConfig): boolean {
@@ -70,14 +70,18 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
     submission.documentType !== "refusal_notice" &&
     requiresEgiszTransferConsent(config)
   ) {
-    const hasConsent = await hasPatientEgiszTransferConsent(
+    const consentStatus = await getPatientEgiszTransferConsentStatus(
       submission.clinicId,
       submission.patientId
     );
-    if (!hasConsent) {
+    if (consentStatus !== "granted") {
+      const errorMessage =
+        consentStatus === "refused"
+          ? "Пациент отказался от передачи данных в ЕГИСЗ (оформлено при визите)"
+          : "Нет согласия на передачу в ЕГИСЗ — оформите документы при статусе «Пришёл»";
       await updateEgiszSubmission(submissionId, {
         status: "error",
-        errorMessage: "Нет согласия пациента на передачу данных в ЕГИСЗ",
+        errorMessage,
       });
       return;
     }
