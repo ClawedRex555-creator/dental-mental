@@ -33,14 +33,11 @@ interface MedicalRecordModalProps {
   onSaved?: (recordId: string) => void;
 }
 
-function resetForm(
-  defaultPatientId: string | undefined,
-  services: { name: string }[]
-) {
+function resetForm(defaultPatientId: string | undefined) {
   return {
     patientId: defaultPatientId ?? "",
     doctorId: "",
-    serviceName: services[0]?.name ?? "",
+    serviceName: "",
     complaints: "",
     diagnosis: "",
     treatment: "",
@@ -54,7 +51,7 @@ export function MedicalRecordModal({
   defaultPatientId,
   onSaved,
 }: MedicalRecordModalProps) {
-  const { patients, doctors, services, addMedicalRecord } = useClinicStore();
+  const { patients, doctors, addMedicalRecord } = useClinicStore();
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
   const wasOpen = useRef(false);
 
@@ -69,7 +66,7 @@ export function MedicalRecordModal({
 
   useEffect(() => {
     if (open && !wasOpen.current) {
-      const f = resetForm(defaultPatientId, services);
+      const f = resetForm(defaultPatientId);
       setPatientId(f.patientId);
       setDoctorId(f.doctorId);
       setServiceName(f.serviceName);
@@ -79,7 +76,7 @@ export function MedicalRecordModal({
       setRecommendations(f.recommendations);
     }
     wasOpen.current = open;
-  }, [open, defaultPatientId, services]);
+  }, [open, defaultPatientId]);
 
   const handleSave = () => {
     if (!patientId || !doctorId || !complaints.trim() || !diagnosis.trim() || !treatment.trim()) {
