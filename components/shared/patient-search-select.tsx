@@ -31,17 +31,6 @@ export function PatientSearchSelect({
 
   const selected = patients.find((p) => p.id === selectedPatientId);
 
-  useEffect(() => {
-    if (!selectedPatientId) {
-      setQuery("");
-      setOpen(false);
-      return;
-    }
-    if (selected) {
-      setQuery(getFullName(selected.firstName, selected.lastName, selected.middleName));
-    }
-  }, [selectedPatientId, selected]);
-
   const displayLabel = selected
     ? getFullName(selected.firstName, selected.lastName, selected.middleName)
     : "";
@@ -91,8 +80,11 @@ export function PatientSearchSelect({
         }}
         onFocus={() => {
           if (disabled) return;
-          setQuery(displayLabel);
+          setQuery(displayLabel || "");
           setOpen(true);
+        }}
+        onBlur={() => {
+          if (!selectedPatientId) setQuery("");
         }}
         onKeyDown={(e) => {
           if (!showList || !suggestions.length) return;

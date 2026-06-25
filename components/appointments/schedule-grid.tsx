@@ -1,10 +1,11 @@
 "use client";
 
-import { format, isSameDay, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn, getFullName } from "@/lib/utils";
 import {
   generateTimeSlots,
+  isAppointmentOnCalendarDay,
   isSlotFree,
   appointmentBlocksSlot,
   SCHEDULE_DAY_START,
@@ -155,7 +156,7 @@ export function ScheduleGrid({
                   const docId = doc.id === "_none" ? undefined : doc.id;
                   const apt = appointments.find(
                     (a) =>
-                      isSameDay(parseISO(a.date), day) &&
+                      isAppointmentOnCalendarDay(a, day) &&
                       (docId ? a.doctorId === docId : !a.doctorId) &&
                       appointmentBlocksSlot(a, dateStr, slot, docId)
                   );

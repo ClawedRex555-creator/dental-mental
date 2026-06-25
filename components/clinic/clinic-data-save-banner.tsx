@@ -1,10 +1,13 @@
 "use client";
 
+import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
+import { Button } from "@/components/ui/button";
 
 export function ClinicDataSaveBanner() {
   const phase = useClinicStore((s) => s.clinicSyncPhase);
   const unsaved = useClinicStore((s) => s.clinicDataUnsaved);
+  const serverNewer = useClinicStore((s) => s.clinicServerNewerAvailable);
   const saveError = useClinicStore((s) => s.clinicDataSaveError);
 
   if (phase === "loading") {
@@ -26,6 +29,57 @@ export function ClinicDataSaveBanner() {
     );
   }
 
+  if (saveError) {
+    return (
+      <div
+        role="alert"
+        className="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
+      >
+        {saveError} Данные в буфере вкладки — не закрывайте браузер, обновите страницу (F5).
+      </div>
+    );
+  }
+
+  if (
+    serverNewer &&
+    (phase === "ready" || phase === "read_only")
+  ) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+      >
+        <span>
+          Информация могла устареть — на сервере более новые данные.
+          {unsaved
+            ? " Дождитесь сохранения или перезагрузите страницу."
+            : " Обновите, чтобы увидеть актуальное расписание и записи."}
+        </span>
+        <span className="flex flex-wrap items-center justify-center gap-2">
+          {!unsaved && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
+              onClick={() => requestClinicDataPull({ force: true })}
+            >
+              Обновить данные
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 bg-amber-700 text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-500"
+            onClick={() => window.location.reload()}
+          >
+            Перезагрузить страницу
+          </Button>
+        </span>
+      </div>
+    );
+  }
+
   if (phase === "read_only") {
     return (
       <div
@@ -34,17 +88,6 @@ export function ClinicDataSaveBanner() {
       >
         Роль «бухгалтер»: просмотр финансовых данных. Пациентов и приёмы вносите под владельцем,
         администратором, врачом или ассистентом — иначе изменения не попадут на сервер.
-      </div>
-    );
-  }
-
-  if (saveError) {
-    return (
-      <div
-        role="alert"
-        className="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
-      >
-        {saveError} Данные в буфере вкладки — не закрывайте браузер, обновите страницу (F5).
       </div>
     );
   }

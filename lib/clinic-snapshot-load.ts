@@ -78,6 +78,8 @@ function appointmentsDiffer(remote: Appointment[], local: Appointment[]): boolea
       r.startTime !== a.startTime ||
       r.endTime !== a.endTime ||
       r.status !== a.status ||
+      r.paymentStatus !== a.paymentStatus ||
+      r.workActId !== a.workActId ||
       r.assistantHours !== a.assistantHours
     );
   });

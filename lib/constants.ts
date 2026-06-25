@@ -11,6 +11,7 @@ import type {
   TreatmentPlanStatus,
   UserRole,
   WarehouseItemStatus,
+  DiscountBearer,
 } from "./types";
 
 export const APP_NAME = "Emkaro";
@@ -179,6 +180,12 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   partial: "Частично",
   refunded: "Возврат",
   cancelled: "Отменён",
+};
+
+export const DISCOUNT_BEARER_LABELS: Record<DiscountBearer, string> = {
+  doctor: "Скидка врача",
+  clinic: "Скидка клиники",
+  shared: "Общая скидка",
 };
 
 export const GENDER_LABELS = {

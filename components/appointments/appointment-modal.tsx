@@ -7,6 +7,7 @@ import type { Appointment, AppointmentStatus } from "@/lib/types";
 import { DENTAL_COMPLAINTS } from "@/lib/catalogs";
 import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options";
 import { calcEndTime, SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/appointment-utils";
+import { resolveCabinetIdForDoctor } from "@/lib/cabinet-utils";
 import { validateAppointmentSave } from "@/lib/validate-appointment-save";
 import {
   WorkActModal,
@@ -144,10 +145,15 @@ export function AppointmentModal({
         setActModalOpen(true);
       }
     } else {
+      const initialDoctorId = defaultDoctorId ?? activeDoctors[0]?.id ?? "";
       setPatientId("");
-      setDoctorId(defaultDoctorId ?? activeDoctors[0]?.id ?? "");
+      setDoctorId(initialDoctorId);
       setAssistantId("");
-      setCabinetId(cabinets[0]?.id ?? "");
+      setCabinetId(
+        resolveCabinetIdForDoctor(initialDoctorId, doctors, cabinets) ??
+          cabinets[0]?.id ??
+          ""
+      );
       setComplaints("");
       setDate(defaultDate ?? format(new Date(), "yyyy-MM-dd"));
       setStartTime(defaultTime ?? "10:00");
@@ -165,6 +171,7 @@ export function AppointmentModal({
     patients,
     activeDoctors,
     cabinets,
+    doctors,
     isAdmin,
     linkedActId,
   ]);
@@ -334,7 +341,16 @@ export function AppointmentModal({
                     className={selectClass}
                     value={doctorId}
                     disabled={formLocked}
-                    onChange={(e) => setDoctorId(e.target.value)}
+                    onChange={(e) => {
+                      const nextDoctorId = e.target.value;
+                      setDoctorId(nextDoctorId);
+                      const suggested = resolveCabinetIdForDoctor(
+                        nextDoctorId,
+                        doctors,
+                        cabinets
+                      );
+                      if (suggested) setCabinetId(suggested);
+                    }}
                   >
                     <option value="">Выберите врача</option>
                     {activeDoctors.map((d) => (

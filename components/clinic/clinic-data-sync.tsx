@@ -86,7 +86,7 @@ export function ClinicDataSync() {
 
   useEffect(() => {
     let cancelled = false;
-    const { setClinicSyncPhase, setClinicDataUnsaved, setClinicDataSaveError } =
+    const { setClinicSyncPhase, setClinicDataUnsaved, setClinicDataSaveError, setClinicServerNewerAvailable } =
       useClinicStore.getState();
 
     setClinicSyncPhase("loading");
@@ -127,26 +127,46 @@ export function ClinicDataSync() {
         if (updatedAt) lastServerUpdatedAt.current = updatedAt;
         setClinicDataUnsaved(false);
         setClinicDataSaveError(null);
+        setClinicServerNewerAvailable(false);
       } finally {
         suppressPersistedChange.current = false;
       }
     };
 
+    const serverSnapshotIsNewer = (updatedAt: string | null | undefined) =>
+      Boolean(
+        updatedAt &&
+          lastServerUpdatedAt.current &&
+          updatedAt > lastServerUpdatedAt.current
+      );
+
     const pullRemoteSnapshot = async (options?: { force?: boolean }) => {
       if (!syncReady.current || syncForbidden.current || saving.current) return;
-      if (hasPendingLocalEdits()) return;
+
+      const pendingEdits = hasPendingLocalEdits();
+
       try {
         if (!options?.force && lastServerUpdatedAt.current) {
           const meta = await fetchClinicDataMetaFromServer();
           if (!meta || cancelled || meta.forbidden) return;
-          if (hasPendingLocalEdits()) return;
-          if (
-            meta.updatedAt &&
-            lastServerUpdatedAt.current &&
-            meta.updatedAt <= lastServerUpdatedAt.current
-          ) {
+          if (!serverSnapshotIsNewer(meta.updatedAt)) {
+            setClinicServerNewerAvailable(false);
             return;
           }
+          if (pendingEdits) {
+            setClinicServerNewerAvailable(true);
+            return;
+          }
+        }
+
+        if (pendingEdits && !options?.force) {
+          if (lastServerUpdatedAt.current) {
+            const meta = await fetchClinicDataMetaFromServer();
+            if (!cancelled && meta && serverSnapshotIsNewer(meta.updatedAt)) {
+              setClinicServerNewerAvailable(true);
+            }
+          }
+          return;
         }
 
         const remote = await fetchClinicDataFromServer();
@@ -156,10 +176,25 @@ export function ClinicDataSync() {
         const applyDespitePending =
           Boolean(options?.force) && serverHasNewFinancialData(remote.data, localNow);
         if (applyDespitePending) clearPendingClinicSnapshot();
-        if (!applyDespitePending && hasPendingLocalEdits()) return;
+        if (!applyDespitePending && hasPendingLocalEdits()) {
+          if (serverSnapshotIsNewer(remote.updatedAt)) {
+            setClinicServerNewerAvailable(true);
+          }
+          return;
+        }
         applyRemoteSnapshot(remote.data, remote.updatedAt);
+        setClinicServerNewerAvailable(false);
       } catch {
-        /* ignore background refresh */
+        if (lastServerUpdatedAt.current) {
+          try {
+            const meta = await fetchClinicDataMetaFromServer();
+            if (!cancelled && meta && serverSnapshotIsNewer(meta.updatedAt)) {
+              setClinicServerNewerAvailable(true);
+            }
+          } catch {
+            /* ignore meta probe */
+          }
+        }
       }
     };
 
@@ -257,11 +292,12 @@ export function ClinicDataSync() {
 
     const onPersistedDataChange = () => {
       if (suppressPersistedChange.current) return;
-      if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
       if (saving.current) return;
 
       const snapshot = pickPersistedState(useClinicStore.getState());
       writePendingClinicSnapshot(snapshot);
+
+      if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
 
       if (!initialLoadDone.current) {
         flushAfterBaseline.current = true;
@@ -347,8 +383,8 @@ export function ClinicDataSync() {
     void (async () => {
       try {
         const bootstrap = await resolveClinicBootstrap();
-        let hostSlug = bootstrap.slug;
-        let serverUsesDb = bootstrap.usesDb || isClinicServerDatabaseMode();
+        const hostSlug = bootstrap.slug;
+        const serverUsesDb = bootstrap.usesDb || isClinicServerDatabaseMode();
         if (serverUsesDb) setClinicServerDatabaseMode(true);
 
         if (hostSlug && !ensureClinicStorageScope(hostSlug)) {
@@ -377,6 +413,7 @@ export function ClinicDataSync() {
           );
           finishPhase("local_only");
           armSaveBaseline();
+          useClinicStore.getState().repairPaidActAppointments();
           return;
         }
 
@@ -415,6 +452,7 @@ export function ClinicDataSync() {
           applySnapshot(snapshot, mustMerge);
           syncReady.current = true;
           finishPhase(canWrite.current ? "ready" : "read_only");
+          useClinicStore.getState().repairPaidActAppointments();
 
           if (snapshot.patients.length > remote.data.patients.length) {
             toast.info(
@@ -501,15 +539,14 @@ export function ClinicDataSync() {
         const msg = syncErrorMessage(e);
         setClinicDataSaveError(msg);
         toast.error(msg);
-        syncReady.current = true;
+        syncReady.current = false;
         finishPhase("error");
-        armSaveBaseline();
       } finally {
         if (
           !cancelled &&
           useClinicStore.getState().clinicSyncPhase === "loading"
         ) {
-          syncReady.current = true;
+          syncReady.current = false;
           finishPhase("error");
           setClinicDataSaveError(
             "Данные клиники не загрузились. Обновите страницу (F5) перед изменениями."

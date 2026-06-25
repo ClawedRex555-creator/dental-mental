@@ -99,4 +99,67 @@ describe("calcDoctorPaymentForAct", () => {
     const split = calcDoctorPaymentForAct(act, implantDoctor, services);
     assert.equal(split.doctorAmount, 14000);
   });
+
+  it("clinic discount bearer keeps doctor fee before act discount", () => {
+    const act = makeAct([
+      {
+        id: "i1",
+        serviceId: "s2",
+        serviceName: "Пломба",
+        serviceCategory: "Терапия",
+        quantity: 1,
+        price: 10000,
+        total: 10000,
+      },
+    ]);
+    act.discountType = "rubles";
+    act.discount = 2000;
+    act.totalAmount = 8000;
+    act.discountBearer = "clinic";
+    const split = calcDoctorPaymentForAct(act, doctor, services);
+    assert.equal(split.doctorAmount, 3000);
+    assert.equal(split.clinicAmount, 5000);
+  });
+
+  it("doctor discount bearer reduces doctor fee by full discount", () => {
+    const act = makeAct([
+      {
+        id: "i1",
+        serviceId: "s2",
+        serviceName: "Пломба",
+        serviceCategory: "Терапия",
+        quantity: 1,
+        price: 10000,
+        total: 10000,
+      },
+    ]);
+    act.discountType = "rubles";
+    act.discount = 2000;
+    act.totalAmount = 8000;
+    act.discountBearer = "doctor";
+    const split = calcDoctorPaymentForAct(act, doctor, services);
+    assert.equal(split.doctorAmount, 1000);
+    assert.equal(split.clinicAmount, 7000);
+  });
+
+  it("shared discount bearer splits proportionally", () => {
+    const act = makeAct([
+      {
+        id: "i1",
+        serviceId: "s2",
+        serviceName: "Пломба",
+        serviceCategory: "Терапия",
+        quantity: 1,
+        price: 10000,
+        total: 10000,
+      },
+    ]);
+    act.discountType = "rubles";
+    act.discount = 2000;
+    act.totalAmount = 8000;
+    act.discountBearer = "shared";
+    const split = calcDoctorPaymentForAct(act, doctor, services);
+    assert.equal(split.doctorAmount, 2400);
+    assert.equal(split.clinicAmount, 5600);
+  });
 });

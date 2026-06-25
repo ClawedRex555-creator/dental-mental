@@ -8,7 +8,16 @@ import {
   calcAssistantHoursInRange,
   normalizeAssistantManualHours,
 } from "./assistant-hours";
-import type { Appointment, ClinicExpense, Doctor, Payment, Service, WorkAct, WorkActItem } from "./types";
+import type {
+  Appointment,
+  ClinicExpense,
+  DiscountBearer,
+  Doctor,
+  Payment,
+  Service,
+  WorkAct,
+  WorkActItem,
+} from "./types";
 
 export interface PaymentSplit {
   total: number;
@@ -49,7 +58,55 @@ function doctorLineAmount(
   return Math.round((lineRevenue * pct) / 100);
 }
 
-/** Начисление врачу по акту с учётом категории «Имплантация» */
+function calcDoctorAmountOnRevenueBase(
+  act: WorkAct,
+  doctor: Doctor,
+  services: Service[],
+  revenueBase: number
+): number {
+  if (revenueBase <= 0) return 0;
+  let doctorAmount = 0;
+  for (const item of act.items) {
+    const category = resolveCommissionServiceCategory(item, services);
+    const lineRevenue = lineRevenueInAct(
+      { ...act, totalAmount: revenueBase },
+      item,
+      revenueBase,
+      revenueBase
+    );
+    doctorAmount += doctorLineAmount(item, lineRevenue, category, doctor);
+  }
+  return Math.min(doctorAmount, revenueBase);
+}
+
+function applyActDiscountBearer(
+  doctorAmountFull: number,
+  afterRowDiscounts: number,
+  discountValue: number,
+  totalAmount: number,
+  bearer: DiscountBearer | undefined
+): { doctorAmount: number; clinicAmount: number } {
+  if (discountValue <= 0 || !bearer || bearer === "shared") {
+    if (discountValue <= 0 || afterRowDiscounts <= 0) {
+      const doctorAmount = Math.min(doctorAmountFull, totalAmount);
+      return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+    }
+    const ratio = doctorAmountFull / afterRowDiscounts;
+    const doctorDiscountShare = Math.round(discountValue * ratio);
+    const doctorAmount = Math.max(0, Math.min(doctorAmountFull - doctorDiscountShare, totalAmount));
+    return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+  }
+
+  if (bearer === "clinic") {
+    const doctorAmount = Math.min(doctorAmountFull, totalAmount);
+    return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+  }
+
+  const doctorAmount = Math.max(0, Math.min(doctorAmountFull - discountValue, totalAmount));
+  return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+}
+
+/** Начисление врачу по акту с учётом категории «Имплантация» и источника скидки */
 export function calcDoctorPaymentForAct(
   act: WorkAct,
   doctor?: Doctor,
@@ -67,26 +124,31 @@ export function calcDoctorPaymentForAct(
     };
   }
 
-  const { totalAmount, afterRowDiscounts } = calcWorkActAmounts(
+  const { totalAmount, afterRowDiscounts, discountValue } = calcWorkActAmounts(
     act.items,
     act.discountType ?? "rubles",
     act.discount ?? 0
   );
 
-  let doctorAmount = 0;
-  for (const item of act.items) {
-    const category = resolveCommissionServiceCategory(item, services);
-    const lineRevenue = lineRevenueInAct(act, item, totalAmount, afterRowDiscounts);
-    doctorAmount += doctorLineAmount(item, lineRevenue, category, doctor);
-  }
-
-  doctorAmount = Math.min(doctorAmount, totalAmount);
+  const doctorAmountFull = calcDoctorAmountOnRevenueBase(
+    act,
+    doctor,
+    services,
+    afterRowDiscounts
+  );
+  const { doctorAmount, clinicAmount } = applyActDiscountBearer(
+    doctorAmountFull,
+    afterRowDiscounts,
+    discountValue,
+    totalAmount,
+    act.discountBearer
+  );
 
   return {
     total,
     doctorAmount,
     assistantAmount: 0,
-    clinicAmount: Math.max(0, total - doctorAmount),
+    clinicAmount,
     doctorPercent: doctor.commissionPercent,
     assistantPercent: 0,
   };

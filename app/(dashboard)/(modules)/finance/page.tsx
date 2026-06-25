@@ -80,6 +80,20 @@ export default function FinancePage() {
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
 
+  const getActPaymentStatus = (act: WorkAct) =>
+    act.paymentStatus ??
+    (invoices.some(
+      (inv) =>
+        inv.workActId === act.id &&
+        inv.status === "paid"
+    ) ||
+    invoices.some(
+      (inv) =>
+        inv.description.includes(act.actNumber) && inv.status === "paid"
+    )
+      ? "paid"
+      : "pending");
+
   useEffect(() => {
     requestClinicDataPull({ force: true });
     repairPaidActAppointments();
@@ -107,21 +121,7 @@ export default function FinancePage() {
         }
       }
     }
-  }, [workActs]);
-
-  const getActPaymentStatus = (act: WorkAct) =>
-    act.paymentStatus ??
-    (invoices.some(
-      (inv) =>
-        inv.workActId === act.id &&
-        inv.status === "paid"
-    ) ||
-    invoices.some(
-      (inv) =>
-        inv.description.includes(act.actNumber) && inv.status === "paid"
-    )
-      ? "paid"
-      : "pending");
+  }, [workActs, invoices]);
 
   const totalPaid = useMemo(
     () => payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount, 0),

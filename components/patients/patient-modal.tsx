@@ -40,6 +40,7 @@ import {
   resolveBalanceFromDebt,
 } from "@/lib/patient-balance";
 import { countClinicVisits, derivePatientVisitFields } from "@/lib/patient-visits";
+import { resolveCabinetIdForDoctor } from "@/lib/cabinet-utils";
 import {
   findDuplicatePatient,
   PATIENT_DUPLICATE_REASON_LABELS,
@@ -172,10 +173,14 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       setWithoutDocuments(false);
       setDebtAmount("");
       setFields(emptyPatientFields());
+      const initialDoctorId = doctors.find((d) => d.role === "doctor")?.id ?? "";
       setAppointmentFields({
         ...emptyAppointmentFields(),
-        doctorId: doctors.find((d) => d.role === "doctor")?.id ?? "",
-        cabinetId: cabinets[0]?.id ?? "",
+        doctorId: initialDoctorId,
+        cabinetId:
+          resolveCabinetIdForDoctor(initialDoctorId, doctors, cabinets) ??
+          cabinets[0]?.id ??
+          "",
       });
     }
   }, [open, patient, doctors, cabinets]);
@@ -200,8 +205,11 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
     if (!phoneCheck.valid) errors.phone = phoneCheck.message!;
 
     if (!withoutDocuments) {
-      const snilsCheck = validateSnils(fields.snils);
-      if (!snilsCheck.valid) errors.snils = snilsCheck.message!;
+      const snilsDigits = digitsOnly(fields.snils);
+      if (!fields.isChild || snilsDigits) {
+        const snilsCheck = validateSnils(fields.snils);
+        if (!snilsCheck.valid) errors.snils = snilsCheck.message!;
+      }
 
       if (fields.isChild) {
         const bcSeriesCheck = validateBirthCertificateSeries(fields.birthCertificateSeries);
@@ -272,7 +280,10 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       status,
       address: fields.address.trim() || undefined,
       withoutIdentityDocuments: withoutDocuments,
-      snils: withoutDocuments ? undefined : formatSnils(fields.snils),
+      snils:
+        withoutDocuments || !digitsOnly(fields.snils)
+          ? undefined
+          : formatSnils(fields.snils),
       passportSeries: withoutDocuments
         ? undefined
         : fields.isChild
@@ -345,6 +356,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
           lastName: payload.lastName,
           middleName: payload.middleName,
           birthDate: payload.birthDate,
+          isChild: payload.isChild,
         },
         patient.id
       );
@@ -370,6 +382,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         lastName: payload.lastName,
         middleName: payload.middleName,
         birthDate: payload.birthDate,
+        isChild: payload.isChild,
       });
       if (duplicate) {
         setDuplicateMatch(duplicate);
@@ -484,7 +497,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
               }
             >
             <div className="space-y-2">
-              <Label>{UI.snils}</Label>
+              <Label>{fields.isChild ? "СНИЛС ребёнка" : UI.snils}</Label>
               <Input
                 value={fields.snils}
                 onChange={(e) => set("snils", formatSnils(e.target.value))}
@@ -492,6 +505,12 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                 inputMode="numeric"
                 disabled={withoutDocuments}
               />
+              {fields.isChild && !withoutDocuments && (
+                <p className="text-xs text-[var(--muted)]">
+                  Указывается <strong>свой СНИЛС ребёнка</strong>, если уже выдан. СНИЛС
+                  родителя сюда не вносите. Если номера ещё нет — оставьте поле пустым.
+                </p>
+              )}
               {docErrors.snils && (
                 <p className="text-xs text-red-600">{docErrors.snils}</p>
               )}
@@ -532,7 +551,8 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
             </div>
             {fields.isChild && !withoutDocuments && (
               <p className="text-xs text-[var(--muted)]">
-                Для ребёнка укажите свидетельство о рождении и паспорт представителя в блоке ниже.
+                Для ребёнка укажите свидетельство о рождении и паспорт законного представителя
+                (родителя) в блоке ниже.
               </p>
             )}
             </div>
@@ -547,6 +567,55 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>{UI.phone} *</Label>
+              {fields.isChild && (
+                <div className="space-y-1">
+                  <select
+                    className={selectClass}
+                    defaultValue=""
+                    onChange={(e) => {
+                      const parentId = e.target.value;
+                      if (!parentId) return;
+                      const parent = patients.find((p) => p.id === parentId);
+                      if (!parent) return;
+                      setFields((prev) => ({
+                        ...prev,
+                        phone: parent.phone,
+                        representativeFullName:
+                          prev.representativeFullName.trim() ||
+                          getFullName(parent.firstName, parent.lastName, parent.middleName),
+                        representativePassportSeries:
+                          prev.representativePassportSeries ||
+                          parent.passportSeries ||
+                          "",
+                        representativePassportNumber:
+                          prev.representativePassportNumber ||
+                          parent.passportNumber ||
+                          "",
+                      }));
+                      e.target.value = "";
+                    }}
+                  >
+                    <option value="">Телефон родителя из базы…</option>
+                    {patients
+                      .filter((p) => p.id !== patient?.id && !p.isChild)
+                      .sort((a, b) =>
+                        `${a.lastName} ${a.firstName}`.localeCompare(
+                          `${b.lastName} ${b.firstName}`,
+                          "ru"
+                        )
+                      )
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {getFullName(p.firstName, p.lastName, p.middleName)} · {p.phone}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-xs text-[var(--muted)]">
+                    У ребёнка может не быть своего телефона — укажите номер родителя, даже если
+                    он уже есть в другой карточке.
+                  </p>
+                </div>
+              )}
               <PhoneInput value={fields.phone} onChange={(v) => set("phone", v)} required />
               {docErrors.phone && (
                 <p className="text-xs text-red-600">{docErrors.phone}</p>

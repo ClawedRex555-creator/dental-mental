@@ -71,6 +71,24 @@ else
   export DEPLOY_VERSION="unknown"
 fi
 
+if ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
+  echo ""
+  echo "ОШИБКА: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
+  echo "  lookup через 127.0.0.53: server misbehaving — типичная проблема systemd-resolved на VPS."
+  echo ""
+  bash "$ROOT/scripts/server-check-dns.sh" || true
+  echo ""
+  if docker image inspect node:20-alpine >/dev/null 2>&1; then
+    echo "Образ node:20-alpine уже есть локально. Можно попробовать без --no-cache:"
+    echo "  cd $ROOT && DEPLOY_NO_CACHE=0 bash scripts/server-update.sh ${ARCHIVE:-}"
+    echo "После починки DNS обязательно: DEPLOY_NO_CACHE=1 и полная пересборка."
+  fi
+  echo ""
+  echo "Починка DNS: bash scripts/server-fix-docker-dns.sh"
+  echo "  sudo bash scripts/server-fix-docker-dns.sh --apply"
+  exit 1
+fi
+
 # Без --no-cache Docker часто оставляет старый .next в образе (см. scripts/check-server-version.sh)
 if [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
   echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"

@@ -17,7 +17,8 @@ function isPublicApi(pathname: string): boolean {
 function isServiceApi(pathname: string): boolean {
   return (
     pathname.startsWith("/api/egisz/webhook") ||
-    pathname.startsWith("/api/egisz/process")
+    pathname.startsWith("/api/egisz/process") ||
+    pathname.startsWith("/api/mobile/")
   );
 }
 
@@ -37,5 +38,11 @@ describe("middleware service API bypass", () => {
 
   it("allows tls-ask without session", () => {
     assert.equal(isPublicApi("/api/internal/tls-ask"), true);
+  });
+
+  it("allows mobile API without session cookie", () => {
+    assert.equal(isServiceApi("/api/mobile/v1/health"), true);
+    assert.equal(isServiceApi("/api/mobile/v1/auth/login"), true);
+    assert.equal(isServiceApi("/api/mobile/v1/catalog"), true);
   });
 });

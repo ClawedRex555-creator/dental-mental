@@ -1,0 +1,15 @@
+# Never copy host node_modules into the image — deps stage runs npm install in Linux.
+node_modules
+.next
+.git
+.tools
+.DS_Store
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+coverage
+.emkaro-deploy
+emkaro-deploy.zip
+tsconfig.tsbuildinfo

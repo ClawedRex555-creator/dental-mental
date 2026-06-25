@@ -22,6 +22,21 @@ function basePatient(overrides: Partial<Patient> = {}): Patient {
 }
 
 describe("findDuplicatePatient", () => {
+  it("allows shared parent phone for child patient", () => {
+    const parent = basePatient({ id: "pat-parent", isChild: false });
+    const match = findDuplicatePatient(
+      [parent],
+      {
+        phone: "+79991234567",
+        firstName: "Маша",
+        lastName: "Иванова",
+        birthDate: "2018-03-10",
+        isChild: true,
+      }
+    );
+    assert.equal(match, null);
+  });
+
   it("detects duplicate phone", () => {
     const existing = basePatient();
     const match = findDuplicatePatient(

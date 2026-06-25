@@ -136,6 +136,8 @@ interface ClinicState {
   /** Синхронизация снимка с PostgreSQL (ClinicDataSync) */
   clinicSyncPhase: "loading" | "ready" | "read_only" | "local_only" | "forbidden" | "error";
   clinicDataUnsaved: boolean;
+  /** На сервере есть более новый снимок, чем в этой вкладке */
+  clinicServerNewerAvailable: boolean;
   clinicDataSaveError: string | null;
   /** Временно не слать PUT (например после удаления сотрудника на сервере) */
   clinicSavePausedUntil: number;
@@ -143,6 +145,7 @@ interface ClinicState {
   setSessionUser: (user: ClinicUser) => void;
   setClinicSyncPhase: (phase: ClinicState["clinicSyncPhase"]) => void;
   setClinicDataUnsaved: (unsaved: boolean) => void;
+  setClinicServerNewerAvailable: (available: boolean) => void;
   setClinicDataSaveError: (error: string | null) => void;
   pauseClinicAutoSave: (ms?: number) => void;
   setEnabledModules: (modules: ClinicModules) => void;
@@ -258,11 +261,14 @@ export const useClinicStore = create<ClinicState>()(
       enabledModules: defaultClinicModules(),
       clinicSyncPhase: "loading",
       clinicDataUnsaved: false,
+      clinicServerNewerAvailable: false,
       clinicDataSaveError: null,
       clinicSavePausedUntil: 0,
 
       setClinicSyncPhase: (phase) => set({ clinicSyncPhase: phase }),
       setClinicDataUnsaved: (unsaved) => set({ clinicDataUnsaved: unsaved }),
+      setClinicServerNewerAvailable: (available) =>
+        set({ clinicServerNewerAvailable: available }),
       setClinicDataSaveError: (error) => set({ clinicDataSaveError: error }),
       pauseClinicAutoSave: (ms = 8000) =>
         set({ clinicSavePausedUntil: Date.now() + ms, clinicDataSaveError: null }),
@@ -288,6 +294,7 @@ export const useClinicStore = create<ClinicState>()(
         persistThemePreferencesToStorage(userThemePreferences);
         clearPersistedClinicData();
         set({
+          ...createFreshPersistedState(),
           currentUser: {
             id: "",
             name: "",
@@ -300,6 +307,7 @@ export const useClinicStore = create<ClinicState>()(
           userThemePreferences,
           clinicSyncPhase: "loading",
           clinicDataUnsaved: false,
+          clinicServerNewerAvailable: false,
           clinicDataSaveError: null,
         });
       },
@@ -485,16 +493,20 @@ export const useClinicStore = create<ClinicState>()(
         }));
       },
 
-      addPatient: (patient) =>
+      addPatient: (patient) => {
         set((s) => ({
           patients: [patient, ...s.patients],
           teethByPatient: { ...s.teethByPatient, [patient.id]: generateDefaultTeeth() },
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
-      updatePatient: (id, data) =>
+      updatePatient: (id, data) => {
         set((s) => ({
           patients: s.patients.map((p) => (p.id === id ? { ...p, ...data } : p)),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
       syncOtherClinicVisitForPatient: (patient) =>
         set((s) => {
@@ -528,6 +540,7 @@ export const useClinicStore = create<ClinicState>()(
             teethByPatient,
           };
         });
+        scheduleClinicDataFlush();
         return true;
       },
 
@@ -826,6 +839,7 @@ export const useClinicStore = create<ClinicState>()(
             return {
               ...a,
               workActId: undefined,
+              paymentStatus: "pending" as const,
               status: a.status === "ready_for_payment" ? ("completed" as const) : a.status,
             };
           }),

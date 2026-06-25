@@ -42,6 +42,26 @@ export function getAppointmentEndMinutes(apt: Appointment): number {
   return toMinutes(apt.startTime) + (apt.durationMinutes ?? 30);
 }
 
+/** Нормализует дату приёма к yyyy-MM-dd (без сдвига часового пояса) */
+export function normalizeAppointmentDate(date: string): string {
+  if (!date) return "";
+  const head = date.trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : date.trim();
+}
+
+export function isAppointmentOnCalendarDay(apt: Appointment, day: Date): boolean {
+  return normalizeAppointmentDate(apt.date) === format(day, "yyyy-MM-dd");
+}
+
+export function isAppointmentInDateRange(
+  apt: Appointment,
+  from: string,
+  to: string
+): boolean {
+  const d = normalizeAppointmentDate(apt.date);
+  return d >= from && d <= to;
+}
+
 /** Активные записи занимают слот (отменённые и «другая клиника» — нет) */
 export function isAppointmentActive(apt: Appointment): boolean {
   if (apt.isOtherClinicVisit) return false;
@@ -54,7 +74,7 @@ export function timeRangesOverlap(
   endTime: string,
   other: Appointment
 ): boolean {
-  if (other.date !== date || !isAppointmentActive(other)) return false;
+  if (normalizeAppointmentDate(other.date) !== date || !isAppointmentActive(other)) return false;
   const aStart = toMinutes(startTime);
   const aEnd = toMinutes(endTime);
   const bStart = toMinutes(other.startTime);
@@ -127,7 +147,7 @@ export function appointmentBlocksSlot(
   slotTime: string,
   doctorId?: string
 ): boolean {
-  if (apt.date !== date) return false;
+  if (normalizeAppointmentDate(apt.date) !== date) return false;
   if (doctorId && apt.doctorId && apt.doctorId !== doctorId) return false;
   if (apt.status === "cancelled") return false;
 

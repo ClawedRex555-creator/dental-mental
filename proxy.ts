@@ -44,11 +44,12 @@ function isPublicApi(pathname: string): boolean {
   );
 }
 
-/** Внешние колбэки / cron — без cookie-сессии, со своей авторизацией в route handler */
+/** Внешние колбэки / cron / mobile API — без cookie-сессии, со своей авторизацией в route handler */
 function isServiceApi(pathname: string): boolean {
   return (
     pathname.startsWith("/api/egisz/webhook") ||
-    pathname.startsWith("/api/egisz/process")
+    pathname.startsWith("/api/egisz/process") ||
+    pathname.startsWith("/api/mobile/")
   );
 }
 

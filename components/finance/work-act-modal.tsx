@@ -5,7 +5,9 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import type { DiscountType, WorkAct, WorkActItem } from "@/lib/types";
+import type { DiscountBearer, DiscountType, WorkAct, WorkActItem } from "@/lib/types";
+import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
+import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { normalizeServiceFields } from "@/lib/service-categories";
 import { calcWorkActAmounts } from "@/lib/work-act-utils";
@@ -84,6 +86,7 @@ export function WorkActModal({
   const [items, setItems] = useState<WorkActItem[]>([]);
   const [discountType, setDiscountType] = useState<DiscountType>("percent");
   const [discount, setDiscount] = useState("0");
+  const [discountBearer, setDiscountBearer] = useState<DiscountBearer>("shared");
   const [notes, setNotes] = useState("");
   const [savedActId, setSavedActId] = useState<string | null>(null);
   const initialized = useRef(false);
@@ -93,6 +96,41 @@ export function WorkActModal({
     [items, discountType, discount]
   );
 
+  const paymentPreview = useMemo(() => {
+    if (!doctorId || discountValue <= 0) return null;
+    const doctor = doctors.find((d) => d.id === doctorId);
+    if (!doctor) return null;
+    const draftAct: WorkAct = {
+      id: "preview",
+      actNumber: "0",
+      actDate,
+      patientId: patientId || "p",
+      doctorId,
+      items,
+      subtotalAmount,
+      discountType,
+      discount: Number(discount) || 0,
+      discountBearer,
+      totalAmount,
+      paymentStatus: "pending",
+      createdAt: actDate,
+    };
+    return calcDoctorPaymentForAct(draftAct, doctor, services);
+  }, [
+    doctorId,
+    discountValue,
+    doctors,
+    services,
+    actDate,
+    patientId,
+    items,
+    subtotalAmount,
+    discountType,
+    discount,
+    discountBearer,
+    totalAmount,
+  ]);
+
   const loadFromAct = (act: WorkAct) => {
     setPatientId(act.patientId);
     setDoctorId(act.doctorId ?? "");
@@ -100,6 +138,7 @@ export function WorkActModal({
     setItems(act.items);
     setDiscountType(act.discountType ?? "percent");
     setDiscount(String(act.discount ?? 0));
+    setDiscountBearer(act.discountBearer ?? "shared");
     setNotes(act.notes ?? "");
     setSavedActId(act.id);
   };
@@ -129,6 +168,7 @@ export function WorkActModal({
     setNotes("");
     setDiscountType("percent");
     setDiscount("0");
+    setDiscountBearer("shared");
     setSavedActId(null);
 
     const mapDefault = (it: {
@@ -215,6 +255,7 @@ export function WorkActModal({
       subtotalAmount,
       discountType,
       discount: Number(discount) || 0,
+      discountBearer,
       totalAmount,
       paymentStatus: "pending",
       invoiceId: workActs.find((a) => a.id === actId)?.invoiceId,
@@ -526,8 +567,22 @@ export function WorkActModal({
               <div className="flex justify-between text-sm">
                 <span className="text-[var(--muted)]">
                   Скидка {discountType === "percent" ? `${discount}%` : formatCurrency(Number(discount) || 0)}
+                  {discountBearer && (
+                    <span className="block text-xs">
+                      {DISCOUNT_BEARER_LABELS[discountBearer]}
+                    </span>
+                  )}
                 </span>
                 <span className="text-teal-600">−{formatCurrency(discountValue)}</span>
+              </div>
+            )}
+            {paymentPreview && (
+              <div className="rounded-md border border-[var(--border)] bg-[var(--muted)]/5 px-3 py-2 text-xs text-[var(--muted)]">
+                <p>
+                  Врачу: <strong className="text-[var(--foreground)]">{formatCurrency(paymentPreview.doctorAmount)}</strong>
+                  {" · "}
+                  Клинике: <strong className="text-[var(--foreground)]">{formatCurrency(paymentPreview.clinicAmount)}</strong>
+                </p>
               </div>
             )}
             <div className="flex justify-between text-sm border-t border-[var(--border)] pt-2">
@@ -537,26 +592,54 @@ export function WorkActModal({
               </span>
             </div>
             {!readOnly && (
-              <div className="grid grid-cols-3 gap-2 items-end">
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Доп. скидка</Label>
+                    <select
+                      className={selectClass}
+                      value={discountType}
+                      onChange={(e) => setDiscountType(e.target.value as DiscountType)}
+                    >
+                      <option value="percent">В процентах</option>
+                      <option value="rubles">В рублях</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={discountType === "percent" ? 100 : undefined}
+                      value={discount}
+                      onChange={(e) => setDiscount(e.target.value)}
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Доп. скидка</Label>
+                  <Label className="text-xs">Скидка списывается с</Label>
                   <select
                     className={selectClass}
-                    value={discountType}
-                    onChange={(e) => setDiscountType(e.target.value as DiscountType)}
+                    value={discountBearer}
+                    onChange={(e) =>
+                      setDiscountBearer(e.target.value as DiscountBearer)
+                    }
                   >
-                    <option value="percent">В процентах</option>
-                    <option value="rubles">В рублях</option>
+                    {(Object.entries(DISCOUNT_BEARER_LABELS) as [DiscountBearer, string][]).map(
+                      ([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      )
+                    )}
                   </select>
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={discountType === "percent" ? 100 : undefined}
-                    value={discount}
-                    onChange={(e) => setDiscount(e.target.value)}
-                  />
+                  <p className="text-xs text-[var(--muted)]">
+                    {discountBearer === "doctor" &&
+                      "Вся доп. скидка уменьшает вознаграждение врача."}
+                    {discountBearer === "clinic" &&
+                      "Врач получает % как без доп. скидки, скидку покрывает клиника."}
+                    {discountBearer === "shared" &&
+                      "Скидка делится между врачом и клиникой пропорционально их долям."}
+                  </p>
                 </div>
               </div>
             )}

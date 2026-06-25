@@ -2,8 +2,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
-# lockfile may drift on deploy machines; npm install is more tolerant than npm ci
-RUN npm install --no-audit --no-fund
+RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_ROOT_DOMAIN=emkaro.ru
@@ -13,6 +12,7 @@ ENV APP_ROOT_DOMAIN=$APP_ROOT_DOMAIN
 ENV AUTH_SECRET=$AUTH_SECRET
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN test -x node_modules/.bin/next || (echo "ERROR: next CLI missing — check .dockerignore (node_modules must be excluded)" && ls -la node_modules/.bin 2>&1 | head -20 && exit 1)
 RUN test -f .deploy-version || echo "local-build" > .deploy-version
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
