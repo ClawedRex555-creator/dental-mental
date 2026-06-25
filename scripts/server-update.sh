@@ -120,6 +120,11 @@ if echo "$health_json" | grep -q 'patientAppointmentSearch'; then
     fi
     exit 1
   fi
+  if echo "$health_json" | grep -q 'egiszCdaSnilsDigits'; then
+    echo "OK: fix СНИЛС в CDA (egiszCdaSnilsDigits)"
+  else
+    echo "ПРЕДУПРЕЖДЕНИЕ: нет egiszCdaSnilsDigits в /api/health — пересоберите app без кэша"
+  fi
 else
   echo "ОШИБКА: контейнер со старым Next.js bundle."
   echo "Ответ /api/health: $health_json"

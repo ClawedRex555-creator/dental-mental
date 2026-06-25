@@ -116,7 +116,6 @@ export function EgiszSettingsPanel() {
         return;
       }
       const batch = queued.slice(0, 5);
-      let ok = 0;
       for (const s of batch) {
         const res = await fetch("/api/egisz/submit", {
           method: "POST",
@@ -130,11 +129,6 @@ export function EgiszSettingsPanel() {
           await load();
           return;
         }
-        const data = await res.json().catch(() => ({}));
-        if (data.ok === false && data.error) {
-          toast.error(String(data.error));
-        }
-        ok += 1;
       }
       const cfgRes = await fetch("/api/egisz/config", { credentials: "same-origin" });
       const data = cfgRes.ok ? await cfgRes.json() : {};
@@ -144,18 +138,27 @@ export function EgiszSettingsPanel() {
 
       const batchIds = new Set(batch.map((s) => s.id));
       const processed = fresh.filter((s) => batchIds.has(s.id));
+      const sent = processed.filter((s) => s.status === "sent" || s.status === "accepted");
       const failed = processed.filter((s) => s.status === "error");
-      if (failed.length > 0) {
-        toast.error(
-          `Обработано ${ok}: ${failed[0]?.errorMessage ?? "ошибка — см. список «Отправки»"}`
+
+      const describeError = (msg?: string) => {
+        if (!msg?.trim()) return "см. список «Отправки» ниже";
+        if (/^(СНИЛС|OID|Отпечаток|Врач|Медкарта|Пациент|Live N3)/i.test(msg)) {
+          return `не хватало данных: ${msg}`;
+        }
+        return msg;
+      };
+
+      if (sent.length > 0 && failed.length === 0) {
+        toast.success(`Отправлено: ${sent.length}. Статус — в списке «Отправки» ниже.`);
+      } else if (sent.length > 0 && failed.length > 0) {
+        toast.warning(
+          `Отправлено: ${sent.length}, не отправлено: ${failed.length} (${describeError(failed[0]?.errorMessage)})`
         );
+      } else if (failed.length > 0) {
+        toast.error(`Не отправлено: ${describeError(failed[0]?.errorMessage)}`);
       } else {
-        const sent = processed.filter((s) => s.status === "sent" || s.status === "accepted");
-        toast.success(
-          sent.length > 0
-            ? `Отправлено: ${sent.length}. Статус — в списке «Отправки» ниже.`
-            : `Обработано записей: ${ok}. Смотрите статус в списке «Отправки» ниже.`
-        );
+        toast.message(`Обработано записей: ${processed.length}. Смотрите статус в списке «Отправки» ниже.`);
       }
     } finally {
       setProcessing(false);
