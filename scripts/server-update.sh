@@ -103,7 +103,10 @@ else
   export DEPLOY_VERSION="unknown"
 fi
 
-if ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
+if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
+  echo ">>> DEPLOY_USE_PREBUILT=1 — host npm build + Dockerfile.prebuilt"
+  bash scripts/server-build-prebuilt.sh
+elif ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
   echo ""
   echo "ОШИБКА: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
   echo "  lookup через 127.0.0.53: server misbehaving — типичная проблема systemd-resolved на VPS."
@@ -119,11 +122,6 @@ if ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
   echo "Починка DNS: bash scripts/server-fix-docker-dns.sh"
   echo "  sudo bash scripts/server-fix-docker-dns.sh --apply"
   exit 1
-fi
-
-if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
-  echo ">>> DEPLOY_USE_PREBUILT=1 — host npm build + Dockerfile.prebuilt"
-  bash scripts/server-build-prebuilt.sh
 elif [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
   echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
   if ! docker compose build --no-cache app; then
