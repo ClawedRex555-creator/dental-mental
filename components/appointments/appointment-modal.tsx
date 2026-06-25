@@ -145,7 +145,7 @@ export function AppointmentModal({
         setActModalOpen(true);
       }
     } else {
-      const initialDoctorId = defaultDoctorId ?? "";
+      const initialDoctorId = defaultDoctorId ?? activeDoctors[0]?.id ?? "";
       setPatientId("");
       setDoctorId(initialDoctorId);
       setAssistantId("");

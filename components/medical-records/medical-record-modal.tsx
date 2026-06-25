@@ -104,121 +104,118 @@ export function MedicalRecordModal({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Новая запись в медкарту</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>{UI.patient}</Label>
-              <div className="flex gap-2">
-                <PatientSearchSelect
-                  patients={patients}
-                  selectedPatientId={patientId}
-                  placeholder="ФИО или телефон..."
-                  onSelect={(patient) => setPatientId(patient.id)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0"
-                  onClick={() => setPatientModalOpen(true)}
-                >
-                  +
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>
-                {UI.doctor} <span className="text-red-600">*</span>
-              </Label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
-                value={doctorId}
-                onChange={(e) => setDoctorId(e.target.value)}
-              >
-                <option value="">Выберите врача</option>
-                {activeDoctors.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <SearchAutocomplete
-              label="Услуга"
-              value={serviceName}
-              onChange={setServiceName}
-              catalog={DENTAL_SERVICE_NAMES}
-              placeholder="гигиена, пломба, имплант..."
-            />
-
-            <SearchAutocomplete
-              label={UI.complaints}
-              value={complaints}
-              onChange={setComplaints}
-              catalog={DENTAL_COMPLAINTS}
-              placeholder="боль, кровоточивость..."
-              multiline
-              required
-            />
-
-            <SearchAutocomplete
-              label="Диагноз"
-              value={diagnosis}
-              onChange={setDiagnosis}
-              catalog={DENTAL_DIAGNOSES}
-              placeholder="кариес, пульпит, гингивит..."
-              required
-            />
-
-            <SearchAutocomplete
-              label={UI.treatment}
-              value={treatment}
-              onChange={setTreatment}
-              catalog={DENTAL_TREATMENTS}
-              placeholder="пломба, каналы, удаление..."
-              multiline
-              required
-            />
-
-            <SearchAutocomplete
-              label={UI.recommendations}
-              value={recommendations}
-              onChange={setRecommendations}
-              catalog={DENTAL_RECOMMENDATIONS}
-              placeholder="рекомендации по уходу..."
-              multiline
-            />
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                {UI.cancel}
-              </Button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Новая запись в медкарту</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>{UI.patient}</Label>
+            <div className="flex gap-2">
+              <PatientSearchSelect
+                patients={patients}
+                selectedPatientId={patientId}
+                placeholder="ФИО или телефон..."
+                onSelect={(patient) => setPatientId(patient.id)}
+              />
               <Button
-                onClick={handleSave}
-                disabled={
-                  !patientId ||
-                  !doctorId ||
-                  !complaints.trim() ||
-                  !diagnosis.trim() ||
-                  !treatment.trim()
-                }
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => setPatientModalOpen(true)}
               >
-                {UI.save}
+                +
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-      <PatientModal
-        open={patientModalOpen}
-        onOpenChange={setPatientModalOpen}
-        onCreated={(patient) => setPatientId(patient.id)}
-      />
+
+          <div className="space-y-2">
+            <Label>
+              {UI.doctor} <span className="text-red-600">*</span>
+            </Label>
+            <select
+              className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+              value={doctorId}
+              onChange={(e) => setDoctorId(e.target.value)}
+            >
+              <option value="">Выберите врача</option>
+              {activeDoctors.length === 0 ? (
+                <option value="" disabled>
+                  Нет врачей
+                </option>
+              ) : (
+                activeDoctors.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          <SearchAutocomplete
+            label="Услуга"
+            value={serviceName}
+            onChange={setServiceName}
+            catalog={DENTAL_SERVICE_NAMES}
+            placeholder="гигиена, пломба, имплант..."
+          />
+
+          <SearchAutocomplete
+            label={UI.complaints}
+            value={complaints}
+            onChange={setComplaints}
+            catalog={DENTAL_COMPLAINTS}
+            placeholder="боль, кровоточивость..."
+            multiline
+            required
+          />
+
+          <SearchAutocomplete
+            label="Диагноз"
+            value={diagnosis}
+            onChange={setDiagnosis}
+            catalog={DENTAL_DIAGNOSES}
+            placeholder="кариес, пульпит, гингивит..."
+            required
+          />
+
+          <SearchAutocomplete
+            label={UI.treatment}
+            value={treatment}
+            onChange={setTreatment}
+            catalog={DENTAL_TREATMENTS}
+            placeholder="пломба, каналы, удаление..."
+            multiline
+            required
+          />
+
+          <SearchAutocomplete
+            label={UI.recommendations}
+            value={recommendations}
+            onChange={setRecommendations}
+            catalog={DENTAL_RECOMMENDATIONS}
+            placeholder="рекомендации по уходу..."
+            multiline
+          />
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {UI.cancel}
+            </Button>
+            <Button onClick={handleSave} disabled={!activeDoctors.length}>
+              {UI.save}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    <PatientModal
+      open={patientModalOpen}
+      onOpenChange={setPatientModalOpen}
+      onCreated={(patient) => setPatientId(patient.id)}
+    />
     </>
   );
 }
