@@ -349,6 +349,55 @@ docker compose up -d --build
 
 ---
 
+## 9.4. Защита `.env` и устойчивый деплой
+
+### `.dockerignore`
+
+В репозитории есть `.dockerignore`: секреты (`.env`), бэкапы и `node_modules` **не попадают** в Docker build context.
+
+### Нормализация `.env` на сервере
+
+После каждого `server-update.sh` и при смене секрета подписи:
+
+```bash
+python3 scripts/fix-server-env.py /opt/emkaro/.env      # BOM, CRLF, emkao.u → emkaro.ru
+python3 scripts/fix-server-env.py --check /opt/emkaro/.env
+```
+
+Скрипт `server-update.sh` вызывает это автоматически. При повреждённом домене деплой **останавливается** до исправления.
+
+Проверка вручную:
+
+```bash
+grep '^APP_ROOT_DOMAIN=' /opt/emkaro/.env   # должно быть emkaro.ru, не emkao.u
+grep '^ACME_EMAIL=' /opt/emkaro/.env
+```
+
+После правки `.env` всегда перезапускайте Caddy:
+
+```bash
+docker compose up -d --force-recreate caddy app
+```
+
+### Если `docker compose build` падает (npm/DNS на VPS)
+
+```bash
+cd /opt/emkaro
+DEPLOY_USE_PREBUILT=1 bash scripts/server-update.sh /opt/emkaro-update.tar.gz
+# или отдельно:
+bash scripts/server-build-prebuilt.sh
+```
+
+Скрипт собирает `.next` в контейнере node на хосте (зеркало npmmirror) и упаковывает образ через `Dockerfile.prebuilt`.
+
+При обычном деплое, если `docker compose build` не удался, `server-update.sh` **автоматически** пробует prebuilt path.
+
+### Ротация `EGISZ_SIGNING_SECRET` с Windows
+
+Используйте `scripts/rotate-signing-secret.ps1` или `sync-signing-secret.ps1` — они вызывают `fix-server-env.py` на сервере. Не редактируйте `.env` вручную через PowerShell без нормализации.
+
+---
+
 ## Полезные команды
 
 ```bash

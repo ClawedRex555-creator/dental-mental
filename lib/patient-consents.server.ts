@@ -26,6 +26,15 @@ const CONSENT_LABELS: Record<PatientConsentType, string> = {
 
 export { CONSENT_LABELS };
 
+/** Согласие на передачу в ЕГИСЗ (таблица patient_consents, тип egisz_transfer). */
+export async function hasPatientEgiszTransferConsent(
+  clinicId: string,
+  patientId: string
+): Promise<boolean> {
+  const consents = await listPatientConsents(clinicId, patientId);
+  return consents.some((c) => c.consentType === "egisz_transfer" && c.granted);
+}
+
 export async function listPatientConsents(
   clinicId: string,
   patientId: string

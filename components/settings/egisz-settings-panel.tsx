@@ -104,6 +104,55 @@ export function EgiszSettingsPanel() {
     }
   };
 
+  const processSubmissions = async (items: SubmissionRow[], retry: boolean) => {
+    if (items.length === 0) return;
+    const batch = items.slice(0, 5);
+    for (const s of batch) {
+      const res = await fetch("/api/egisz/submit", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionId: s.id, process: true, retry }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? "Ошибка обработки очереди");
+        await load();
+        return;
+      }
+    }
+    const cfgRes = await fetch("/api/egisz/config", { credentials: "same-origin" });
+    const data = cfgRes.ok ? await cfgRes.json() : {};
+    const fresh: SubmissionRow[] = data.submissions ?? [];
+    setSubmissions(fresh);
+    if (cfgRes.ok && data.config) setConfig(data.config);
+
+    const batchIds = new Set(batch.map((s) => s.id));
+    const processed = fresh.filter((s) => batchIds.has(s.id));
+    const sent = processed.filter((s) => s.status === "sent" || s.status === "accepted");
+    const failed = processed.filter((s) => s.status === "error");
+
+    const describeError = (msg?: string) => {
+      if (!msg?.trim()) return "см. список «Отправки» ниже";
+      if (/^(СНИЛС|OID|Отпечаток|Врач|Медкарта|Пациент|Live N3|Нет согласия)/i.test(msg)) {
+        return `не хватало данных: ${msg}`;
+      }
+      return msg;
+    };
+
+    if (sent.length > 0 && failed.length === 0) {
+      toast.success(`Отправлено: ${sent.length}. Статус — в списке «Отправки» ниже.`);
+    } else if (sent.length > 0 && failed.length > 0) {
+      toast.warning(
+        `Отправлено: ${sent.length}, не отправлено: ${failed.length} (${describeError(failed[0]?.errorMessage)})`
+      );
+    } else if (failed.length > 0) {
+      toast.error(`Не отправлено: ${describeError(failed[0]?.errorMessage)}`);
+    } else {
+      toast.message(`Обработано записей: ${processed.length}. Смотрите статус в списке «Отправки» ниже.`);
+    }
+  };
+
   const processQueue = async () => {
     setProcessing(true);
     try {
@@ -115,51 +164,32 @@ export function EgiszSettingsPanel() {
         });
         return;
       }
-      const batch = queued.slice(0, 5);
-      for (const s of batch) {
-        const res = await fetch("/api/egisz/submit", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ submissionId: s.id, process: true }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          toast.error(data.error ?? "Ошибка обработки очереди");
-          await load();
-          return;
-        }
+      await processSubmissions(queued, false);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const retryErrors = async () => {
+    setProcessing(true);
+    try {
+      const errors = submissions.filter((s) => s.status === "error");
+      if (errors.length === 0) {
+        toast.message("Нет отправок со статусом «Ошибка»");
+        return;
       }
-      const cfgRes = await fetch("/api/egisz/config", { credentials: "same-origin" });
-      const data = cfgRes.ok ? await cfgRes.json() : {};
-      const fresh: SubmissionRow[] = data.submissions ?? [];
-      setSubmissions(fresh);
-      if (cfgRes.ok && data.config) setConfig(data.config);
+      await processSubmissions(errors, true);
+    } finally {
+      setProcessing(false);
+    }
+  };
 
-      const batchIds = new Set(batch.map((s) => s.id));
-      const processed = fresh.filter((s) => batchIds.has(s.id));
-      const sent = processed.filter((s) => s.status === "sent" || s.status === "accepted");
-      const failed = processed.filter((s) => s.status === "error");
-
-      const describeError = (msg?: string) => {
-        if (!msg?.trim()) return "см. список «Отправки» ниже";
-        if (/^(СНИЛС|OID|Отпечаток|Врач|Медкарта|Пациент|Live N3)/i.test(msg)) {
-          return `не хватало данных: ${msg}`;
-        }
-        return msg;
-      };
-
-      if (sent.length > 0 && failed.length === 0) {
-        toast.success(`Отправлено: ${sent.length}. Статус — в списке «Отправки» ниже.`);
-      } else if (sent.length > 0 && failed.length > 0) {
-        toast.warning(
-          `Отправлено: ${sent.length}, не отправлено: ${failed.length} (${describeError(failed[0]?.errorMessage)})`
-        );
-      } else if (failed.length > 0) {
-        toast.error(`Не отправлено: ${describeError(failed[0]?.errorMessage)}`);
-      } else {
-        toast.message(`Обработано записей: ${processed.length}. Смотрите статус в списке «Отправки» ниже.`);
-      }
+  const retryOne = async (id: string) => {
+    setProcessing(true);
+    try {
+      const row = submissions.find((s) => s.id === id);
+      if (!row) return;
+      await processSubmissions([row], true);
     } finally {
       setProcessing(false);
     }
@@ -384,6 +414,13 @@ export function EgiszSettingsPanel() {
           </div>
         </div>
 
+        {config.connectionMode === "live" && (
+          <p className="text-xs text-[var(--muted)]">
+            В режиме live перед отправкой в N3 нужно согласие пациента «Передача данных в ЕГИСЗ»
+            (карточка пациента → согласия).
+          </p>
+        )}
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -400,6 +437,11 @@ export function EgiszSettingsPanel() {
           <Button variant="outline" onClick={() => void processQueue()} disabled={processing}>
             {processing ? "Обработка…" : "Обработать очередь"}
           </Button>
+          {submissions.some((s) => s.status === "error") ? (
+            <Button variant="outline" onClick={() => void retryErrors()} disabled={processing}>
+              Повторить ошибки
+            </Button>
+          ) : null}
         </div>
 
         {submissions.length > 0 ? (
@@ -407,11 +449,23 @@ export function EgiszSettingsPanel() {
             <h3 className="mb-2 text-sm font-medium">Отправки этой клиники</h3>
             <ul className="space-y-1 text-xs text-[var(--muted)]">
               {submissions.slice(0, 15).map((s) => (
-                <li key={s.id}>
-                  {EGISZ_DOCUMENT_LABELS[s.documentType]} — {EGISZ_STATUS_LABELS[s.status]}{" "}
-                  ({new Date(s.createdAt).toLocaleString("ru-RU")})
-                  {s.externalId ? ` · ${s.externalId}` : ""}
-                  {s.errorMessage ? ` — ${s.errorMessage}` : ""}
+                <li key={s.id} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {EGISZ_DOCUMENT_LABELS[s.documentType]} — {EGISZ_STATUS_LABELS[s.status]}{" "}
+                    ({new Date(s.createdAt).toLocaleString("ru-RU")})
+                    {s.externalId ? ` · ${s.externalId}` : ""}
+                    {s.errorMessage ? ` — ${s.errorMessage}` : ""}
+                  </span>
+                  {s.status === "error" ? (
+                    <button
+                      type="button"
+                      className="text-[var(--primary)] underline-offset-2 hover:underline disabled:opacity-50"
+                      disabled={processing}
+                      onClick={() => void retryOne(s.id)}
+                    >
+                      Повторить
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>

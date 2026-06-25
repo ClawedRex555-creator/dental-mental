@@ -18,12 +18,14 @@ scp $tmp root@201.51.0.171:/tmp/egisz-secret.env
 Remove-Item $tmp -Force
 
 ssh root@201.51.0.171 @'
-python3 /tmp/fix-server-env.py 2>/dev/null || true
+set -e
 grep -v "^EGISZ_SIGNING_SECRET=" /opt/emkaro/.env > /tmp/env.new
 cat /tmp/egisz-secret.env >> /tmp/env.new
 mv /tmp/env.new /opt/emkaro/.env
 rm -f /tmp/egisz-secret.env
-cd /opt/emkaro && docker compose up -d --force-recreate app
+python3 /opt/emkaro/scripts/fix-server-env.py /opt/emkaro/.env
+python3 /opt/emkaro/scripts/fix-server-env.py --check /opt/emkaro/.env
+cd /opt/emkaro && docker compose up -d --force-recreate app caddy
 echo SYNC_OK
 '@
 

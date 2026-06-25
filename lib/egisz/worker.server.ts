@@ -18,11 +18,16 @@ import {
 } from "@/lib/egisz/n3/mappers";
 import { signCdaDocument } from "@/lib/egisz/signing/index.server";
 import type { EgiszSubmissionPayload } from "@/lib/egisz/types";
-import { isN3StubMode, resolveGatewayUrl } from "@/lib/egisz/types";
+import { isN3StubMode, resolveGatewayUrl, type EgiszClinicConfig } from "@/lib/egisz/types";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
 import { clinicHasModule } from "@/lib/module-access.server";
+import { hasPatientEgiszTransferConsent } from "@/lib/patient-consents.server";
 import type { Doctor, MedicalRecord, Patient } from "@/lib/types";
+
+function requiresEgiszTransferConsent(config: EgiszClinicConfig): boolean {
+  return Boolean(config.enabled && config.connectionMode === "live");
+}
 
 function findEntities(
   data: ClinicPersistedState,
@@ -60,6 +65,23 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
 
   const stub = isN3StubMode(config);
   const requireN3 = !stub;
+
+  if (
+    submission.documentType !== "refusal_notice" &&
+    requiresEgiszTransferConsent(config)
+  ) {
+    const hasConsent = await hasPatientEgiszTransferConsent(
+      submission.clinicId,
+      submission.patientId
+    );
+    if (!hasConsent) {
+      await updateEgiszSubmission(submissionId, {
+        status: "error",
+        errorMessage: "Нет согласия пациента на передачу данных в ЕГИСЗ",
+      });
+      return;
+    }
+  }
 
   const snapshot = await getClinicDataDb(submission.clinicId);
   if (!snapshot) {

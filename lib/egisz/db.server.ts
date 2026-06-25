@@ -64,6 +64,27 @@ export async function queueEgiszSubmission(input: {
 }): Promise<string | null> {
   return (
     (await withDb(async (client) => {
+      if (input.medicalRecordId) {
+        const dup = await client.query<{ id: string; status: EgiszSubmissionStatus }>(
+          `SELECT id, status FROM egisz_submissions
+           WHERE clinic_id = $1 AND medical_record_id = $2 AND document_type = $3
+             AND status IN ('queued', 'error')
+           ORDER BY created_at DESC LIMIT 1`,
+          [input.clinicId, input.medicalRecordId, input.documentType]
+        );
+        const existing = dup.rows[0];
+        if (existing) {
+          if (existing.status === "queued") return existing.id;
+          await client.query(
+            `UPDATE egisz_submissions SET
+               status = 'queued', error_message = NULL, updated_at = NOW()
+             WHERE id = $1 AND clinic_id = $2 AND status = 'error'`,
+            [existing.id, input.clinicId]
+          );
+          return existing.id;
+        }
+      }
+
       const res = await client.query<{ id: string }>(
         `INSERT INTO egisz_submissions
           (clinic_id, patient_id, medical_record_id, document_type, status, payload)
@@ -80,6 +101,22 @@ export async function queueEgiszSubmission(input: {
       return res.rows[0]?.id ?? null;
     })) ?? null
   );
+}
+
+export async function requeueEgiszSubmission(
+  submissionId: string,
+  clinicId: string
+): Promise<boolean> {
+  const updated = await withDb(async (client) => {
+    const res = await client.query(
+      `UPDATE egisz_submissions SET
+         status = 'queued', error_message = NULL, updated_at = NOW()
+       WHERE id = $1 AND clinic_id = $2 AND status = 'error'`,
+      [submissionId, clinicId]
+    );
+    return res.rowCount ?? 0;
+  });
+  return (updated ?? 0) > 0;
 }
 
 export interface EgiszSubmissionRow {

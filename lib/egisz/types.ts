@@ -189,7 +189,7 @@ export const EGISZ_STATUS_LABELS: Record<EgiszSubmissionStatus, string> = {
 };
 
 export const DEFAULT_N3_TEST_GATEWAY =
-  "https://b2b-demo.n3health.ru/emk/EMKService.svc";
+  "http://b2b-demo.n3health.ru/emk/EMKService.svc";
 
 export function resolveGatewayUrl(config: EgiszClinicConfig): string {
   return (
