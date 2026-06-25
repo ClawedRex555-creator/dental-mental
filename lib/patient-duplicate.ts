@@ -25,6 +25,8 @@ export interface PatientDuplicateCandidate {
   lastName: string;
   middleName?: string;
   birthDate: string;
+  /** Ребёнок может использовать телефон родителя, уже заведённый в базе */
+  isChild?: boolean;
 }
 
 function normName(value: string): string {
@@ -77,7 +79,11 @@ export function findDuplicatePatient(
   for (const p of patients) {
     if (excludePatientId && p.id === excludePatientId) continue;
 
-    if (candPhone.length >= 11 && phoneKey(p.phone) === candPhone) {
+    if (
+      !candidate.isChild &&
+      candPhone.length >= 11 &&
+      phoneKey(p.phone) === candPhone
+    ) {
       return { patient: p, reason: "phone" };
     }
 

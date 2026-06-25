@@ -30,6 +30,7 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, UI } from "@/lib/constant
 import { formatCurrency, formatDate, generateId, getFullName } from "@/lib/utils";
 import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
 import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
+import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
@@ -56,6 +57,7 @@ export default function FinancePage() {
     services,
     assistantManualHours,
     setAssistantManualHours,
+    repairPaidActAppointments,
   } = useClinicStore();
   const canDeleteActs = canDeleteWorkActs(currentUser.role);
   const canDeleteExpenses = canDeleteClinicExpenses(currentUser.role);
@@ -78,6 +80,25 @@ export default function FinancePage() {
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
 
+  const getActPaymentStatus = (act: WorkAct) =>
+    act.paymentStatus ??
+    (invoices.some(
+      (inv) =>
+        inv.workActId === act.id &&
+        inv.status === "paid"
+    ) ||
+    invoices.some(
+      (inv) =>
+        inv.description.includes(act.actNumber) && inv.status === "paid"
+    )
+      ? "paid"
+      : "pending");
+
+  useEffect(() => {
+    requestClinicDataPull({ force: true });
+    repairPaidActAppointments();
+  }, [repairPaidActAppointments]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -95,24 +116,12 @@ export default function FinancePage() {
       const act = workActs.find((a) => a.id === payActId);
       if (act) {
         setTab("acts");
-        setPayAct(act);
+        if (getActPaymentStatus(act) !== "paid") {
+          setPayAct(act);
+        }
       }
     }
-  }, [workActs]);
-
-  const getActPaymentStatus = (act: WorkAct) =>
-    act.paymentStatus ??
-    (invoices.some(
-      (inv) =>
-        inv.workActId === act.id &&
-        inv.status === "paid"
-    ) ||
-    invoices.some(
-      (inv) =>
-        inv.description.includes(act.actNumber) && inv.status === "paid"
-    )
-      ? "paid"
-      : "pending");
+  }, [workActs, invoices]);
 
   const totalPaid = useMemo(
     () => payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount, 0),
@@ -1428,6 +1437,14 @@ export default function FinancePage() {
         open={!!payAct}
         onOpenChange={(open) => !open && setPayAct(null)}
         onConfirm={(actId, method: PaymentMethod) => {
+          const act = workActs.find((a) => a.id === actId);
+          if (act && getActPaymentStatus(act) === "paid") {
+            if (payWorkAct(actId, method)) {
+              toast.info("Акт уже был оплачен — статус приёма в расписании обновлён");
+            }
+            setPayAct(null);
+            return;
+          }
           if (payWorkAct(actId, method)) {
             toast.success("Акт отмечен как оплаченный");
             setPayAct(null);

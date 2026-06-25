@@ -312,6 +312,9 @@ export interface TreatmentPlanItem {
 
 export type DiscountType = "percent" | "rubles";
 
+/** Кто «оплачивает» доп. скидку по акту */
+export type DiscountBearer = "doctor" | "clinic" | "shared";
+
 export interface TreatmentPlan {
   id: string;
   patientId: string;
@@ -355,6 +358,8 @@ export interface WorkAct {
   subtotalAmount: number;
   discountType: DiscountType;
   discount: number;
+  /** Откуда списывается доп. скидка: врач / клиника / пропорционально */
+  discountBearer?: DiscountBearer;
   totalAmount: number;
   paymentStatus: PaymentStatus;
   invoiceId?: string;

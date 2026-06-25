@@ -27,8 +27,16 @@ import {
 } from "@/lib/assistant-utils";
 import { getDoctorsInCabinet } from "@/lib/cabinet-utils";
 import { isDoctorWorkingOnDate, needsScheduleReminder } from "@/lib/clinic-schedule";
-import { SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/appointment-utils";
+import {
+  isAppointmentActive,
+  isAppointmentInDateRange,
+  isAppointmentOnCalendarDay,
+  normalizeAppointmentDate,
+  SCHEDULE_DAY_END,
+  SCHEDULE_DAY_START,
+} from "@/lib/appointment-utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   APPOINTMENT_STATUS_COLORS,
@@ -43,7 +51,7 @@ import type { Appointment } from "@/lib/types";
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
-  const { appointments, patients, doctors, cabinets, doctorSchedules, currentUser } =
+  const { appointments, patients, doctors, cabinets, doctorSchedules, currentUser, repairPaidActAppointments } =
     useClinicStore();
   const isAssistant = currentUser.role === "assistant";
   const assistantProfile = useMemo(
@@ -66,6 +74,10 @@ export default function AppointmentsPage() {
   const [newSlotDate, setNewSlotDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [newSlotTime, setNewSlotTime] = useState<string>();
   const [newSlotDoctorId, setNewSlotDoctorId] = useState<string>();
+
+  useEffect(() => {
+    repairPaidActAppointments();
+  }, [repairPaidActAppointments]);
 
   const effectiveView: ViewMode = isMobile ? "day" : view;
 
@@ -128,10 +140,13 @@ export default function AppointmentsPage() {
         ? endOfWeek(currentDate, { weekStartsOn: 1 })
         : endOfMonth(currentDate);
 
-  const rangeAppointments = filtered.filter((a) => {
-    const d = parseISO(a.date);
-    return d >= rangeStart && d <= rangeEnd;
-  });
+  const rangeAppointments = useMemo(() => {
+    const from = format(rangeStart, "yyyy-MM-dd");
+    const to = format(rangeEnd, "yyyy-MM-dd");
+    return filtered.filter(
+      (a) => isAppointmentActive(a) && isAppointmentInDateRange(a, from, to)
+    );
+  }, [filtered, rangeStart, rangeEnd]);
 
   const gridDoctors = useMemo(() => {
     if (isAssistant) {
@@ -147,7 +162,7 @@ export default function AppointmentsPage() {
     if (effectiveView !== "day") return list;
     const dayDoctorIds = new Set(
       rangeAppointments
-        .filter((a) => isSameDay(parseISO(a.date), currentDate) && a.doctorId)
+        .filter((a) => isAppointmentOnCalendarDay(a, currentDate) && a.doctorId)
         .map((a) => a.doctorId as string)
     );
     return list.filter(
@@ -167,6 +182,11 @@ export default function AppointmentsPage() {
     effectiveView,
     currentDate,
   ]);
+
+  const goToDate = (value: string) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    setCurrentDate(parseISO(value));
+  };
 
   const navigate = (dir: -1 | 1) => {
     if (effectiveView === "day") setCurrentDate((d) => addDays(d, dir));
@@ -213,7 +233,8 @@ export default function AppointmentsPage() {
 
   const titleLabel =
     effectiveView === "day"
-      ? format(currentDate, "d MMMM yyyy", { locale: ru })
+      ? format(currentDate, "EEEE, d MMMM yyyy", { locale: ru })
+          .replace(/^./, (c) => c.toUpperCase())
       : effectiveView === "week"
         ? `${format(weekDays[0], "d MMM", { locale: ru })} - ${format(weekDays[6], "d MMM yyyy", { locale: ru })}`
         : format(currentDate, "LLLL yyyy", { locale: ru });
@@ -270,6 +291,13 @@ export default function AppointmentsPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
             <CardTitle className="text-lg capitalize">{titleLabel}</CardTitle>
+            <Input
+              type="date"
+              aria-label="Перейти к дате"
+              className="h-9 w-[10.5rem] shrink-0"
+              value={format(currentDate, "yyyy-MM-dd")}
+              onChange={(e) => goToDate(e.target.value)}
+            />
             <Button variant="ghost" size="sm" onClick={() => setCurrentDate(new Date())}>
               {UI.today}
             </Button>
@@ -343,7 +371,11 @@ export default function AppointmentsPage() {
             <div className="grid grid-cols-7 gap-1">
               {monthDays.map((day) => {
                 const dayStr = format(day, "yyyy-MM-dd");
-                const dayApts = filtered.filter((a) => isSameDay(parseISO(a.date), day));
+                const dayApts = filtered
+                  .filter(
+                    (a) => isAppointmentActive(a) && normalizeAppointmentDate(a.date) === dayStr
+                  )
+                  .sort((a, b) => a.startTime.localeCompare(b.startTime));
                 return (
                   <div
                     key={day.toISOString()}
@@ -376,6 +408,9 @@ export default function AppointmentsPage() {
                     <div className="mt-1 flex-1 space-y-0.5">
                       {dayApts.slice(0, 3).map((apt) => {
                         const patient = patients.find((p) => p.id === apt.patientId);
+                        const doctor = apt.doctorId
+                          ? doctors.find((d) => d.id === apt.doctorId)
+                          : undefined;
                         return (
                           <button
                             key={apt.id}
@@ -385,6 +420,11 @@ export default function AppointmentsPage() {
                               "block w-full truncate rounded px-1 py-0.5 text-left text-xs font-medium",
                               APPOINTMENT_STATUS_COLORS[apt.status]
                             )}
+                            title={
+                              doctor
+                                ? `${apt.startTime} · ${doctor.name}`
+                                : apt.startTime
+                            }
                           >
                             {apt.startTime}{" "}
                             {patient
@@ -393,7 +433,7 @@ export default function AppointmentsPage() {
                                   patient.lastName,
                                   patient.middleName
                                 )
-                              : ""}
+                              : "Без пациента"}
                           </button>
                         );
                       })}
@@ -422,7 +462,7 @@ export default function AppointmentsPage() {
             <ScheduleGrid
               days={effectiveView === "day" ? [currentDate] : weekDays}
               doctors={gridDoctors}
-              appointments={filtered}
+              appointments={rangeAppointments}
               patients={patients}
               doctorSchedules={doctorSchedules}
               onSlotClick={(date, time, doctorId) => openNew(date, time, doctorId)}

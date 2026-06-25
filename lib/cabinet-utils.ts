@@ -13,3 +13,18 @@ export function getDoctorsInCabinet(
   ]);
   return doctors.filter((d) => d.role === "doctor" && staffIds.has(d.id));
 }
+
+/** Кабинет врача: cabinetId на карточке или привязка через staffIds кабинета */
+export function resolveCabinetIdForDoctor(
+  doctorId: string | undefined,
+  doctors: Doctor[],
+  cabinets: Cabinet[]
+): string | undefined {
+  if (!doctorId) return undefined;
+  const doctor = doctors.find((d) => d.id === doctorId);
+  if (doctor?.cabinetId) {
+    const linked = cabinets.find((c) => c.id === doctor.cabinetId);
+    if (linked) return linked.id;
+  }
+  return cabinets.find((c) => c.staffIds.includes(doctorId))?.id;
+}

@@ -106,6 +106,22 @@ fi
 if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
   echo ">>> DEPLOY_USE_PREBUILT=1 — host npm build + Dockerfile.prebuilt"
   bash scripts/server-build-prebuilt.sh
+elif ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
+  echo ""
+  echo "ОШИБКА: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
+  echo "  lookup через 127.0.0.53: server misbehaving — типичная проблема systemd-resolved на VPS."
+  echo ""
+  bash "$ROOT/scripts/server-check-dns.sh" || true
+  echo ""
+  if docker image inspect node:20-alpine >/dev/null 2>&1; then
+    echo "Образ node:20-alpine уже есть локально. Можно попробовать без --no-cache:"
+    echo "  cd $ROOT && DEPLOY_NO_CACHE=0 bash scripts/server-update.sh ${ARCHIVE:-}"
+    echo "После починки DNS обязательно: DEPLOY_NO_CACHE=1 и полная пересборка."
+  fi
+  echo ""
+  echo "Починка DNS: bash scripts/server-fix-docker-dns.sh"
+  echo "  sudo bash scripts/server-fix-docker-dns.sh --apply"
+  exit 1
 elif [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
   echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
   if ! docker compose build --no-cache app; then
@@ -128,6 +144,18 @@ fetch('http://127.0.0.1:3000/api/health').then(r=>r.json()).then(j=>console.log(
 
 if echo "$health_json" | grep -q 'patientAppointmentSearch'; then
   echo "OK: новый bundle (patientAppointmentSearch в /api/health)"
+  if echo "$health_json" | grep -q 'egiszDocumentUuidAlign'; then
+    echo "OK: UUID документа в CDA и N3 (egiszDocumentUuidAlign)"
+  else
+    echo "ОШИБКА: нет egiszDocumentUuidAlign в /api/health — контейнер со старым bundle."
+    echo "Ответ: $health_json"
+    if grep -q 'egiszDocumentUuidAlign' "$ROOT/app/api/health/route.ts" 2>/dev/null; then
+      echo "На диске код новый — пересоберите: DEPLOY_NO_CACHE=1 docker compose build --no-cache app && docker compose up -d --force-recreate app"
+    else
+      echo "На диске код старый — задеплойте свежий tar с Mac: bash scripts/deploy-to-server.sh"
+    fi
+    exit 1
+  fi
   if echo "$health_json" | grep -q 'egiszCdaSnilsDigits'; then
     echo "OK: fix СНИЛС в CDA (egiszCdaSnilsDigits)"
   else

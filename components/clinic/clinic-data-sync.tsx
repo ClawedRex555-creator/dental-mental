@@ -19,31 +19,37 @@ import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import {
   createFreshPersistedState,
   hasClinicData,
+  hasEntityIdsNotInIncoming,
   mergeClinicSnapshotWithLocal,
+  parseClinicPersistedState,
   pickPersistedState,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
   notifyClinicDataChanged,
   registerClinicDataFlush,
+  registerClinicDataPull,
   subscribeClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
 import {
   needsMergeWithServerOnLoad,
   prepareSnapshotAfterServerFetch,
+  serverSnapshotHasIncomingUpdates,
   shouldPushSnapshotAfterServerFetch,
 } from "@/lib/clinic-snapshot-load";
 import {
   clearPendingClinicSnapshot,
+  discardStalePendingClinicSnapshot,
   readPendingClinicSnapshot,
   writePendingClinicSnapshot,
 } from "@/lib/clinic-pending-sync";
+import { resolveClinicBootstrap } from "@/lib/clinic-bootstrap.client";
 import { CLINIC_SAVE_RETRY_DELAYS_MS, sleep } from "@/lib/clinic-save-retry";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { useClinicStore } from "@/store/useClinicStore";
 
-const SAVE_DEBOUNCE_MS = 800;
+const SAVE_DEBOUNCE_MS = 400;
 const PERIODIC_FLUSH_MS = 60_000;
 /** Лёгкий опрос meta (только updatedAt) — полный snapshot только при изменениях */
 const PERIODIC_PULL_MS = 4_000;
@@ -82,7 +88,7 @@ export function ClinicDataSync() {
 
   useEffect(() => {
     let cancelled = false;
-    const { setClinicSyncPhase, setClinicDataUnsaved, setClinicDataSaveError } =
+    const { setClinicSyncPhase, setClinicDataUnsaved, setClinicDataSaveError, setClinicServerNewerAvailable } =
       useClinicStore.getState();
 
     setClinicSyncPhase("loading");
@@ -97,7 +103,36 @@ export function ClinicDataSync() {
       if (store.clinicDataUnsaved) return true;
       if (saveTimer.current) return true;
       const json = JSON.stringify(pickPersistedState(store));
-      return json !== lastSavedJson.current;
+      if (json !== lastSavedJson.current) return true;
+      const pending = readPendingClinicSnapshot();
+      if (pending && JSON.stringify(pending) !== lastSavedJson.current) return true;
+      return false;
+    };
+
+    const lastSyncedBaseline = (): ClinicPersistedState => {
+      if (!lastSavedJson.current) {
+        return pickPersistedState(useClinicStore.getState());
+      }
+      try {
+        const parsed = parseClinicPersistedState(JSON.parse(lastSavedJson.current));
+        if (parsed) return parsed;
+      } catch {
+        /* fall through */
+      }
+      return pickPersistedState(useClinicStore.getState());
+    };
+
+    const serverHasNewFinancialData = (
+      remote: ClinicPersistedState,
+      local: ClinicPersistedState
+    ) =>
+      hasEntityIdsNotInIncoming(remote.workActs, local.workActs) ||
+      hasEntityIdsNotInIncoming(remote.payments, local.payments) ||
+      hasEntityIdsNotInIncoming(remote.invoices, local.invoices);
+
+    const ackServerSnapshotVersion = (updatedAt?: string | null) => {
+      if (updatedAt) lastServerUpdatedAt.current = updatedAt;
+      setClinicServerNewerAvailable(false);
     };
 
     const applyRemoteSnapshot = (remote: ClinicPersistedState, updatedAt?: string | null) => {
@@ -105,13 +140,16 @@ export function ClinicDataSync() {
       // При pull с сервера приоритет у remote; локальные id, которых нет на сервере, сохраняем
       const snapshot = mergeClinicSnapshotWithLocal(local, remote);
       const json = JSON.stringify(snapshot);
-      if (json === lastSavedJson.current) return;
+      if (json === lastSavedJson.current) {
+        ackServerSnapshotVersion(updatedAt);
+        return;
+      }
       suppressPersistedChange.current = true;
       try {
         lastSavedJson.current = json;
         lastTrackedSnap.current = json;
         useClinicStore.getState().replacePersistedState(snapshot);
-        if (updatedAt) lastServerUpdatedAt.current = updatedAt;
+        ackServerSnapshotVersion(updatedAt);
         setClinicDataUnsaved(false);
         setClinicDataSaveError(null);
       } finally {
@@ -119,26 +157,46 @@ export function ClinicDataSync() {
       }
     };
 
+    const serverSnapshotIsNewer = (updatedAt: string | null | undefined) =>
+      Boolean(
+        updatedAt &&
+          lastServerUpdatedAt.current &&
+          updatedAt > lastServerUpdatedAt.current
+      );
+
     const pullRemoteSnapshot = async (options?: { force?: boolean }) => {
       if (!syncReady.current || syncForbidden.current || saving.current) return;
-      if (hasPendingLocalEdits()) return;
+
       try {
         if (!options?.force && lastServerUpdatedAt.current) {
           const meta = await fetchClinicDataMetaFromServer();
           if (!meta || cancelled || meta.forbidden) return;
-          if (hasPendingLocalEdits()) return;
-          if (
-            meta.updatedAt &&
-            lastServerUpdatedAt.current &&
-            meta.updatedAt <= lastServerUpdatedAt.current
-          ) {
+          if (!serverSnapshotIsNewer(meta.updatedAt)) {
+            setClinicServerNewerAvailable(false);
             return;
           }
         }
 
         const remote = await fetchClinicDataFromServer();
         if (!remote?.data || cancelled) return;
-        if (hasPendingLocalEdits()) return;
+        discardStalePendingClinicSnapshot(remote.data);
+
+        const baseline = lastSyncedBaseline();
+        if (!serverSnapshotHasIncomingUpdates(remote.data, baseline)) {
+          ackServerSnapshotVersion(remote.updatedAt);
+          return;
+        }
+
+        const localNow = pickPersistedState(useClinicStore.getState());
+        const applyDespitePending =
+          Boolean(options?.force) && serverHasNewFinancialData(remote.data, localNow);
+        if (applyDespitePending) clearPendingClinicSnapshot();
+
+        if (!applyDespitePending && hasPendingLocalEdits()) {
+          setClinicServerNewerAvailable(true);
+          return;
+        }
+
         applyRemoteSnapshot(remote.data, remote.updatedAt);
       } catch {
         /* ignore background refresh */
@@ -239,11 +297,12 @@ export function ClinicDataSync() {
 
     const onPersistedDataChange = () => {
       if (suppressPersistedChange.current) return;
-      if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
       if (saving.current) return;
 
       const snapshot = pickPersistedState(useClinicStore.getState());
       writePendingClinicSnapshot(snapshot);
+
+      if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
 
       if (!initialLoadDone.current) {
         flushAfterBaseline.current = true;
@@ -308,6 +367,10 @@ export function ClinicDataSync() {
       void flushSave();
     });
 
+    registerClinicDataPull((options) => {
+      void pullRemoteSnapshot(options);
+    });
+
     const applySnapshot = (snapshot: ClinicPersistedState, mergedWithLocal: boolean) => {
       const store = useClinicStore.getState();
       suppressPersistedChange.current = true;
@@ -324,25 +387,11 @@ export function ClinicDataSync() {
 
     void (async () => {
       try {
-        let hostSlug: string | null = null;
-        let serverUsesDb = isClinicServerDatabaseMode();
-        try {
-          const ctxRes = await fetch("/api/clinic/context", { credentials: "include" });
-          if (ctxRes.ok) {
-            const ctx = (await ctxRes.json()) as {
-              slug?: string;
-              mode?: string;
-              database?: boolean;
-            };
-            if (ctx.mode === "clinic" && ctx.slug) hostSlug = ctx.slug;
-            if (ctx.mode === "clinic" && ctx.database === true) {
-              serverUsesDb = true;
-              setClinicServerDatabaseMode(true);
-            }
-          }
-        } catch {
-          /* scope check best-effort */
-        }
+        const bootstrap = await resolveClinicBootstrap();
+        const hostSlug = bootstrap.slug;
+        const serverUsesDb = bootstrap.usesDb || isClinicServerDatabaseMode();
+        if (serverUsesDb) setClinicServerDatabaseMode(true);
+
         if (hostSlug && !ensureClinicStorageScope(hostSlug)) {
           useClinicStore.getState().replacePersistedState(createFreshPersistedState());
         }
@@ -369,6 +418,7 @@ export function ClinicDataSync() {
           );
           finishPhase("local_only");
           armSaveBaseline();
+          useClinicStore.getState().repairPaidActAppointments();
           return;
         }
 
@@ -398,6 +448,7 @@ export function ClinicDataSync() {
         if (remote.updatedAt) lastServerUpdatedAt.current = remote.updatedAt;
 
         if (remote.data) {
+          discardStalePendingClinicSnapshot(remote.data);
           const local = pickPersistedState(useClinicStore.getState());
           const serverDbOpts = { serverDatabaseMode: true as const };
           const mustMerge = needsMergeWithServerOnLoad(local, serverDbOpts);
@@ -406,6 +457,7 @@ export function ClinicDataSync() {
           applySnapshot(snapshot, mustMerge);
           syncReady.current = true;
           finishPhase(canWrite.current ? "ready" : "read_only");
+          useClinicStore.getState().repairPaidActAppointments();
 
           if (snapshot.patients.length > remote.data.patients.length) {
             toast.info(
@@ -492,15 +544,14 @@ export function ClinicDataSync() {
         const msg = syncErrorMessage(e);
         setClinicDataSaveError(msg);
         toast.error(msg);
-        syncReady.current = true;
+        syncReady.current = false;
         finishPhase("error");
-        armSaveBaseline();
       } finally {
         if (
           !cancelled &&
           useClinicStore.getState().clinicSyncPhase === "loading"
         ) {
-          syncReady.current = true;
+          syncReady.current = false;
           finishPhase("error");
           setClinicDataSaveError(
             "Данные клиники не загрузились. Обновите страницу (F5) перед изменениями."
@@ -517,6 +568,7 @@ export function ClinicDataSync() {
     return () => {
       cancelled = true;
       registerClinicDataFlush(null);
+      registerClinicDataPull(null);
       unsub();
       unsubBroadcast();
       window.removeEventListener("pagehide", onLeavePage);

@@ -80,8 +80,11 @@ export function PatientSearchSelect({
         }}
         onFocus={() => {
           if (disabled) return;
-          setQuery(displayLabel);
+          setQuery(displayLabel || "");
           setOpen(true);
+        }}
+        onBlur={() => {
+          if (!selectedPatientId) setQuery("");
         }}
         onKeyDown={(e) => {
           if (!showList || !suggestions.length) return;

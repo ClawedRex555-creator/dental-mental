@@ -266,7 +266,13 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
             <CardContent className="space-y-2 text-sm">
               <p><span className="text-slate-500">Источник:</span> {patient.source}</p>
               <p><span className="text-slate-500">Адрес:</span> {patient.address || "—"}</p>
-              <p><span className="text-slate-500">СНИЛС:</span> {patient.snils || "—"}</p>
+              <p><span className="text-slate-500">СНИЛС{patient.isChild ? " ребёнка" : ""}:</span> {patient.snils || "—"}</p>
+              {patient.isChild && !patient.snils && (
+                <p className="text-xs text-slate-500">
+                  Если СНИЛС ещё не выдан — это нормально. Для ЕГИСЗ позже понадобится свой номер
+                  ребёнка или отметка «без документов» при создании карточки.
+                </p>
+              )}
               {patient.isChild ? (
                 <>
                   <p>

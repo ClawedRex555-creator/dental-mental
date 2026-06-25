@@ -5,6 +5,7 @@ import {
   isClinicServerDatabaseMode,
   setClinicServerDatabaseMode,
 } from "@/lib/clinic-client-mode";
+import { resolveClinicBootstrap } from "@/lib/clinic-bootstrap.client";
 import { backupPhiSnapshotBeforeDbMode } from "@/lib/clinic-pending-sync";
 import { createFreshPersistedState } from "@/lib/clinic-persisted-state";
 import { purgePhiFromClinicLocalStorage } from "@/lib/clinic-storage-client";
@@ -18,25 +19,19 @@ import { useClinicStore } from "@/store/useClinicStore";
 
 const WIPE_DONE_KEY = "dentalcloud-mis-wiped-v4";
 
-async function fetchClinicBootstrap(): Promise<{
-  usesDb: boolean;
-  slug: string | null;
-}> {
-  try {
-    const res = await fetch("/api/clinic/context", { credentials: "same-origin" });
-    if (!res.ok) return { usesDb: false, slug: null };
-    const data = (await res.json()) as {
-      database?: boolean;
-      mode?: string;
-      slug?: string;
-    };
-    const slug = data.mode === "clinic" && data.slug ? data.slug : null;
-    return {
-      usesDb: data.mode === "clinic" && data.database === true,
-      slug,
-    };
-  } catch {
-    return { usesDb: false, slug: null };
+function applyServerBootstrap(usesDb: boolean, slug: string | null): void {
+  if (slug && !ensureClinicStorageScope(slug)) {
+    const themes = useClinicStore.getState().userThemePreferences;
+    useClinicStore.getState().replacePersistedState({
+      ...createFreshPersistedState(),
+      userThemePreferences: themes,
+    });
+  }
+
+  if (usesDb) {
+    setClinicServerDatabaseMode(true);
+    backupPhiSnapshotBeforeDbMode();
+    purgePhiFromClinicLocalStorage();
   }
 }
 
@@ -45,7 +40,6 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    let unsubPersist: (() => void) | undefined;
 
     const finish = () => {
       if (typeof window !== "undefined") {
@@ -67,33 +61,20 @@ export function StoreHydration({ children }: { children: React.ReactNode }) {
           purgePhiFromClinicLocalStorage();
         }
       }
-      setReady(true);
+      if (!cancelled) setReady(true);
     };
 
     void (async () => {
-      const { usesDb, slug } = await fetchClinicBootstrap();
+      const { usesDb, slug } = await resolveClinicBootstrap();
       if (cancelled) return;
-
-      if (slug && !ensureClinicStorageScope(slug)) {
-        const themes = useClinicStore.getState().userThemePreferences;
-        useClinicStore.getState().replacePersistedState({
-          ...createFreshPersistedState(),
-          userThemePreferences: themes,
-        });
-      }
-
-      if (usesDb) {
-        setClinicServerDatabaseMode(true);
-        backupPhiSnapshotBeforeDbMode();
-        purgePhiFromClinicLocalStorage();
-      }
-      unsubPersist = useClinicStore.persist.onFinishHydration(finish);
-      void useClinicStore.persist.rehydrate();
+      applyServerBootstrap(usesDb, slug);
+      void Promise.resolve(useClinicStore.persist.rehydrate()).then(() => {
+        if (!cancelled) finish();
+      });
     })();
 
     return () => {
       cancelled = true;
-      unsubPersist?.();
     };
   }, []);
 

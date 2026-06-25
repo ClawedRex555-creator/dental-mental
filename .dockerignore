@@ -9,8 +9,10 @@ data/
 *.sql
 *.tar.gz
 *.tgz
+.emkaro-deploy
+emkaro-deploy.zip
 
-# Dependencies and build output (rebuilt inside Docker or via Dockerfile.prebuilt)
+# Dependencies and build output
 node_modules/
 .next/
 
@@ -25,11 +27,15 @@ tools/
 .vscode/
 *.swp
 
-# Docs and dev-only (not needed in production image)
+# Docs and dev-only
 *.md
 !README.md
 
-# OS junk
+# OS junk / build artifacts
 .DS_Store
 Thumbs.db
 __MACOSX/
+*.log
+npm-debug.log*
+coverage/
+tsconfig.tsbuildinfo

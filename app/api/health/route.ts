@@ -24,8 +24,11 @@ export async function GET() {
     clinicCrossDeviceSync: true,
     clinicSyncBaselineFix: true,
     clinicSyncFastPull: true,
+    clinicBootstrapBundle: true,
     /** CDA: СНИЛС пациента только цифрами (N3 AddMedRecord) */
     egiszCdaSnilsDigits: true,
+    /** CDA и IdDocumentMis — один UUID (требование N3 с 05/2026) */
+    egiszDocumentUuidAlign: true,
   };
 
   try {

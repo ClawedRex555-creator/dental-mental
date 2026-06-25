@@ -1,6 +1,7 @@
 import {
   doctorScheduleKey,
   hasClinicData,
+  hasEntityIdsNotInIncoming,
   mergeClinicSnapshotWithLocal,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
@@ -78,9 +79,29 @@ function appointmentsDiffer(remote: Appointment[], local: Appointment[]): boolea
       r.startTime !== a.startTime ||
       r.endTime !== a.endTime ||
       r.status !== a.status ||
+      r.paymentStatus !== a.paymentStatus ||
+      r.workActId !== a.workActId ||
       r.assistantHours !== a.assistantHours
     );
   });
+}
+
+/** Есть ли на сервере изменения относительно последнего известного снимка (не текущих правок вкладки) */
+export function serverSnapshotHasIncomingUpdates(
+  remote: ClinicPersistedState,
+  baseline: ClinicPersistedState
+): boolean {
+  if (hasEntityIdsNotInIncoming(remote.patients, baseline.patients)) return true;
+  if (hasEntityIdsNotInIncoming(remote.appointments, baseline.appointments)) return true;
+  if (hasEntityIdsNotInIncoming(remote.workActs, baseline.workActs)) return true;
+  if (hasEntityIdsNotInIncoming(remote.payments, baseline.payments)) return true;
+  if (hasEntityIdsNotInIncoming(remote.invoices, baseline.invoices)) return true;
+  if (hasEntityIdsNotInIncoming(remote.medicalRecords, baseline.medicalRecords)) return true;
+  if (hasEntityIdsNotInIncoming(remote.treatmentPlans, baseline.treatmentPlans)) return true;
+  if (appointmentsDiffer(remote.appointments, baseline.appointments)) return true;
+  if (clinicExpensesDiffer(remote.clinicExpenses, baseline.clinicExpenses)) return true;
+  if (doctorSchedulesDiffer(remote.doctorSchedules, baseline.doctorSchedules)) return true;
+  return false;
 }
 
 /**
@@ -113,6 +134,8 @@ export function shouldPushSnapshotAfterServerFetch(
   if (hasNewIds(remote.patients, hydrated.patients)) return true;
   if (hasNewIds(remote.appointments, hydrated.appointments)) return true;
   if (appointmentsDiffer(remote.appointments, hydrated.appointments)) return true;
+  if (hasNewIds(remote.workActs, hydrated.workActs)) return true;
+  if (hasNewIds(remote.invoices, hydrated.invoices)) return true;
   if (hasNewIds(remote.payments, hydrated.payments)) return true;
   if (clinicExpensesDiffer(remote.clinicExpenses, hydrated.clinicExpenses)) return true;
   if (doctorSchedulesDiffer(remote.doctorSchedules, hydrated.doctorSchedules)) return true;

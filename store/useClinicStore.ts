@@ -34,6 +34,22 @@ import type {
   WorkAct,
 } from "@/lib/types";
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
+
+/** Один flush после цепочки set() в том же тике (акт + счёт + медзапись) */
+let clinicFlushMicrotask = false;
+function scheduleClinicDataFlush(): void {
+  if (typeof queueMicrotask === "undefined") {
+    requestClinicDataFlush();
+    return;
+  }
+  if (clinicFlushMicrotask) return;
+  clinicFlushMicrotask = true;
+  queueMicrotask(() => {
+    clinicFlushMicrotask = false;
+    requestClinicDataFlush();
+  });
+}
 import {
   createFreshPersistedState,
   mergeByIdPreferLocal,
@@ -66,6 +82,10 @@ import {
   type ClinicModules,
 } from "@/lib/modules";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
+import {
+  isWorkActAlreadyPaid,
+  syncAppointmentsAfterActPaid,
+} from "@/lib/appointment-act-payment";
 import {
   mergeThemePreferences,
   persistThemePreferencesToStorage,
@@ -116,6 +136,8 @@ interface ClinicState {
   /** Синхронизация снимка с PostgreSQL (ClinicDataSync) */
   clinicSyncPhase: "loading" | "ready" | "read_only" | "local_only" | "forbidden" | "error";
   clinicDataUnsaved: boolean;
+  /** На сервере есть более новый снимок, чем в этой вкладке */
+  clinicServerNewerAvailable: boolean;
   clinicDataSaveError: string | null;
   /** Временно не слать PUT (например после удаления сотрудника на сервере) */
   clinicSavePausedUntil: number;
@@ -123,6 +145,7 @@ interface ClinicState {
   setSessionUser: (user: ClinicUser) => void;
   setClinicSyncPhase: (phase: ClinicState["clinicSyncPhase"]) => void;
   setClinicDataUnsaved: (unsaved: boolean) => void;
+  setClinicServerNewerAvailable: (available: boolean) => void;
   setClinicDataSaveError: (error: string | null) => void;
   pauseClinicAutoSave: (ms?: number) => void;
   setEnabledModules: (modules: ClinicModules) => void;
@@ -177,6 +200,8 @@ interface ClinicState {
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
   payWorkAct: (actId: string, method?: PaymentMethod) => boolean;
+  /** ready_for_payment → completed, если акт уже оплачен */
+  repairPaidActAppointments: () => void;
   /** Удалить акт (ожидает оплаты или оплачен); false — не найден */
   deleteWorkAct: (actId: string) => boolean;
   getNextActNumber: () => string;
@@ -236,11 +261,14 @@ export const useClinicStore = create<ClinicState>()(
       enabledModules: defaultClinicModules(),
       clinicSyncPhase: "loading",
       clinicDataUnsaved: false,
+      clinicServerNewerAvailable: false,
       clinicDataSaveError: null,
       clinicSavePausedUntil: 0,
 
       setClinicSyncPhase: (phase) => set({ clinicSyncPhase: phase }),
       setClinicDataUnsaved: (unsaved) => set({ clinicDataUnsaved: unsaved }),
+      setClinicServerNewerAvailable: (available) =>
+        set({ clinicServerNewerAvailable: available }),
       setClinicDataSaveError: (error) => set({ clinicDataSaveError: error }),
       pauseClinicAutoSave: (ms = 8000) =>
         set({ clinicSavePausedUntil: Date.now() + ms, clinicDataSaveError: null }),
@@ -266,6 +294,7 @@ export const useClinicStore = create<ClinicState>()(
         persistThemePreferencesToStorage(userThemePreferences);
         clearPersistedClinicData();
         set({
+          ...createFreshPersistedState(),
           currentUser: {
             id: "",
             name: "",
@@ -278,6 +307,7 @@ export const useClinicStore = create<ClinicState>()(
           userThemePreferences,
           clinicSyncPhase: "loading",
           clinicDataUnsaved: false,
+          clinicServerNewerAvailable: false,
           clinicDataSaveError: null,
         });
       },
@@ -413,13 +443,17 @@ export const useClinicStore = create<ClinicState>()(
           documentTemplates: s.documentTemplates.filter((d) => d.id !== id),
         })),
 
-      addClinicExpense: (expense) =>
-        set((s) => ({ clinicExpenses: [expense, ...s.clinicExpenses] })),
+      addClinicExpense: (expense) => {
+        set((s) => ({ clinicExpenses: [expense, ...s.clinicExpenses] }));
+        scheduleClinicDataFlush();
+      },
 
-      removeClinicExpense: (id) =>
+      removeClinicExpense: (id) => {
         set((s) => ({
           clinicExpenses: s.clinicExpenses.filter((e) => e.id !== id),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
       addLegalDocument: (doc) =>
         set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] })),
@@ -459,16 +493,20 @@ export const useClinicStore = create<ClinicState>()(
         }));
       },
 
-      addPatient: (patient) =>
+      addPatient: (patient) => {
         set((s) => ({
           patients: [patient, ...s.patients],
           teethByPatient: { ...s.teethByPatient, [patient.id]: generateDefaultTeeth() },
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
-      updatePatient: (id, data) =>
+      updatePatient: (id, data) => {
         set((s) => ({
           patients: s.patients.map((p) => (p.id === id ? { ...p, ...data } : p)),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
       syncOtherClinicVisitForPatient: (patient) =>
         set((s) => {
@@ -502,10 +540,11 @@ export const useClinicStore = create<ClinicState>()(
             teethByPatient,
           };
         });
+        scheduleClinicDataFlush();
         return true;
       },
 
-      addAppointment: (appointment) =>
+      addAppointment: (appointment) => {
         set((s) => {
           const appointments = [appointment, ...s.appointments];
           const patient = s.patients.find((p) => p.id === appointment.patientId);
@@ -517,9 +556,11 @@ export const useClinicStore = create<ClinicState>()(
               )
             : s.patients;
           return { appointments, patients };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
-      updateAppointment: (id, data) =>
+      updateAppointment: (id, data) => {
         set((s) => {
           const appointments = s.appointments.map((a) =>
             a.id === id ? { ...a, ...data } : a
@@ -535,7 +576,9 @@ export const useClinicStore = create<ClinicState>()(
                 )
               : s.patients;
           return { appointments, patients };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       setAssistantManualHours: (assistantId, date, hours) =>
         set((s) => {
@@ -549,8 +592,10 @@ export const useClinicStore = create<ClinicState>()(
           return { assistantManualHours: next };
         }),
 
-      addMedicalRecord: (record) =>
-        set((s) => ({ medicalRecords: [record, ...s.medicalRecords] })),
+      addMedicalRecord: (record) => {
+        set((s) => ({ medicalRecords: [record, ...s.medicalRecords] }));
+        scheduleClinicDataFlush();
+      },
 
       deleteMedicalRecord: (id) => {
         if (!get().medicalRecords.some((r) => r.id === id)) return false;
@@ -563,6 +608,7 @@ export const useClinicStore = create<ClinicState>()(
             p.medicalRecordId === id ? { ...p, medicalRecordId: undefined } : p
           ),
         }));
+        scheduleClinicDataFlush();
         return true;
       },
 
@@ -588,11 +634,15 @@ export const useClinicStore = create<ClinicState>()(
         return true;
       },
 
-      addPayment: (payment) =>
-        set((s) => ({ payments: [payment, ...s.payments] })),
+      addPayment: (payment) => {
+        set((s) => ({ payments: [payment, ...s.payments] }));
+        scheduleClinicDataFlush();
+      },
 
-      addInvoice: (invoice) =>
-        set((s) => ({ invoices: [invoice, ...s.invoices] })),
+      addInvoice: (invoice) => {
+        set((s) => ({ invoices: [invoice, ...s.invoices] }));
+        scheduleClinicDataFlush();
+      },
 
       getNextActNumber: () => {
         const n = get().actCounter;
@@ -603,10 +653,12 @@ export const useClinicStore = create<ClinicState>()(
         return `${String(n).padStart(4, "0")}-${month}/${year}`;
       },
 
-      addWorkAct: (act) =>
-        set((s) => ({ workActs: [act, ...s.workActs] })),
+      addWorkAct: (act) => {
+        set((s) => ({ workActs: [act, ...s.workActs] }));
+        scheduleClinicDataFlush();
+      },
 
-      updateWorkAct: (id, data) =>
+      updateWorkAct: (id, data) => {
         set((s) => {
           const workActs = s.workActs.map((a) => (a.id === id ? { ...a, ...data } : a));
           const act = workActs.find((a) => a.id === id);
@@ -621,18 +673,22 @@ export const useClinicStore = create<ClinicState>()(
               inv.id === linked.id ? patchInvoiceFromWorkAct(inv, act) : inv
             ),
           };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
-      saveDoctorMonthSchedule: (schedule) =>
+      saveDoctorMonthSchedule: (schedule) => {
         set((s) => {
           const schedules = s.doctorSchedules ?? [];
           const rest = schedules.filter(
             (x) => !(x.doctorId === schedule.doctorId && x.month === schedule.month)
           );
           return { doctorSchedules: [schedule, ...rest] };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
-      addPrepayment: (prepayment) =>
+      addPrepayment: (prepayment) => {
         set((s) => {
           const prepayments = s.prepayments ?? [];
           const patient = s.patients.find((p) => p.id === prepayment.patientId);
@@ -650,9 +706,11 @@ export const useClinicStore = create<ClinicState>()(
                 : p
             ),
           };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
-      linkWorkActToMedicalRecord: (actId, recordId) =>
+      linkWorkActToMedicalRecord: (actId, recordId) => {
         set((s) => ({
           workActs: s.workActs.map((a) =>
             a.id === actId ? { ...a, medicalRecordId: recordId } : a
@@ -660,12 +718,27 @@ export const useClinicStore = create<ClinicState>()(
           medicalRecords: s.medicalRecords.map((r) =>
             r.id === recordId ? { ...r, workActId: actId } : r
           ),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
       payWorkAct: (actId, method = "cash") => {
         const state = get();
         const act = state.workActs.find((a) => a.id === actId);
-        if (!act || act.paymentStatus === "paid") return false;
+        if (!act) return false;
+
+        if (isWorkActAlreadyPaid(act, state.payments)) {
+          set((s) => ({
+            workActs: s.workActs.map((a) =>
+              a.id === actId && a.paymentStatus !== "paid"
+                ? { ...a, paymentStatus: "paid" as const }
+                : a
+            ),
+            appointments: syncAppointmentsAfterActPaid(s.appointments, act),
+          }));
+          scheduleClinicDataFlush();
+          return true;
+        }
 
         const invoice =
           (act.invoiceId
@@ -711,8 +784,22 @@ export const useClinicStore = create<ClinicState>()(
                 }
               : p
           ),
+          appointments: syncAppointmentsAfterActPaid(s.appointments, act),
         }));
+        scheduleClinicDataFlush();
         return true;
+      },
+
+      repairPaidActAppointments: () => {
+        const state = get();
+        let appointments = state.appointments;
+        for (const act of state.workActs) {
+          if (!isWorkActAlreadyPaid(act, state.payments)) continue;
+          appointments = syncAppointmentsAfterActPaid(appointments, act);
+        }
+        if (appointments === state.appointments) return;
+        set({ appointments });
+        scheduleClinicDataFlush();
       },
 
       deleteWorkAct: (actId) => {
@@ -752,6 +839,7 @@ export const useClinicStore = create<ClinicState>()(
             return {
               ...a,
               workActId: undefined,
+              paymentStatus: "pending" as const,
               status: a.status === "ready_for_payment" ? ("completed" as const) : a.status,
             };
           }),
@@ -761,6 +849,7 @@ export const useClinicStore = create<ClinicState>()(
               : p
           ),
         }));
+        scheduleClinicDataFlush();
         return true;
       },
 

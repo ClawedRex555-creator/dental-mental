@@ -2,6 +2,7 @@ import {
   hasClinicData,
   parseClinicPersistedState,
   pickPersistedState,
+  hasEntityIdsNotInIncoming,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
@@ -52,4 +53,31 @@ export function clearPendingClinicSnapshot(): void {
   } catch {
     /* ignore */
   }
+}
+
+const PENDING_REMOTE_SYNC_KEYS = [
+  "workActs",
+  "payments",
+  "invoices",
+  "appointments",
+  "medicalRecords",
+  "treatmentPlans",
+] as const;
+
+/** Сбросить устаревший pending, если на сервере уже есть записи с другого устройства */
+export function discardStalePendingClinicSnapshot(remote: ClinicPersistedState): boolean {
+  const pending = readPendingClinicSnapshot();
+  if (!pending) return false;
+
+  const serverAhead = PENDING_REMOTE_SYNC_KEYS.some((key) => {
+    const remoteList = remote[key] as { id: string }[];
+    const pendingList = pending[key] as { id: string }[];
+    return hasEntityIdsNotInIncoming(remoteList, pendingList);
+  });
+
+  if (serverAhead) {
+    clearPendingClinicSnapshot();
+    return true;
+  }
+  return false;
 }

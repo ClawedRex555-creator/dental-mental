@@ -8,6 +8,7 @@ import {
   SCHEDULE_DAY_START,
 } from "@/lib/appointment-utils";
 import { getPrimaryScheduleConflict, formatAppointmentConflictMessage } from "@/lib/appointment-schedule-messages";
+import { resolveCabinetIdForDoctor } from "@/lib/cabinet-utils";
 import { DENTAL_COMPLAINTS } from "@/lib/catalogs";
 import { UI } from "@/lib/constants";
 import type { Appointment, Cabinet, Doctor } from "@/lib/types";
@@ -49,6 +50,15 @@ export function PatientAppointmentScheduleSection({
     key: K,
     value: PatientAppointmentScheduleFields[K]
   ) => onChange({ ...fields, [key]: value });
+
+  const setDoctorId = (nextDoctorId: string) => {
+    const suggested = resolveCabinetIdForDoctor(nextDoctorId, doctors, cabinets);
+    onChange({
+      ...fields,
+      doctorId: nextDoctorId,
+      cabinetId: suggested ?? fields.cabinetId,
+    });
+  };
 
   const endTime = calcEndTime(fields.startTime, fields.durationMinutes);
   const conflicts =
@@ -152,7 +162,7 @@ export function PatientAppointmentScheduleSection({
               <select
                 className={selectClass}
                 value={fields.doctorId}
-                onChange={(e) => set("doctorId", e.target.value)}
+                onChange={(e) => setDoctorId(e.target.value)}
               >
                 <option value="">Выберите врача</option>
                 {activeDoctors.map((d) => (
