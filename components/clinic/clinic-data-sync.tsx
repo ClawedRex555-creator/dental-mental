@@ -21,6 +21,7 @@ import {
   hasClinicData,
   hasEntityIdsNotInIncoming,
   mergeClinicSnapshotWithLocal,
+  parseClinicPersistedState,
   pickPersistedState,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
@@ -33,6 +34,7 @@ import {
 import {
   needsMergeWithServerOnLoad,
   prepareSnapshotAfterServerFetch,
+  serverSnapshotHasIncomingUpdates,
   shouldPushSnapshotAfterServerFetch,
 } from "@/lib/clinic-snapshot-load";
 import {
@@ -102,7 +104,22 @@ export function ClinicDataSync() {
       if (saveTimer.current) return true;
       const json = JSON.stringify(pickPersistedState(store));
       if (json !== lastSavedJson.current) return true;
-      return Boolean(readPendingClinicSnapshot());
+      const pending = readPendingClinicSnapshot();
+      if (pending && JSON.stringify(pending) !== lastSavedJson.current) return true;
+      return false;
+    };
+
+    const lastSyncedBaseline = (): ClinicPersistedState => {
+      if (!lastSavedJson.current) {
+        return pickPersistedState(useClinicStore.getState());
+      }
+      try {
+        const parsed = parseClinicPersistedState(JSON.parse(lastSavedJson.current));
+        if (parsed) return parsed;
+      } catch {
+        /* fall through */
+      }
+      return pickPersistedState(useClinicStore.getState());
     };
 
     const serverHasNewFinancialData = (
@@ -113,21 +130,28 @@ export function ClinicDataSync() {
       hasEntityIdsNotInIncoming(remote.payments, local.payments) ||
       hasEntityIdsNotInIncoming(remote.invoices, local.invoices);
 
+    const ackServerSnapshotVersion = (updatedAt?: string | null) => {
+      if (updatedAt) lastServerUpdatedAt.current = updatedAt;
+      setClinicServerNewerAvailable(false);
+    };
+
     const applyRemoteSnapshot = (remote: ClinicPersistedState, updatedAt?: string | null) => {
       const local = pickPersistedState(useClinicStore.getState());
       // При pull с сервера приоритет у remote; локальные id, которых нет на сервере, сохраняем
       const snapshot = mergeClinicSnapshotWithLocal(local, remote);
       const json = JSON.stringify(snapshot);
-      if (json === lastSavedJson.current) return;
+      if (json === lastSavedJson.current) {
+        ackServerSnapshotVersion(updatedAt);
+        return;
+      }
       suppressPersistedChange.current = true;
       try {
         lastSavedJson.current = json;
         lastTrackedSnap.current = json;
         useClinicStore.getState().replacePersistedState(snapshot);
-        if (updatedAt) lastServerUpdatedAt.current = updatedAt;
+        ackServerSnapshotVersion(updatedAt);
         setClinicDataUnsaved(false);
         setClinicDataSaveError(null);
-        setClinicServerNewerAvailable(false);
       } finally {
         suppressPersistedChange.current = false;
       }
@@ -143,8 +167,6 @@ export function ClinicDataSync() {
     const pullRemoteSnapshot = async (options?: { force?: boolean }) => {
       if (!syncReady.current || syncForbidden.current || saving.current) return;
 
-      const pendingEdits = hasPendingLocalEdits();
-
       try {
         if (!options?.force && lastServerUpdatedAt.current) {
           const meta = await fetchClinicDataMetaFromServer();
@@ -153,48 +175,31 @@ export function ClinicDataSync() {
             setClinicServerNewerAvailable(false);
             return;
           }
-          if (pendingEdits) {
-            setClinicServerNewerAvailable(true);
-            return;
-          }
-        }
-
-        if (pendingEdits && !options?.force) {
-          if (lastServerUpdatedAt.current) {
-            const meta = await fetchClinicDataMetaFromServer();
-            if (!cancelled && meta && serverSnapshotIsNewer(meta.updatedAt)) {
-              setClinicServerNewerAvailable(true);
-            }
-          }
-          return;
         }
 
         const remote = await fetchClinicDataFromServer();
         if (!remote?.data || cancelled) return;
         discardStalePendingClinicSnapshot(remote.data);
+
+        const baseline = lastSyncedBaseline();
+        if (!serverSnapshotHasIncomingUpdates(remote.data, baseline)) {
+          ackServerSnapshotVersion(remote.updatedAt);
+          return;
+        }
+
         const localNow = pickPersistedState(useClinicStore.getState());
         const applyDespitePending =
           Boolean(options?.force) && serverHasNewFinancialData(remote.data, localNow);
         if (applyDespitePending) clearPendingClinicSnapshot();
+
         if (!applyDespitePending && hasPendingLocalEdits()) {
-          if (serverSnapshotIsNewer(remote.updatedAt)) {
-            setClinicServerNewerAvailable(true);
-          }
+          setClinicServerNewerAvailable(true);
           return;
         }
+
         applyRemoteSnapshot(remote.data, remote.updatedAt);
-        setClinicServerNewerAvailable(false);
       } catch {
-        if (lastServerUpdatedAt.current) {
-          try {
-            const meta = await fetchClinicDataMetaFromServer();
-            if (!cancelled && meta && serverSnapshotIsNewer(meta.updatedAt)) {
-              setClinicServerNewerAvailable(true);
-            }
-          } catch {
-            /* ignore meta probe */
-          }
-        }
+        /* ignore background refresh */
       }
     };
 

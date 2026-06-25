@@ -5,6 +5,7 @@ import type { Patient, WorkAct } from "./types";
 import {
   needsMergeWithServerOnLoad,
   prepareSnapshotAfterServerFetch,
+  serverSnapshotHasIncomingUpdates,
   shouldPushSnapshotAfterServerFetch,
 } from "./clinic-snapshot-load";
 import { writePendingClinicSnapshot, clearPendingClinicSnapshot } from "./clinic-pending-sync";
@@ -146,5 +147,44 @@ describe("clinic-snapshot-load", () => {
       (mergedFromServer[0]?.days["2026-06-01"] as { working: boolean }).working,
       true
     );
+  });
+
+  it("serverSnapshotHasIncomingUpdates ignores timestamp-only server bump", () => {
+    const baseline = createFreshPersistedState();
+    baseline.appointments = [
+      {
+        id: "a1",
+        patientId: "p1",
+        doctorId: "d1",
+        date: "2026-06-22",
+        startTime: "10:00",
+        endTime: "10:30",
+        status: "scheduled",
+        paymentStatus: "pending",
+        createdAt: "2026-06-22",
+      },
+    ];
+    const remote = structuredClone(baseline);
+
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), false);
+  });
+
+  it("serverSnapshotHasIncomingUpdates detects new server appointment", () => {
+    const baseline = createFreshPersistedState();
+    const remote = createFreshPersistedState();
+    remote.appointments = [
+      {
+        id: "a-new",
+        patientId: "p1",
+        doctorId: "d1",
+        date: "2026-06-22",
+        startTime: "10:00",
+        endTime: "10:30",
+        status: "scheduled",
+        paymentStatus: "pending",
+        createdAt: "2026-06-22",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
   });
 });
