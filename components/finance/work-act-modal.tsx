@@ -15,7 +15,8 @@ import { printWorkAct } from "@/lib/work-act-print";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
-import { formatCurrency, generateId } from "@/lib/utils";
+import { PatientSearchSelect } from "@/components/shared/patient-search-select";
+import { formatCurrency, generateId, getFullName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -157,7 +158,7 @@ export function WorkActModal({
       return;
     }
 
-    setPatientId(defaultPatientId ?? patients[0]?.id ?? "");
+    setPatientId(defaultPatientId ?? "");
     setDoctorId(
       defaultDoctorId ??
         appointments.find((a) => a.id === defaultAppointmentId)?.doctorId ??
@@ -356,34 +357,43 @@ export function WorkActModal({
               Заполните услуги по завершённому приёму и отправьте акт администратору.
             </p>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Пациент</Label>
+              {readOnly ? (
+                <p className="text-sm font-medium text-[var(--foreground)]">
+                  {(() => {
+                    const patient = patients.find((p) => p.id === patientId);
+                    return patient
+                      ? getFullName(patient.firstName, patient.lastName, patient.middleName)
+                      : "—";
+                  })()}
+                </p>
+              ) : (
+                <PatientSearchSelect
+                  patients={patients}
+                  selectedPatientId={patientId}
+                  placeholder="ФИО или телефон..."
+                  onSelect={(patient) => setPatientId(patient.id)}
+                />
+              )}
+            </div>
             <div className="space-y-2">
               <Label>Врач (исполнитель)</Label>
               <select
                 className={selectClass}
                 value={doctorId}
-                disabled={readOnly}
+                disabled={readOnly || (!patientId && mode === "standard")}
                 onChange={(e) => setDoctorId(e.target.value)}
               >
-                <option value="">Выберите врача</option>
+                <option value="">
+                  {!patientId && mode === "standard"
+                    ? "Сначала выберите пациента"
+                    : "Выберите врача"}
+                </option>
                 {activeDoctors.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Пациент</Label>
-              <select
-                className={selectClass}
-                value={patientId}
-                disabled={readOnly}
-                onChange={(e) => setPatientId(e.target.value)}
-              >
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.lastName} {p.firstName}
                   </option>
                 ))}
               </select>
