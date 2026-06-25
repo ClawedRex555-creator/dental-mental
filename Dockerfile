@@ -1,9 +1,13 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+  && apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
-# lockfile may drift on deploy machines; npm install is more tolerant than npm ci
-RUN npm install --no-audit --no-fund
+# registry.npmjs.org часто недоступен с VPS — зеркало для сборки на сервере
+RUN npm config set registry https://registry.npmmirror.com \
+  && npm config set fetch-retries 5 \
+  && npm ci --no-audit --no-fund \
+  && test -x node_modules/.bin/next || (echo "ERROR: npm install incomplete (next missing)" && exit 1)
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_ROOT_DOMAIN=emkaro.ru
@@ -22,7 +26,8 @@ RUN grep -q 'patientAppointmentSearch' app/api/health/route.ts || (echo "ERROR: 
 RUN test -f components/shared/patient-search-select.tsx || (echo "ERROR: missing patient-search-select.tsx" && exit 1)
 # CACHEBUST сбрасывает кэш next build при каждом деплое (иначе возможен старый bundle + новый DEPLOY_VERSION)
 RUN echo "build cache bust: $CACHEBUST"
-RUN npm run build 2>&1 | tee /tmp/next-build.log || (echo "=== npm run build failed ===" && tail -80 /tmp/next-build.log && exit 1)
+RUN npm run build > /tmp/next-build.log 2>&1 \
+  || (echo "=== npm run build failed ===" && tail -80 /tmp/next-build.log && exit 1)
 RUN test -d .next/standalone && test -d .next/static || (echo "=== missing .next output ===" && ls -la .next 2>&1 && exit 1)
 FROM node:20-alpine AS runner
 WORKDIR /app
