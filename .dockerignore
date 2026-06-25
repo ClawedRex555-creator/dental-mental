@@ -1,15 +1,43 @@
-# Never copy host node_modules into the image — deps stage runs npm install in Linux.
-node_modules
-.next
-.git
-.tools
-.DS_Store
-*.log
-npm-debug.log*
+# Secrets — never bake into image layers
 .env
 .env.*
 !.env.example
+
+# Runtime data and backups
+backups/
+data/
+*.sql
+*.tar.gz
+*.tgz
+
+# Dependencies and build output (rebuilt inside Docker or via Dockerfile.prebuilt)
+node_modules/
+.next/
+
+# VCS and local tooling
+.git/
+.gitignore
+.tools/
+tools/
+
+# IDE / editor
+.cursor/
+.vscode/
+*.swp
+
+# Docs and dev-only (not needed in production image)
+*.md
+!README.md
+
+# OS junk
+.DS_Store
+Thumbs.db
+__MACOSX/
+
+# Local deploy artifacts
 coverage
 .emkaro-deploy
 emkaro-deploy.zip
 tsconfig.tsbuildinfo
+npm-debug.log*
+*.log

@@ -14,6 +14,7 @@ import {
 import { UI } from "@/lib/constants";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
+import { PatientModal } from "@/components/patients/patient-modal";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,11 +33,14 @@ interface MedicalRecordModalProps {
   onSaved?: (recordId: string) => void;
 }
 
-function resetForm(defaultPatientId: string | undefined) {
+function resetForm(
+  defaultPatientId: string | undefined,
+  services: { name: string }[]
+) {
   return {
     patientId: defaultPatientId ?? "",
     doctorId: "",
-    serviceName: "",
+    serviceName: services[0]?.name ?? "",
     complaints: "",
     diagnosis: "",
     treatment: "",
@@ -50,7 +54,7 @@ export function MedicalRecordModal({
   defaultPatientId,
   onSaved,
 }: MedicalRecordModalProps) {
-  const { patients, doctors, addMedicalRecord } = useClinicStore();
+  const { patients, doctors, services, addMedicalRecord } = useClinicStore();
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
   const wasOpen = useRef(false);
 
@@ -61,10 +65,11 @@ export function MedicalRecordModal({
   const [diagnosis, setDiagnosis] = useState("");
   const [treatment, setTreatment] = useState("");
   const [recommendations, setRecommendations] = useState("");
+  const [patientModalOpen, setPatientModalOpen] = useState(false);
 
   useEffect(() => {
     if (open && !wasOpen.current) {
-      const f = resetForm(defaultPatientId);
+      const f = resetForm(defaultPatientId, services);
       setPatientId(f.patientId);
       setDoctorId(f.doctorId);
       setServiceName(f.serviceName);
@@ -74,7 +79,7 @@ export function MedicalRecordModal({
       setRecommendations(f.recommendations);
     }
     wasOpen.current = open;
-  }, [open, defaultPatientId]);
+  }, [open, defaultPatientId, services]);
 
   const handleSave = () => {
     if (!patientId || !doctorId || !complaints.trim() || !diagnosis.trim() || !treatment.trim()) {
@@ -101,39 +106,55 @@ export function MedicalRecordModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Новая запись в медкарту</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>{UI.patient}</Label>
+          <div className="space-y-2">
+            <Label>{UI.patient}</Label>
+            <div className="flex gap-2">
               <PatientSearchSelect
                 patients={patients}
                 selectedPatientId={patientId}
                 placeholder="ФИО или телефон..."
                 onSelect={(patient) => setPatientId(patient.id)}
               />
-            </div>
-            <div className="space-y-2">
-              <Label>
-                {UI.doctor} <span className="text-red-600">*</span>
-              </Label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
-                value={doctorId}
-                onChange={(e) => setDoctorId(e.target.value)}
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => setPatientModalOpen(true)}
               >
-                <option value="">Выберите врача</option>
-                {activeDoctors.map((d) => (
+                +
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              {UI.doctor} <span className="text-red-600">*</span>
+            </Label>
+            <select
+              className="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+              value={doctorId}
+              onChange={(e) => setDoctorId(e.target.value)}
+            >
+              <option value="">Выберите врача</option>
+              {activeDoctors.length === 0 ? (
+                <option value="" disabled>
+                  Нет врачей
+                </option>
+              ) : (
+                activeDoctors.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
-                ))}
-              </select>
-            </div>
+                ))
+              )}
+            </select>
           </div>
 
           <SearchAutocomplete
@@ -186,21 +207,18 @@ export function MedicalRecordModal({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {UI.cancel}
             </Button>
-            <Button
-              onClick={handleSave}
-              disabled={
-                !patientId ||
-                !doctorId ||
-                !complaints.trim() ||
-                !diagnosis.trim() ||
-                !treatment.trim()
-              }
-            >
+            <Button onClick={handleSave} disabled={!activeDoctors.length}>
               {UI.save}
             </Button>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+    <PatientModal
+      open={patientModalOpen}
+      onOpenChange={setPatientModalOpen}
+      onCreated={(patient) => setPatientId(patient.id)}
+    />
+    </>
   );
 }

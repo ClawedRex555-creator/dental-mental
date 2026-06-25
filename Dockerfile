@@ -1,8 +1,13 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+  && apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+# registry.npmjs.org часто недоступен с VPS — зеркало для сборки на сервере
+RUN npm config set registry https://registry.npmmirror.com \
+  && npm config set fetch-retries 5 \
+  && if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi \
+  && test -x node_modules/.bin/next || (echo "ERROR: npm install incomplete (next missing)" && exit 1)
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_ROOT_DOMAIN=emkaro.ru

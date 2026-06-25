@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { resolveClinicIdForSession } from "@/lib/clinic-session.server";
-import { processEgiszSubmission, queueEgiszSubmission, getEgiszSubmissionById } from "@/lib/egisz/db.server";
+import { processEgiszSubmission, queueEgiszSubmission, getEgiszSubmissionById, requeueEgiszSubmission } from "@/lib/egisz/db.server";
 import { queueMedicalRecordEgisz } from "@/lib/egisz/queue.server";
 import { getServerSession } from "@/lib/get-server-session";
 import { assertClinicModule } from "@/lib/module-access.server";
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     submissionId?: string;
     documentType?: EgiszDocumentType;
     process?: boolean;
+    retry?: boolean;
   };
   try {
     body = await request.json();
@@ -47,6 +48,15 @@ export async function POST(request: Request) {
     const submission = await getEgiszSubmissionById(body.submissionId, ctx.clinicId);
     if (!submission) {
       return NextResponse.json({ error: "Отправка не найдена" }, { status: 404 });
+    }
+    if (body.retry && submission.status === "error") {
+      const requeued = await requeueEgiszSubmission(body.submissionId, ctx.clinicId);
+      if (!requeued) {
+        return NextResponse.json(
+          { error: "Повтор возможен только для отправок со статусом «Ошибка»" },
+          { status: 400 }
+        );
+      }
     }
     try {
       await processEgiszSubmission(body.submissionId, ctx.clinicId);

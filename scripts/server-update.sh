@@ -3,6 +3,7 @@
 # Использование (на сервере):
 #   bash scripts/server-update.sh
 #   bash scripts/server-update.sh /opt/emkaro-update.tar.gz
+#   DEPLOY_USE_PREBUILT=1 bash scripts/server-update.sh   # npm в Docker не тянет registry
 set -euo pipefail
 
 ROOT="${DEPLOY_ROOT:-/opt/emkaro}"
@@ -15,7 +16,37 @@ if [ ! -f "docker-compose.yml" ]; then
   exit 1
 fi
 
+normalize_and_validate_env() {
+  local env_file="$ROOT/.env"
+  if [ ! -f "$env_file" ]; then
+    echo "ОШИБКА: нет $env_file"
+    exit 1
+  fi
+  sed -i 's/\r$//' "$env_file" 2>/dev/null || true
+  if command -v python3 >/dev/null 2>&1; then
+    python3 scripts/fix-server-env.py "$env_file"
+    python3 scripts/fix-server-env.py --check "$env_file"
+  else
+    echo "ПРЕДУПРЕЖДЕНИЕ: python3 не найден — базовая проверка .env"
+    if grep -qE 'APP_ROOT_DOMAIN=.*\.u$' "$env_file" || grep -qE 'ACME_EMAIL=.*\.u$' "$env_file"; then
+      echo "ОШИБКА: .env повреждён (домен обрезан до .u вместо .ru). Установите python3 и fix-server-env.py"
+      exit 1
+    fi
+  fi
+}
+
+fix_deploy_scripts_crlf() {
+  if [ -d "$ROOT/scripts" ]; then
+    # shellcheck disable=SC2044
+    while IFS= read -r -d '' f; do
+      sed -i 's/\r$//' "$f" 2>/dev/null || true
+    done < <(find "$ROOT/scripts" -maxdepth 1 -name '*.sh' -print0 2>/dev/null || true)
+  fi
+}
+
 echo "=== Emkaro: безопасное обновление ==="
+
+normalize_and_validate_env
 
 if [ -f .env ]; then
   set -a
@@ -46,7 +77,8 @@ if [ -f "$ARCHIVE" ]; then
   cp .env /tmp/emkaro.env.bak
   tar -xzf "$ARCHIVE" -C "$ROOT"
   cp /tmp/emkaro.env.bak .env
-  sed -i 's/\r$//' .env 2>/dev/null || true
+  fix_deploy_scripts_crlf
+  normalize_and_validate_env
 
   bash scripts/fix-stale-routes.sh "$ROOT"
   if [ -f "$ROOT/.deploy-version" ]; then
@@ -89,11 +121,17 @@ if ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
   exit 1
 fi
 
-# Без --no-cache Docker часто оставляет старый .next в образе (см. scripts/check-server-version.sh)
-if [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
+if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
+  echo ">>> DEPLOY_USE_PREBUILT=1 — host npm build + Dockerfile.prebuilt"
+  bash scripts/server-build-prebuilt.sh
+elif [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
   echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
-  docker compose build --no-cache app
-  docker compose up -d --force-recreate app caddy
+  if ! docker compose build --no-cache app; then
+    echo "ПРЕДУПРЕЖДЕНИЕ: docker compose build не удался — пробуем prebuilt path..."
+    bash scripts/server-build-prebuilt.sh
+  else
+    docker compose up -d --force-recreate app caddy
+  fi
 else
   docker compose up -d --build
 fi

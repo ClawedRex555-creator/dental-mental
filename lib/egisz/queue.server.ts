@@ -4,7 +4,12 @@ import { getEgiszConfig, queueEgiszSubmission } from "@/lib/egisz/db.server";
 import { buildDentalSemdDraft } from "@/lib/egisz/export";
 import type { EgiszDocumentType } from "@/lib/egisz/types";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
+import { getPatientEgiszTransferConsentStatus } from "@/lib/patient-consents.server";
 import type { MedicalRecord, Patient } from "@/lib/types";
+
+function requiresEgiszTransferConsent(config: Awaited<ReturnType<typeof getEgiszConfig>>): boolean {
+  return Boolean(config.enabled && config.connectionMode === "live");
+}
 
 export async function queueMedicalRecordEgisz(input: {
   clinicId: string;
@@ -24,6 +29,22 @@ export async function queueMedicalRecordEgisz(input: {
 
   const patient = snapshot.data.patients.find((p) => p.id === record.patientId);
   if (!patient) return { submissionId: null, skipped: "Пациент не найден" };
+
+  if (requiresEgiszTransferConsent(config)) {
+    const consentStatus = await getPatientEgiszTransferConsentStatus(
+      input.clinicId,
+      record.patientId
+    );
+    if (consentStatus !== "granted") {
+      return {
+        submissionId: null,
+        skipped:
+          consentStatus === "refused"
+            ? "Пациент отказался от передачи в ЕГИСЗ"
+            : "Нет согласия на передачу в ЕГИСЗ — оформите документы при статусе «Пришёл»",
+      };
+    }
+  }
 
   const draft = buildDentalSemdDraft(
     patient,

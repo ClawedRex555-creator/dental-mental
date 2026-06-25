@@ -39,6 +39,7 @@ cd "$ROOT"
 # Без macOS xattr в tar (на Linux иначе сотни предупреждений LIBARCHIVE.xattr)
 COPYFILE_DISABLE=1 tar --no-xattrs \
   --exclude=node_modules --exclude=.next --exclude=.git --exclude=.tools \
+  --exclude=.env --exclude='.env.*' --exclude=backups --exclude='*.tar.gz' \
   -czf "$ARCHIVE" .
 
 echo ">>> Загрузка на $SERVER:/opt/ ..."

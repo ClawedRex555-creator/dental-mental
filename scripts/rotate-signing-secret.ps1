@@ -21,7 +21,7 @@ $tmp = [System.IO.Path]::GetTempFileName()
 scp $tmp root@201.51.0.171:/tmp/egisz-secret.env
 Remove-Item $tmp -Force
 
-ssh root@201.51.0.171 "grep -v '^EGISZ_SIGNING_SECRET=' /opt/emkaro/.env > /tmp/env.new && cat /tmp/egisz-secret.env >> /tmp/env.new && mv /tmp/env.new /opt/emkaro/.env && rm -f /tmp/egisz-secret.env && cd /opt/emkaro && docker compose up -d --force-recreate app && echo ROTATE_OK"
+ssh root@201.51.0.171 "grep -v '^EGISZ_SIGNING_SECRET=' /opt/emkaro/.env > /tmp/env.new && cat /tmp/egisz-secret.env >> /tmp/env.new && mv /tmp/env.new /opt/emkaro/.env && rm -f /tmp/egisz-secret.env && python3 /opt/emkaro/scripts/fix-server-env.py /opt/emkaro/.env && python3 /opt/emkaro/scripts/fix-server-env.py --check /opt/emkaro/.env && cd /opt/emkaro && docker compose up -d --force-recreate app caddy && echo ROTATE_OK"
 
 Write-Host "New EGISZ_SIGNING_SECRET written to C:\emkaro-signing\config.env and server .env"
 Write-Host "Restart signing agent: Stop-Process -Name node -ErrorAction SilentlyContinue; Start-ScheduledTask EmkaroSigningAgent"

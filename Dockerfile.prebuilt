@@ -1,0 +1,23 @@
+# Сборка на сервере, когда node_modules и .next уже собраны на хосте (см. docs/deploy).
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+
+COPY public ./public
+COPY .next/standalone ./
+COPY .next/static ./.next/static
+COPY scripts ./scripts
+COPY db ./db
+COPY .deploy-version ./.deploy-version
+
+RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+CMD ["node", "server.js"]
