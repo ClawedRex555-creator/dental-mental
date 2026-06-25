@@ -22,7 +22,7 @@ normalize_and_validate_env() {
     echo "ОШИБКА: нет $env_file"
     exit 1
   fi
-  bash scripts/fix-crlf.sh "$env_file"
+  sed -i 's/\r$//' "$env_file" 2>/dev/null || true
   if command -v python3 >/dev/null 2>&1; then
     python3 scripts/fix-server-env.py "$env_file"
     python3 scripts/fix-server-env.py --check "$env_file"
@@ -39,7 +39,7 @@ fix_deploy_scripts_crlf() {
   if [ -d "$ROOT/scripts" ]; then
     # shellcheck disable=SC2044
     while IFS= read -r -d '' f; do
-      bash scripts/fix-crlf.sh "$f"
+      sed -i 's/\r$//' "$f" 2>/dev/null || true
     done < <(find "$ROOT/scripts" -maxdepth 1 -name '*.sh' -print0 2>/dev/null || true)
   fi
 }
