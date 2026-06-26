@@ -324,6 +324,23 @@ export function mergeByIdPreferLocalRespectingDeletions<T extends { id: string }
   );
 }
 
+/**
+ * Гонка PUT: server — актуальный снимок, client — устаревший.
+ * Совпадающие id: поля с сервера; новые id клиента сохраняем;
+ * явные удаления в client не восстанавливаем с сервера.
+ */
+export function mergeByIdPreferServerRespectingClientDeletions<T extends { id: string }>(
+  server: T[],
+  client: T[]
+): T[] {
+  if (hasEntityListDeletion(server, client)) {
+    const clientIds = new Set(client.map((x) => x.id));
+    const serverKept = server.filter((x) => clientIds.has(x.id));
+    return mergeByIdPreferLocal(client, serverKept);
+  }
+  return mergeByIdPreferLocal(client, server);
+}
+
 export function doctorScheduleKey(schedule: DoctorMonthSchedule): string {
   return `${schedule.doctorId}:${schedule.month}`;
 }
@@ -689,36 +706,44 @@ export function mergeClinicDataOnWriteConflict(
   existing: ClinicPersistedState,
   incoming: ClinicPersistedState
 ): ClinicPersistedState {
-  const preferServer = <T extends { id: string }>(inc: T[], ex: T[]) =>
-    mergeByIdPreferLocal(inc, ex);
+  const preferServer = <T extends { id: string }>(server: T[], client: T[]) =>
+    mergeByIdPreferServerRespectingClientDeletions(server, client);
 
-  return {
+  const existingPatientIds = new Set(existing.patients.map((p) => p.id));
+  const incomingPatientIds = new Set(incoming.patients.map((p) => p.id));
+  const deletedPatientIds = new Set<string>();
+  for (const id of existingPatientIds) {
+    if (!incomingPatientIds.has(id)) deletedPatientIds.add(id);
+  }
+  const hasPatientDeletion = deletedPatientIds.size > 0;
+
+  const merged: ClinicPersistedState = {
     ...incoming,
-    doctors: preferServer(incoming.doctors, existing.doctors),
-    services: preferServer(incoming.services, existing.services),
-    cabinets: preferServer(incoming.cabinets, existing.cabinets),
-    patients: preferServer(incoming.patients, existing.patients),
-    appointments: preferServer(incoming.appointments, existing.appointments),
-    medicalRecords: preferServer(incoming.medicalRecords, existing.medicalRecords),
-    treatmentPlans: preferServer(incoming.treatmentPlans, existing.treatmentPlans),
-    payments: preferServer(incoming.payments, existing.payments),
-    invoices: preferServer(incoming.invoices, existing.invoices),
-    workActs: preferServer(incoming.workActs, existing.workActs),
-    warehouse: preferServer(incoming.warehouse, existing.warehouse),
-    tasks: preferServer(incoming.tasks, existing.tasks),
-    onlineBookings: preferServer(incoming.onlineBookings, existing.onlineBookings),
-    patientFiles: preferServer(incoming.patientFiles, existing.patientFiles),
-    patientNotes: preferServer(incoming.patientNotes, existing.patientNotes),
-    documentTemplates: preferServer(incoming.documentTemplates, existing.documentTemplates),
-    clinicExpenses: preferServer(incoming.clinicExpenses, existing.clinicExpenses),
-    legalDocuments: preferServer(incoming.legalDocuments, existing.legalDocuments),
-    prepayments: preferServer(incoming.prepayments, existing.prepayments),
-    doctorSchedules: mergeDoctorSchedules(incoming.doctorSchedules, existing.doctorSchedules),
-    teethByPatient: { ...incoming.teethByPatient, ...existing.teethByPatient },
+    doctors: preferServer(existing.doctors, incoming.doctors),
+    services: preferServer(existing.services, incoming.services),
+    cabinets: preferServer(existing.cabinets, incoming.cabinets),
+    patients: preferServer(existing.patients, incoming.patients),
+    appointments: preferServer(existing.appointments, incoming.appointments),
+    medicalRecords: preferServer(existing.medicalRecords, incoming.medicalRecords),
+    treatmentPlans: preferServer(existing.treatmentPlans, incoming.treatmentPlans),
+    payments: preferServer(existing.payments, incoming.payments),
+    invoices: preferServer(existing.invoices, incoming.invoices),
+    workActs: preferServer(existing.workActs, incoming.workActs),
+    warehouse: preferServer(existing.warehouse, incoming.warehouse),
+    tasks: preferServer(existing.tasks, incoming.tasks),
+    onlineBookings: preferServer(existing.onlineBookings, incoming.onlineBookings),
+    patientFiles: preferServer(existing.patientFiles, incoming.patientFiles),
+    patientNotes: preferServer(existing.patientNotes, incoming.patientNotes),
+    documentTemplates: preferServer(existing.documentTemplates, incoming.documentTemplates),
+    clinicExpenses: preferServer(existing.clinicExpenses, incoming.clinicExpenses),
+    legalDocuments: preferServer(existing.legalDocuments, incoming.legalDocuments),
+    prepayments: preferServer(existing.prepayments, incoming.prepayments),
+    doctorSchedules: mergeDoctorSchedules(existing.doctorSchedules, incoming.doctorSchedules),
+    teethByPatient: { ...existing.teethByPatient, ...incoming.teethByPatient },
     actCounter: Math.max(existing.actCounter, incoming.actCounter),
     assistantManualHours: mergeAssistantManualHours(
-      incoming.assistantManualHours ?? {},
-      existing.assistantManualHours ?? {}
+      existing.assistantManualHours ?? {},
+      incoming.assistantManualHours ?? {}
     ),
     clinicSettings: existing.clinicSettings ?? incoming.clinicSettings,
     userThemePreferences: {
@@ -726,6 +751,32 @@ export function mergeClinicDataOnWriteConflict(
       ...existing.userThemePreferences,
     },
   };
+
+  if (!hasPatientDeletion) {
+    return repairMissingPatientsInSnapshot(merged);
+  }
+
+  const filterByPatient = <T extends { patientId?: string }>(rows: T[]) =>
+    rows.filter((r) => !r.patientId || !deletedPatientIds.has(r.patientId));
+  const { teethByPatient } = merged;
+  const nextTeeth: Record<string, ToothRecord[]> = { ...teethByPatient };
+  for (const id of deletedPatientIds) {
+    delete nextTeeth[id];
+  }
+
+  return repairMissingPatientsInSnapshot({
+    ...merged,
+    appointments: filterByPatient(merged.appointments),
+    medicalRecords: filterByPatient(merged.medicalRecords),
+    treatmentPlans: filterByPatient(merged.treatmentPlans),
+    payments: filterByPatient(merged.payments),
+    invoices: filterByPatient(merged.invoices),
+    workActs: filterByPatient(merged.workActs),
+    prepayments: filterByPatient(merged.prepayments),
+    patientFiles: filterByPatient(merged.patientFiles),
+    patientNotes: filterByPatient(merged.patientNotes),
+    teethByPatient: nextTeeth,
+  });
 }
 
 /**

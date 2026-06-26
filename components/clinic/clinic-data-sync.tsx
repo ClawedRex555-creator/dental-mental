@@ -28,7 +28,10 @@ import {
 import {
   notifyClinicDataChanged,
   registerClinicDataFlush,
+  registerClinicDataFlushAsync,
   registerClinicDataPull,
+  registerDiscardLocalEditsAndPull,
+  registerSaveThenPullClinicData,
   subscribeClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
 import {
@@ -40,6 +43,7 @@ import {
 import {
   clearPendingClinicSnapshot,
   discardStalePendingClinicSnapshot,
+  PENDING_BUFFER_ERROR,
   readPendingClinicSnapshot,
   writePendingClinicSnapshot,
 } from "@/lib/clinic-pending-sync";
@@ -83,6 +87,8 @@ export function ClinicDataSync() {
   const periodicTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pullTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const flushAfterBaseline = useRef(false);
+  const pendingFlushAfterSave = useRef(false);
+  const pendingPullAfterSave = useRef(false);
   /** Снимок для подписки — без clinicDataUnsaved, иначе бесконечный subscribe */
   const lastTrackedSnap = useRef("");
 
@@ -164,8 +170,37 @@ export function ClinicDataSync() {
           updatedAt > lastServerUpdatedAt.current
       );
 
-    const pullRemoteSnapshot = async (options?: { force?: boolean }) => {
-      if (!syncReady.current || syncForbidden.current || saving.current) return;
+    const scheduleDeferredFlush = () => {
+      setClinicDataUnsaved(true);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        void flushSave();
+      }, SAVE_DEBOUNCE_MS);
+    };
+
+    const handlePendingBufferFailure = () => {
+      setClinicDataSaveError(PENDING_BUFFER_ERROR);
+      toast.error(PENDING_BUFFER_ERROR);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void flushSave();
+    };
+
+    const persistPendingSnapshot = (snapshot: ClinicPersistedState): boolean => {
+      const ok = writePendingClinicSnapshot(snapshot);
+      if (!ok) handlePendingBufferFailure();
+      return ok;
+    };
+
+    const pullRemoteSnapshot = async (options?: {
+      force?: boolean;
+      allowApplyDespitePending?: boolean;
+    }) => {
+      if (!syncReady.current || syncForbidden.current) return;
+      if (saving.current) {
+        pendingPullAfterSave.current = true;
+        return;
+      }
 
       try {
         if (!options?.force && lastServerUpdatedAt.current) {
@@ -189,7 +224,8 @@ export function ClinicDataSync() {
 
         const localNow = pickPersistedState(useClinicStore.getState());
         const applyDespitePending =
-          Boolean(options?.force) && serverHasNewFinancialData(remote.data, localNow);
+          Boolean(options?.allowApplyDespitePending) &&
+          serverHasNewFinancialData(remote.data, localNow);
         if (applyDespitePending) clearPendingClinicSnapshot();
 
         if (!applyDespitePending && hasPendingLocalEdits()) {
@@ -203,12 +239,16 @@ export function ClinicDataSync() {
       }
     };
 
+    const markInitialLoadDone = () => {
+      if (!cancelled) initialLoadDone.current = true;
+    };
+
     const armSaveBaseline = () => {
       if (cancelled) return;
       const json = JSON.stringify(pickPersistedState(useClinicStore.getState()));
       lastSavedJson.current = json;
       lastTrackedSnap.current = json;
-      initialLoadDone.current = true;
+      markInitialLoadDone();
       if (flushAfterBaseline.current) {
         flushAfterBaseline.current = false;
         void flushSave();
@@ -254,9 +294,12 @@ export function ClinicDataSync() {
         return;
       }
 
-      writePendingClinicSnapshot(snapshot);
       setClinicDataUnsaved(true);
       setClinicDataSaveError(null);
+
+      if (!persistPendingSnapshot(snapshot)) {
+        return;
+      }
 
       saving.current = true;
       let saveResult: Awaited<ReturnType<typeof saveWithRetry>> | undefined;
@@ -266,13 +309,22 @@ export function ClinicDataSync() {
           expectedUpdatedAt: lastServerUpdatedAt.current,
         });
 
-      if (saveResult.ok) {
+        if (saveResult.ok) {
         lastSavedJson.current = json;
         lastTrackedSnap.current = json;
         if (saveResult.updatedAt) lastServerUpdatedAt.current = saveResult.updatedAt;
         clearPendingClinicSnapshot();
-        setClinicDataUnsaved(false);
-        setClinicDataSaveError(null);
+        const currentJson = JSON.stringify(pickPersistedState(useClinicStore.getState()));
+        if (currentJson === json) {
+          setClinicDataUnsaved(false);
+          setClinicDataSaveError(null);
+        } else {
+          if (!persistPendingSnapshot(pickPersistedState(useClinicStore.getState()))) {
+            /* flush already scheduled in handlePendingBufferFailure */
+          } else {
+            scheduleDeferredFlush();
+          }
+        }
         notifyClinicDataChanged();
         } else if (saveResult.forbidden) {
           syncForbidden.current = true;
@@ -289,18 +341,52 @@ export function ClinicDataSync() {
         toast.error(msg);
       } finally {
         saving.current = false;
-        if (saveResult?.ok && saveResult.merged) {
+        if (pendingFlushAfterSave.current) {
+          pendingFlushAfterSave.current = false;
+          const currentJson = JSON.stringify(pickPersistedState(useClinicStore.getState()));
+          if (currentJson !== lastSavedJson.current) {
+            scheduleDeferredFlush();
+          }
+        }
+        if (pendingPullAfterSave.current) {
+          pendingPullAfterSave.current = false;
           void pullRemoteSnapshot();
+        } else if (saveResult?.ok && saveResult.merged) {
+          void pullRemoteSnapshot({ force: true });
         }
       }
     };
 
+    const discardLocalEditsAndPull = async (options?: {
+      force?: boolean;
+      allowApplyDespitePending?: boolean;
+    }) => {
+      clearPendingClinicSnapshot();
+      const baseline = lastSyncedBaseline();
+      suppressPersistedChange.current = true;
+      try {
+        const json = JSON.stringify(baseline);
+        lastSavedJson.current = json;
+        lastTrackedSnap.current = json;
+        useClinicStore.getState().replacePersistedState(baseline);
+        setClinicDataUnsaved(false);
+        setClinicDataSaveError(null);
+      } finally {
+        suppressPersistedChange.current = false;
+      }
+      await pullRemoteSnapshot({ force: true, ...options });
+    };
+
     const onPersistedDataChange = () => {
       if (suppressPersistedChange.current) return;
-      if (saving.current) return;
 
       const snapshot = pickPersistedState(useClinicStore.getState());
-      writePendingClinicSnapshot(snapshot);
+      if (!persistPendingSnapshot(snapshot)) return;
+
+      if (saving.current) {
+        pendingFlushAfterSave.current = true;
+        return;
+      }
 
       if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
 
@@ -366,6 +452,25 @@ export function ClinicDataSync() {
       }
       void flushSave();
     });
+
+    registerClinicDataFlushAsync(async (options) => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      await flushSave(options);
+    });
+
+    registerSaveThenPullClinicData(async () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      await flushSave();
+      await pullRemoteSnapshot({ force: true });
+    });
+
+    registerDiscardLocalEditsAndPull(discardLocalEditsAndPull);
 
     registerClinicDataPull((options) => {
       void pullRemoteSnapshot(options);
@@ -495,7 +600,7 @@ export function ClinicDataSync() {
                 toast.error(syncErrorMessage(e));
               } finally {
                 if (!cancelled) {
-                  armSaveBaseline();
+                  markInitialLoadDone();
                   if (!pushed) void flushSave();
                 }
               }
@@ -568,6 +673,9 @@ export function ClinicDataSync() {
     return () => {
       cancelled = true;
       registerClinicDataFlush(null);
+      registerClinicDataFlushAsync(null);
+      registerSaveThenPullClinicData(null);
+      registerDiscardLocalEditsAndPull(null);
       registerClinicDataPull(null);
       unsub();
       unsubBroadcast();

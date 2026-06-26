@@ -34,7 +34,7 @@ function workAct(id: string): WorkAct {
     actDate: "2026-06-22",
     patientId: "p1",
     doctorId: "d1",
-    items: [{ serviceName: "Приём", price: 1000, quantity: 1 }],
+    items: [{ id: "i1", serviceName: "Приём", price: 1000, quantity: 1, total: 1000 }],
     subtotalAmount: 1000,
     discountType: "percent",
     discount: 0,
@@ -159,9 +159,10 @@ describe("clinic-snapshot-load", () => {
         date: "2026-06-22",
         startTime: "10:00",
         endTime: "10:30",
+        durationMinutes: 30,
         status: "scheduled",
+        price: 0,
         paymentStatus: "pending",
-        createdAt: "2026-06-22",
       },
     ];
     const remote = structuredClone(baseline);
@@ -180,8 +181,45 @@ describe("clinic-snapshot-load", () => {
         date: "2026-06-22",
         startTime: "10:00",
         endTime: "10:30",
+        durationMinutes: 30,
         status: "scheduled",
+        price: 0,
         paymentStatus: "pending",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+  });
+
+  it("serverSnapshotHasIncomingUpdates detects patient field change on server", () => {
+    const baseline = createFreshPersistedState();
+    baseline.patients = [patient("p1")];
+    const remote = createFreshPersistedState();
+    remote.patients = [{ ...patient("p1"), phone: "+79991112233" }];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+  });
+
+  it("serverSnapshotHasIncomingUpdates detects medical record content change", () => {
+    const baseline = createFreshPersistedState();
+    baseline.medicalRecords = [
+      {
+        id: "mr1",
+        patientId: "p1",
+        doctorId: "d1",
+        complaints: "Боль",
+        diagnosis: "K02",
+        treatment: "Пломба",
+        createdAt: "2026-06-22",
+      },
+    ];
+    const remote = createFreshPersistedState();
+    remote.medicalRecords = [
+      {
+        id: "mr1",
+        patientId: "p1",
+        doctorId: "d1",
+        complaints: "Боль усилилась",
+        diagnosis: "K02",
+        treatment: "Пломба",
         createdAt: "2026-06-22",
       },
     ];

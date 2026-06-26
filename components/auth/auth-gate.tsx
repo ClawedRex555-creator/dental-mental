@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
+import { flushClinicDataBeforeSessionEnd } from "@/lib/clinic-data-sync.client";
 import {
   clearClinicBootstrapCache,
   setClinicBootstrapCache,
@@ -43,6 +44,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         `В другой вкладке выполнен вход как ${user.name} (${ROLE_LABELS[user.role]}). Интерфейс обновлён под эту учётную запись.`,
         { duration: 8000 }
       );
+    };
+
+    const denySession = async () => {
+      await flushClinicDataBeforeSessionEnd({ keepalive: true });
+      clearSession();
+      clearPersistedClinicData();
+      clearClinicBootstrapCache();
+      setState("denied");
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        router.replace("/login");
+      }
     };
 
     const syncSession = async (redirectOnFail: boolean) => {
@@ -86,23 +98,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             `Сессия не подтверждена (HTTP ${res.status}). Обновите страницу или войдите снова.`
         );
 
-        clearSession();
-        clearPersistedClinicData();
-        clearClinicBootstrapCache();
-        setState("denied");
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          router.replace("/login");
-        }
+        await denySession();
       } catch {
         if (cancelled) return;
         if (!redirectOnFail) return;
-        clearSession();
-        clearPersistedClinicData();
-        clearClinicBootstrapCache();
-        setState("denied");
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          router.replace("/login");
-        }
+        await denySession();
       }
     };
 
@@ -115,13 +115,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
     const unsubSession = subscribeSessionChanged((reason) => {
       if (reason === "logout") {
-        clearSession();
-        clearPersistedClinicData();
-        clearClinicBootstrapCache();
-        setState("denied");
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          router.replace("/login");
-        }
+        void (async () => {
+          await flushClinicDataBeforeSessionEnd({ keepalive: true });
+          clearSession();
+          clearPersistedClinicData();
+          clearClinicBootstrapCache();
+          setState("denied");
+          if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+            router.replace("/login");
+          }
+        })();
         return;
       }
       void syncSession(false);

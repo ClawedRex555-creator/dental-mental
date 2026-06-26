@@ -34,6 +34,7 @@ import type {
   WorkAct,
 } from "@/lib/types";
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
 import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 
 /** Один flush после цепочки set() в том же тике (акт + счёт + медзапись) */
@@ -287,6 +288,7 @@ export const useClinicStore = create<ClinicState>()(
         set({ enabledModules: parseClinicModules(modules) }),
 
       clearSession: () => {
+        clearPendingClinicSnapshot();
         const userThemePreferences = mergeThemePreferences(
           get().userThemePreferences,
           readThemePreferencesFromStorage()

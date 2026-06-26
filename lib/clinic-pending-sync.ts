@@ -2,9 +2,9 @@ import {
   hasClinicData,
   parseClinicPersistedState,
   pickPersistedState,
-  hasEntityIdsNotInIncoming,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import { serverSnapshotHasIncomingUpdates } from "@/lib/clinic-snapshot-load";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 
 const PENDING_SESSION_KEY = "dc-clinic-pending-snapshot";
@@ -36,13 +36,14 @@ export function readPendingClinicSnapshot(): ClinicPersistedState | null {
   }
 }
 
-export function writePendingClinicSnapshot(snapshot: ClinicPersistedState): void {
-  if (typeof window === "undefined") return;
-  if (!hasClinicData(snapshot)) return;
+export function writePendingClinicSnapshot(snapshot: ClinicPersistedState): boolean {
+  if (typeof window === "undefined") return true;
+  if (!hasClinicData(snapshot)) return true;
   try {
     sessionStorage.setItem(PENDING_SESSION_KEY, JSON.stringify(snapshot));
+    return true;
   } catch {
-    /* ignore */
+    return false;
   }
 }
 
@@ -55,29 +56,19 @@ export function clearPendingClinicSnapshot(): void {
   }
 }
 
-const PENDING_REMOTE_SYNC_KEYS = [
-  "workActs",
-  "payments",
-  "invoices",
-  "appointments",
-  "medicalRecords",
-  "treatmentPlans",
-] as const;
+const PENDING_BUFFER_ERROR =
+  "Не удалось записать буфер вкладки (переполнение sessionStorage). Не закрывайте вкладку — дождитесь сохранения на сервер.";
 
 /** Сбросить устаревший pending, если на сервере уже есть записи с другого устройства */
 export function discardStalePendingClinicSnapshot(remote: ClinicPersistedState): boolean {
   const pending = readPendingClinicSnapshot();
   if (!pending) return false;
 
-  const serverAhead = PENDING_REMOTE_SYNC_KEYS.some((key) => {
-    const remoteList = remote[key] as { id: string }[];
-    const pendingList = pending[key] as { id: string }[];
-    return hasEntityIdsNotInIncoming(remoteList, pendingList);
-  });
-
-  if (serverAhead) {
+  if (serverSnapshotHasIncomingUpdates(remote, pending)) {
     clearPendingClinicSnapshot();
     return true;
   }
   return false;
 }
+
+export { PENDING_BUFFER_ERROR };

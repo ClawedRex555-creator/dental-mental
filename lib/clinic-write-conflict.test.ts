@@ -4,7 +4,7 @@ import {
   createFreshPersistedState,
   mergeClinicDataOnWriteConflict,
 } from "./clinic-persisted-state";
-import type { Appointment } from "./types";
+import type { Appointment, WorkAct } from "./types";
 
 describe("mergeClinicDataOnWriteConflict", () => {
   it("keeps server appointment doctor when client snapshot is stale", () => {
@@ -58,5 +58,25 @@ describe("mergeClinicDataOnWriteConflict", () => {
     const merged = mergeClinicDataOnWriteConflict(existing, incoming);
     assert.equal(merged.appointments.length, 1);
     assert.equal(merged.appointments[0]?.id, "apt-new");
+  });
+
+  it("does not resurrect work acts deleted on client during write conflict", () => {
+    const base = createFreshPersistedState();
+    const act: WorkAct = {
+      id: "wa1",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-06-20",
+      actNumber: "1",
+      actType: "service",
+      items: [],
+      totalAmount: 1000,
+      paymentStatus: "paid",
+    };
+    const existing = { ...base, workActs: [act] };
+    const incoming = { ...base, workActs: [] };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    assert.equal(merged.workActs.length, 0);
   });
 });
