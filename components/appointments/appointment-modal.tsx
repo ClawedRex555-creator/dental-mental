@@ -349,7 +349,7 @@ export function AppointmentModal({
                         doctors,
                         cabinets
                       );
-                      if (suggested) setCabinetId(suggested);
+                      setCabinetId(suggested ?? "");
                     }}
                   >
                     <option value="">Выберите врача</option>

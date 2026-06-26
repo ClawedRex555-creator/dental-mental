@@ -36,7 +36,7 @@ function specializationKeyFromDoctor(spec: string): string {
 }
 
 export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
-  const { addDoctor, updateDoctor, cabinets } = useClinicStore();
+  const { addDoctor, updateDoctor, assignStaffToCabinet, cabinets } = useClinicStore();
   const isEdit = !!member;
 
   const [name, setName] = useState("");
@@ -226,6 +226,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
 
     if (isEdit && member) {
       updateDoctor(member.id, payload);
+      if (role === "doctor" && cabinetId) {
+        assignStaffToCabinet(cabinetId, member.id);
+      }
 
       const passwordChange =
         authPassword.length > 0 || authPasswordConfirm.length > 0;
@@ -315,6 +318,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
         ...payload,
         status: "active",
       });
+      if (role === "doctor" && cabinetId) {
+        assignStaffToCabinet(cabinetId, staffId);
+      }
       toast.success("Сотрудник и учётная запись для входа созданы");
       onOpenChange(false);
     } catch {
