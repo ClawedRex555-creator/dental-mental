@@ -169,6 +169,8 @@ export interface Doctor {
   cabinetId?: string;
   address?: string;
   diplomaCertificate?: string;
+  passportSeries?: string;
+  passportNumber?: string;
   commissionPercent: number;
   /** Вознаграждение за услуги категории «Имплантация»: процент или фикс. ₽ за единицу */
   implantFeeType?: "percent" | "rubles";
@@ -335,6 +337,8 @@ export interface WorkActItem {
   id: string;
   serviceId?: string;
   serviceName: string;
+  /** Номер зуба FDI (11–48), опционально */
+  toothNumber?: number;
   quantity: number;
   price: number;
   total: number;

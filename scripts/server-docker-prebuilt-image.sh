@@ -11,9 +11,7 @@ if [ ! -f "Dockerfile.prebuilt" ]; then
 fi
 
 if [ ! -d ".next/standalone" ] || [ ! -d ".next/static" ]; then
-  echo "ОШИБКА: нет .next/standalone или .next/static — сначала npm run build"
-  echo "  bash scripts/server-build-prebuilt.sh"
-  echo "  или docker run ... npm ci && npm run build (см. docs/DEPLOY.md)"
+  echo "ОШИБКА: нет .next/standalone — соберите на Mac: bash scripts/local-build-for-deploy.sh"
   exit 1
 fi
 

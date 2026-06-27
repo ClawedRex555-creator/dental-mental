@@ -49,6 +49,9 @@ interface WorkActModalProps {
 const selectClass =
   "flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]";
 
+const compactNumberInputClass =
+  "min-w-[4rem] text-center px-2 text-sm text-[var(--foreground)] tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
 export function WorkActModal({
   open,
   onOpenChange,
@@ -492,10 +495,11 @@ export function WorkActModal({
 
             {items.some((i) => i.serviceId) && (
               <div className="grid grid-cols-12 gap-2 px-1 text-xs font-medium text-[var(--muted)]">
-                <span className="col-span-4">Услуга</span>
+                <span className="col-span-3">Услуга</span>
+                <span className="col-span-2 text-center">Зуб №</span>
                 <span className="col-span-2 text-center">Кол-во</span>
                 <span className="col-span-2">Цена, ₽</span>
-                <span className="col-span-2">Скидка, %</span>
+                <span className="col-span-1 text-center">Скидка, %</span>
                 <span className="col-span-2" />
               </div>
             )}
@@ -506,18 +510,47 @@ export function WorkActModal({
                 key={item.id}
                 className="grid grid-cols-12 gap-2 items-center border-t border-[var(--border)] pt-3"
               >
-                <div className="col-span-4 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
+                <div className="col-span-3 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
                   {item.serviceName}
                 </div>
                 <div className="col-span-2">
                   {readOnly ? (
-                    <span className="text-sm">{item.quantity}</span>
+                    <span className="block text-center text-sm">
+                      {item.toothNumber ?? "—"}
+                    </span>
                   ) : (
                     <Input
                       type="number"
-                      min={1}
-                      className="text-center"
-                      value={item.quantity > 0 ? item.quantity : ""}
+                      placeholder="№"
+                      className={compactNumberInputClass}
+                      value={item.toothNumber ?? ""}
+                      onChange={(e) =>
+                        setItems((prev) =>
+                          prev.map((it) =>
+                            it.id === item.id
+                              ? {
+                                  ...it,
+                                  toothNumber: e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined,
+                                }
+                              : it
+                          )
+                        )
+                      }
+                    />
+                  )}
+                </div>
+                <div className="col-span-2">
+                  {readOnly ? (
+                    <span className="block text-center text-sm">{item.quantity}</span>
+                  ) : (
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className={compactNumberInputClass}
+                      value={item.quantity > 0 ? String(item.quantity) : ""}
                       placeholder="1"
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -558,6 +591,7 @@ export function WorkActModal({
                     <Input
                       type="number"
                       min={0}
+                      className={compactNumberInputClass}
                       value={item.price || ""}
                       onChange={(e) =>
                         setItems((prev) =>
@@ -575,14 +609,15 @@ export function WorkActModal({
                     />
                   )}
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-1">
                   {readOnly ? (
-                    <span className="text-sm">{item.discountPercent ?? 0}%</span>
+                    <span className="block text-center text-sm">{item.discountPercent ?? 0}%</span>
                   ) : (
                     <Input
                       type="number"
                       min={0}
                       max={100}
+                      className={compactNumberInputClass}
                       value={item.discountPercent ?? ""}
                       placeholder="0"
                       onChange={(e) =>

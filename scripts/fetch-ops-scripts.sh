@@ -12,7 +12,7 @@ REPO="${EMKARO_GITHUB_RAW:-https://raw.githubusercontent.com/ClawedRex555-creato
 cd "$ROOT"
 mkdir -p scripts
 
-for name in server-clean.sh server-update.sh server-build-prebuilt.sh backup-db.sh apply-migrations.sh fix-crlf.sh fetch-ops-scripts.sh; do
+for name in server-clean.sh server-update.sh server-docker-prebuilt-image.sh local-build-for-deploy.sh backup-db.sh apply-migrations.sh fix-crlf.sh fetch-ops-scripts.sh; do
   echo ">>> $name"
   curl -fsSL -o "scripts/$name" "$REPO/scripts/$name"
   chmod +x "scripts/$name"

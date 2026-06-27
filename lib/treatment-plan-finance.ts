@@ -21,6 +21,7 @@ export function buildWorkActFromTreatmentPlan(
       id: generateId("wai"),
       serviceId: item.serviceId,
       serviceName: item.serviceName,
+      toothNumber: item.toothNumber,
       quantity,
       price: item.price,
       total: planItemLineTotal(item),

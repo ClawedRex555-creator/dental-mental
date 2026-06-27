@@ -84,6 +84,7 @@ import {
 } from "@/lib/modules";
 import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
 import { ensureMedicalRecordForWorkAct } from "@/lib/work-act-medical-record";
+import { applyWorkActItemsToTeeth } from "@/lib/work-act-teeth";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
   isWorkActAlreadyPaid,
@@ -765,10 +766,25 @@ export const useClinicStore = create<ClinicState>()(
             return next;
           });
           const paidAct = workActs.find((a) => a.id === actId)!;
+          const currentTeeth =
+            s.teethByPatient[paidAct.patientId] ?? generateDefaultTeeth();
+          const teethWithAct = applyWorkActItemsToTeeth(
+            currentTeeth,
+            paidAct.items,
+            { actNumber: paidAct.actNumber, actDate: paidAct.actDate }
+          );
           return {
             workActs,
             medicalRecords: medicalSync.records,
             appointments: syncAppointmentsAfterActPaid(s.appointments, paidAct),
+            ...(teethWithAct !== currentTeeth
+              ? {
+                  teethByPatient: {
+                    ...s.teethByPatient,
+                    [paidAct.patientId]: teethWithAct,
+                  },
+                }
+              : {}),
           };
         };
 

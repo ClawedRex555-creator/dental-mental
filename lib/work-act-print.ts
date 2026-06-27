@@ -36,6 +36,7 @@ export function printWorkAct(
     ? getPatientActName(patient.firstName, patient.lastName, patient.middleName)
     : undefined;
   const serviceCount = act.items.length;
+  const showToothColumn = act.items.some((item) => item.toothNumber != null);
 
   const rows = act.items
     .map((item, i) => {
@@ -46,6 +47,7 @@ export function printWorkAct(
     <tr>
       <td class="c-num">${i + 1}</td>
       <td class="c-name">${escapeHtml(item.serviceName)}</td>
+      ${showToothColumn ? `<td class="c-tooth">${item.toothNumber ?? "—"}</td>` : ""}
       <td class="c-qty">${item.quantity}</td>
       <td class="c-money">${formatActAmount(item.price)}</td>
       <td class="c-money">${formatActAmount(line.sum)}</td>
@@ -104,6 +106,7 @@ export function printWorkAct(
     }
     .c-num { width: 28px; text-align: center; }
     .c-name { text-align: left; }
+    .c-tooth { width: 40px; text-align: center; }
     .c-qty { width: 44px; text-align: center; }
     .c-money { width: 72px; text-align: right; white-space: nowrap; }
     .c-disc { width: 52px; text-align: center; }
@@ -163,6 +166,7 @@ export function printWorkAct(
       <tr>
         <th class="c-num">№</th>
         <th class="c-name">Наименование товара, работ, услуг</th>
+        ${showToothColumn ? `<th class="c-tooth">Зуб</th>` : ""}
         <th class="c-qty">Кол-во</th>
         <th class="c-money">Цена, руб.</th>
         <th class="c-money">Сумма</th>
