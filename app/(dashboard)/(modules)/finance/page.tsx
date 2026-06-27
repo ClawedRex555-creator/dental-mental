@@ -65,7 +65,7 @@ export default function FinancePage() {
   const [period, setPeriod] = useState<Period>("day");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [salaryPeriod, setSalaryPeriod] = useState<SalaryPeriod>("month");
+  const [salaryPeriod, setSalaryPeriod] = useState<SalaryPeriod>("day");
   const [salaryFrom, setSalaryFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [salaryTo, setSalaryTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expenseTitle, setExpenseTitle] = useState("");

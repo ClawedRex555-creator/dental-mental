@@ -413,8 +413,9 @@ function AppointmentDocumentsModalBody({
         <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. PDF заполняется
         данными пациента и клиники <strong>внутри загруженного файла</strong>, если в нём есть
         поля формы с именами вроде{" "}
-        <code className="text-xs">patient.fullName</code>,{" "}
-        <code className="text-xs">clinic.name</code>. Скан с подчёркиваниями не подставляется
+        <code className="text-xs">customer_full_name</code>,{" "}
+        <code className="text-xs">patient_full_name</code>,{" "}
+        <code className="text-xs">clinic_name</code>. Скан с подчёркиваниями не подставляется
         автоматически — см. инструкцию в юр. отделе.
       </p>
 

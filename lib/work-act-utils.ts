@@ -74,6 +74,20 @@ export function getPatientActName(
   return [firstName, middleName, lastName].filter(Boolean).join(" ");
 }
 
+/** Заказчик в акте: для ребёнка — родитель / законный представитель */
+export function getWorkActCustomerName(patient: {
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  isChild?: boolean;
+  representativeFullName?: string;
+}): string {
+  if (patient.isChild && patient.representativeFullName?.trim()) {
+    return patient.representativeFullName.trim();
+  }
+  return getPatientActName(patient.firstName, patient.lastName, patient.middleName);
+}
+
 /** Сумма для печати: без символа ₽, с десятичными при необходимости */
 export function formatActAmount(amount: number): string {
   const hasFraction = Math.abs(amount % 1) > 0.001;
@@ -89,6 +103,17 @@ export function formatDocumentDiscount(
 ): string {
   if (!discount) return "";
   return discountType === "percent" ? `${discount}%` : `${formatActAmount(discount)} руб.`;
+}
+
+export function buildWorkActMedicalRecommendations(act: {
+  actNumber: string;
+  actDate: string;
+  totalAmount: number;
+  notes?: string;
+}): string {
+  const base = `Акт № ${act.actNumber} от ${act.actDate}. Итого: ${act.totalAmount} ₽`;
+  const note = act.notes?.trim();
+  return note ? `${base} Примечание: ${note}` : base;
 }
 
 export function resolveWorkActTotals(act: WorkAct) {

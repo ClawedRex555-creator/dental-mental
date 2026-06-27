@@ -8,6 +8,7 @@ import {
   getActDisplayNumber,
   getContractNumber,
   getPatientActName,
+  getWorkActCustomerName,
   resolveWorkActTotals,
 } from "./work-act-utils";
 
@@ -30,11 +31,10 @@ export function printWorkAct(
   const contractDate = patient.createdAt
     ? formatActShortDate(patient.createdAt)
     : actDateShort;
-  const patientName = getPatientActName(
-    patient.firstName,
-    patient.lastName,
-    patient.middleName
-  );
+  const patientName = getWorkActCustomerName(patient);
+  const beneficiaryName = patient.isChild
+    ? getPatientActName(patient.firstName, patient.lastName, patient.middleName)
+    : undefined;
   const serviceCount = act.items.length;
 
   const rows = act.items
@@ -149,6 +149,11 @@ export function printWorkAct(
       <div class="parties">
         <p><strong>Исполнитель:</strong> ${escapeHtml(clinic.name)}</p>
         <p><strong>Заказчик:</strong> ${escapeHtml(patientName)}</p>
+        ${
+          beneficiaryName
+            ? `<p><strong>Пациент:</strong> ${escapeHtml(beneficiaryName)} (ребёнок)</p>`
+            : ""
+        }
       </div>
     </div>
   </div>

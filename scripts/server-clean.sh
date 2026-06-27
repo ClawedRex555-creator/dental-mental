@@ -8,20 +8,24 @@
 # Без git (деплой из tar):
 #   cd /opt/emkaro && bash scripts/fetch-ops-scripts.sh
 #   bash scripts/server-clean.sh --apply
+#   bash scripts/server-clean.sh --apply --aggressive   # весь build cache + неиспользуемые образы
+#   bash scripts/server-clean.sh --apply --deep         # если cache всё ещё ~14GB: стоп app → prune → старт
 #
 set -euo pipefail
 
 ROOT="${DEPLOY_ROOT:-/opt/emkaro}"
 APPLY=false
 AGGRESSIVE=false
+DEEP=false
 KEEP_BACKUPS="${KEEP_BACKUPS:-14}"
 
 for arg in "$@"; do
   case "$arg" in
     --apply) APPLY=true ;;
     --aggressive) AGGRESSIVE=true ;;
+    --deep) DEEP=true; AGGRESSIVE=true ;;
     -h | --help)
-      sed -n '2,12p' "$0"
+      sed -n '2,14p' "$0"
       exit 0
       ;;
     *)
@@ -48,7 +52,11 @@ run_or_echo() {
 
 echo "=== Emkaro: очистка сервера ==="
 echo "Каталог: $ROOT"
-echo "Режим: $( $APPLY && echo 'ПРИМЕНИТЬ' || echo 'просмотр (добавьте --apply)' )"
+mode="просмотр (добавьте --apply)"
+$APPLY && mode="ПРИМЕНИТЬ"
+$DEEP && mode="$mode + deep (стоп app)"
+$AGGRESSIVE && ! $DEEP && mode="$mode + aggressive"
+echo "Режим: $mode"
 echo ""
 
 echo ">>> Диск до:"
@@ -102,18 +110,38 @@ echo ""
 
 # 4) Docker build cache (безопасно для данных)
 echo ">>> Docker build cache"
+if $DEEP; then
+  echo "    (deep: кратко останавливаем app — postgres/caddy/volumes не трогаем)"
+  run_or_echo "docker compose stop app"
+fi
 if $AGGRESSIVE; then
   run_or_echo "docker builder prune -af"
+  if docker buildx version >/dev/null 2>&1; then
+    run_or_echo "docker buildx prune -af"
+  fi
   run_or_echo "docker image prune -af"
 else
   run_or_echo "docker builder prune -f"
   run_or_echo "docker image prune -f"
 fi
 run_or_echo "docker container prune -f"
+if $DEEP; then
+  run_or_echo "docker compose start app"
+fi
 echo ""
 
 # 5) Неиспользуемые сети
 run_or_echo "docker network prune -f"
+echo ""
+
+# 6) Артефакты prebuilt-сборки на хосте (контейнер app их не использует)
+for artifact in node_modules .next tsconfig.tsbuildinfo; do
+  if [ -e "$ROOT/$artifact" ]; then
+    size="$(du -sh "$ROOT/$artifact" 2>/dev/null | cut -f1 || echo "?")"
+    echo ">>> Артефакт сборки: $artifact ($size)"
+    run_or_echo "rm -rf \"$ROOT/$artifact\""
+  fi
+done
 echo ""
 
 echo ">>> НЕ выполняется (данные клиник):"
@@ -134,6 +162,12 @@ df -h "$ROOT" /var/lib/docker 2>/dev/null || df -h "$ROOT"
 echo ""
 echo ">>> Docker (после):"
 docker system df 2>/dev/null || true
+echo ""
+cache_gb="$(docker system df 2>/dev/null | awk '/Build Cache/ {gsub(/GB/,"",$4); print $4}' || true)"
+if [ -n "${cache_gb:-}" ] && awk "BEGIN {exit !($cache_gb > 2)}" 2>/dev/null; then
+  echo "ПРЕДУПРЕЖДЕНИЕ: Build Cache всё ещё ~${cache_gb}GB."
+  echo "  Повторите: bash scripts/server-clean.sh --apply --deep"
+fi
 echo ""
 echo "============================================"
   echo "  Готово. Для обновления кода:"

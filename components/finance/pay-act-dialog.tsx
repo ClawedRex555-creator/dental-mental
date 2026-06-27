@@ -40,6 +40,11 @@ export function PayActDialog({ act, open, onOpenChange, onConfirm }: PayActDialo
               {formatCurrency(act.totalAmount)}
             </span>
           </p>
+          {act.notes?.trim() && (
+            <p className="text-sm text-slate-600">
+              <span className="font-medium text-slate-900">Примечание:</span> {act.notes}
+            </p>
+          )}
           <div className="space-y-2">
             <Label>Способ оплаты</Label>
             <select

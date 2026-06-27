@@ -5,6 +5,7 @@ import {
   type ArrivalDocumentContext,
 } from "@/lib/arrival-documents";
 import { resolveTokenForPdfField } from "@/lib/legal-pdf-field-map";
+import { LEGAL_PDF_FIELD_HINTS } from "@/lib/legal-pdf-fields";
 import { parseAllowedDataUrl } from "@/lib/safe-data-url";
 
 const NOTO_SANS_URL =
@@ -139,18 +140,4 @@ export async function fillLegalPdf(
   }
 }
 
-export const LEGAL_PDF_FIELD_HINTS = [
-  "patient.fullName",
-  "patient.birthDate",
-  "patient.phone",
-  "patient.passport",
-  "patient.address",
-  "patient.snils",
-  "patient.contractNumber",
-  "clinic.name",
-  "clinic.inn",
-  "clinic.address",
-  "clinic.phone",
-  "doctor.name",
-  "date.today",
-] as const;
+export { LEGAL_PDF_FIELD_HINTS } from "@/lib/legal-pdf-fields";

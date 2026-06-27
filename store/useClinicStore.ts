@@ -82,6 +82,7 @@ import {
   parseClinicModules,
   type ClinicModules,
 } from "@/lib/modules";
+import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
   isWorkActAlreadyPaid,
@@ -198,6 +199,7 @@ interface ClinicState {
   addWorkAct: (act: WorkAct) => void;
   updateWorkAct: (id: string, data: Partial<WorkAct>) => void;
   linkWorkActToMedicalRecord: (actId: string, recordId: string) => void;
+  syncMedicalRecordForWorkAct: (act: WorkAct) => void;
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
   payWorkAct: (actId: string, method?: PaymentMethod) => boolean;
@@ -721,6 +723,20 @@ export const useClinicStore = create<ClinicState>()(
             r.id === recordId ? { ...r, workActId: actId } : r
           ),
         }));
+        scheduleClinicDataFlush();
+      },
+
+      syncMedicalRecordForWorkAct: (act) => {
+        const recommendations = buildWorkActMedicalRecommendations(act);
+        set((s) => {
+          const linked = s.medicalRecords.some((r) => r.workActId === act.id);
+          if (!linked) return s;
+          return {
+            medicalRecords: s.medicalRecords.map((r) =>
+              r.workActId === act.id ? { ...r, recommendations } : r
+            ),
+          };
+        });
         scheduleClinicDataFlush();
       },
 

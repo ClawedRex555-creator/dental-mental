@@ -108,20 +108,26 @@ if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
   bash scripts/server-build-prebuilt.sh
 elif ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
   echo ""
-  echo "ОШИБКА: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
+  echo "ПРЕДУПРЕЖДЕНИЕ: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
   echo "  lookup через 127.0.0.53: server misbehaving — типичная проблема systemd-resolved на VPS."
   echo ""
   bash "$ROOT/scripts/server-check-dns.sh" || true
   echo ""
   if docker image inspect node:20-alpine >/dev/null 2>&1; then
-    echo "Образ node:20-alpine уже есть локально. Можно попробовать без --no-cache:"
-    echo "  cd $ROOT && DEPLOY_NO_CACHE=0 bash scripts/server-update.sh ${ARCHIVE:-}"
-    echo "После починки DNS обязательно: DEPLOY_NO_CACHE=1 и полная пересборка."
+    echo ">>> Образ node:20-alpine есть локально — сборка без Docker Hub (prebuilt path)"
+    bash scripts/server-build-prebuilt.sh
+  elif [ "${DEPLOY_NO_CACHE:-1}" = "0" ]; then
+    echo ">>> DEPLOY_NO_CACHE=0 — пробуем docker compose up --build с кэшем..."
+    docker compose up -d --build
+  else
+    echo "ОШИБКА: нет локального node:20-alpine и Docker Hub недоступен."
+    echo ""
+    echo "Починка DNS: sudo bash scripts/server-fix-docker-dns.sh --apply"
+    echo "Затем: DEPLOY_NO_CACHE=1 bash scripts/server-update.sh ${ARCHIVE:-}"
+    echo ""
+    echo "Или вручную: DEPLOY_USE_PREBUILT=1 bash scripts/server-update.sh ${ARCHIVE:-}"
+    exit 1
   fi
-  echo ""
-  echo "Починка DNS: bash scripts/server-fix-docker-dns.sh"
-  echo "  sudo bash scripts/server-fix-docker-dns.sh --apply"
-  exit 1
 elif [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
   echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
   if ! docker compose build --no-cache app; then

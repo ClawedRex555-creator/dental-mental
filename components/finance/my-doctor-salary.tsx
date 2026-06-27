@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 
 export function MyDoctorSalary() {
   const { currentUser, doctors, workActs, patients, services } = useClinicStore();
-  const [period, setPeriod] = useState<SalaryPeriod>("month");
+  const [period, setPeriod] = useState<SalaryPeriod>("day");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
 

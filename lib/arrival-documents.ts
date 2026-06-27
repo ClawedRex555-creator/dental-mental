@@ -6,7 +6,8 @@ import { escapeHtml } from "@/lib/escape-html";
 import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 import type { ClinicSettings, Doctor, Patient } from "@/lib/types";
 import { formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
-import { getContractNumber, getPatientActName } from "@/lib/work-act-utils";
+import { tokenKeyToWordFieldName } from "@/lib/legal-pdf-fields";
+import { getContractNumber, getPatientActName, getWorkActCustomerName } from "@/lib/work-act-utils";
 
 export interface ArrivalDocumentContext {
   patient: Patient;
@@ -59,6 +60,7 @@ export function buildArrivalDocumentTokens(
   const today = ctx.documentDate ? new Date(ctx.documentDate) : new Date();
   const contractNumber = getContractNumber(patient.id);
   const fullName = getFullName(patient.firstName, patient.lastName, patient.middleName);
+  const customerName = getWorkActCustomerName(patient);
   const actName = getPatientActName(
     patient.firstName,
     patient.lastName,
@@ -68,7 +70,9 @@ export function buildArrivalDocumentTokens(
   const clinicWorkHours = dash(clinic.workHours);
 
   const tokens: Record<string, string> = {
+    "customer.fullName": customerName,
     "patient.fullName": fullName,
+    "patient.beneficiaryFullName": fullName,
     "patient.actName": actName,
     "patient.firstName": dash(patient.firstName),
     "patient.lastName": dash(patient.lastName),
@@ -106,6 +110,7 @@ export function buildArrivalDocumentTokens(
     "date.today": format(today, "dd.MM.yyyy"),
     "date.todayLong": format(today, "d MMMM yyyy 'г.'", { locale: ru }),
     "пациент.фио": fullName,
+    "заказчик.фио": customerName,
     "пациент.телефон": formatPhone(patient.phone),
     "пациент.адрес": dash(patient.address),
     "пациент.датаРождения": formatDate(patient.birthDate),
@@ -123,6 +128,12 @@ export function buildArrivalDocumentTokens(
     "врач.фио": dash(doctor?.name),
     "врач.специализация": dash(doctor?.specialization),
   };
+
+  for (const [key, value] of Object.entries({ ...tokens })) {
+    if (key.includes(".")) {
+      tokens[tokenKeyToWordFieldName(key)] = value;
+    }
+  }
 
   return tokens;
 }

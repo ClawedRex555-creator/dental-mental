@@ -25,6 +25,24 @@ describe("resolveTokenForPdfField", () => {
   it("matches aliases", () => {
     assert.equal(resolveTokenForPdfField("fio", tokens), "Иванов Иван");
     assert.equal(resolveTokenForPdfField("клиника", tokens), "Стоматология");
+    assert.equal(resolveTokenForPdfField("customer.fullName", tokens), null);
+  });
+
+  it("matches underscore Word field names", () => {
+    assert.equal(resolveTokenForPdfField("patient_full_name", tokens), "Иванов Иван");
+    assert.equal(resolveTokenForPdfField("clinic_name", tokens), "Стоматология");
+  });
+
+  it("matches customer alias for child contract", () => {
+    const childTokens = {
+      "customer.fullName": "Иванов Иван Иванович",
+      "patient.fullName": "Иванова Маша",
+    };
+    assert.equal(resolveTokenForPdfField("заказчик", childTokens), "Иванов Иван Иванович");
+    assert.equal(
+      resolveTokenForPdfField("customer_full_name", childTokens),
+      "Иванов Иван Иванович"
+    );
   });
 
   it("returns null for unknown field", () => {

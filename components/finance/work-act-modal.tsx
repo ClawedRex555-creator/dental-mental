@@ -10,7 +10,11 @@ import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { normalizeServiceFields } from "@/lib/service-categories";
-import { calcWorkActAmounts } from "@/lib/work-act-utils";
+import {
+  buildWorkActMedicalRecommendations,
+  calcWorkActAmounts,
+  getWorkActCustomerName,
+} from "@/lib/work-act-utils";
 import { printWorkAct } from "@/lib/work-act-print";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -67,6 +71,7 @@ export function WorkActModal({
     updateWorkAct,
     addInvoice,
     addMedicalRecord,
+    syncMedicalRecordForWorkAct,
     updateAppointment,
     getNextActNumber,
     deleteWorkAct,
@@ -267,6 +272,7 @@ export function WorkActModal({
 
     if (savedActId) {
       updateWorkAct(actId, act);
+      syncMedicalRecordForWorkAct(act);
       setSavedActId(actId);
       return act;
     } else {
@@ -284,7 +290,12 @@ export function WorkActModal({
         complaints: "По акту оказанных услуг",
         diagnosis: "Оказаны стоматологические услуги",
         treatment: servicesList,
-        recommendations: `Акт № ${actNumber} от ${actDate}. Итого: ${totalAmount} ₽`,
+        recommendations: buildWorkActMedicalRecommendations({
+          actNumber,
+          actDate,
+          totalAmount,
+          notes: notes.trim() || undefined,
+        }),
         createdAt: actDate,
         serviceName: servicesList,
       });
@@ -359,23 +370,66 @@ export function WorkActModal({
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label>Пациент</Label>
               {readOnly ? (
-                <p className="text-sm font-medium text-[var(--foreground)]">
-                  {(() => {
-                    const patient = patients.find((p) => p.id === patientId);
-                    return patient
-                      ? getFullName(patient.firstName, patient.lastName, patient.middleName)
-                      : "—";
-                  })()}
-                </p>
+                (() => {
+                  const p = patients.find((x) => x.id === patientId);
+                  if (!p) {
+                    return (
+                      <>
+                        <Label>Пациент</Label>
+                        <p className="text-sm font-medium text-[var(--foreground)]">—</p>
+                      </>
+                    );
+                  }
+                  if (p.isChild) {
+                    return (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label>Пациент (ребёнок)</Label>
+                          <p className="text-sm font-medium text-[var(--foreground)]">
+                            {getFullName(p.firstName, p.lastName, p.middleName)}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Заказчик</Label>
+                          <p className="text-sm font-medium text-[var(--foreground)]">
+                            {getWorkActCustomerName(p)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-1">
+                      <Label>Пациент</Label>
+                      <p className="text-sm font-medium text-[var(--foreground)]">
+                        {getFullName(p.firstName, p.lastName, p.middleName)}
+                      </p>
+                    </div>
+                  );
+                })()
               ) : (
-                <PatientSearchSelect
-                  patients={patients}
-                  selectedPatientId={patientId}
-                  placeholder="ФИО или телефон..."
-                  onSelect={(patient) => setPatientId(patient.id)}
-                />
+                <>
+                  <Label>Пациент</Label>
+                  <PatientSearchSelect
+                    patients={patients}
+                    selectedPatientId={patientId}
+                    placeholder="ФИО или телефон..."
+                    onSelect={(p) => setPatientId(p.id)}
+                  />
+                  {(() => {
+                    const p = patients.find((x) => x.id === patientId);
+                    if (!p?.isChild) return null;
+                    return (
+                      <p className="text-xs text-[var(--muted)]">
+                        В акте заказчиком будет указан представитель:{" "}
+                        <strong className="text-[var(--foreground)]">
+                          {getWorkActCustomerName(p)}
+                        </strong>
+                      </p>
+                    );
+                  })()}
+                </>
               )}
             </div>
             <div className="space-y-2">
@@ -601,9 +655,9 @@ export function WorkActModal({
                 {formatCurrency(totalAmount)}
               </span>
             </div>
-            {!readOnly && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2 items-end">
+          {!readOnly && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
                     <Label className="text-xs">Доп. скидка</Label>
                     <select
@@ -655,12 +709,16 @@ export function WorkActModal({
             )}
           </div>
 
-          {!readOnly && (
-            <div className="space-y-2">
-              <Label>Примечание</Label>
+          <div className="space-y-2">
+            <Label>Примечание</Label>
+            {readOnly ? (
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] whitespace-pre-wrap">
+                {notes.trim() || "—"}
+              </p>
+            ) : (
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>

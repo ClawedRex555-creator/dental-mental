@@ -26,13 +26,25 @@ else
   export DEPLOY_VERSION="unknown"
 fi
 
-echo ">>> Prebuilt path: npm ci + build on host..."
-docker run --rm -v "$ROOT:/app" -w /app node:20-alpine sh -c '
+echo ">>> Prebuilt path: npm ci + build in node:20-alpine (без Docker Hub)..."
+docker run --rm -v "$ROOT:/app" -w /app \
+  -e AUTH_SECRET="${AUTH_SECRET}" \
+  -e APP_ROOT_DOMAIN="${APP_ROOT_DOMAIN:-emkaro.ru}" \
+  -e NEXT_TELEMETRY_DISABLED=1 \
+  -e NODE_OPTIONS=--max-old-space-size=2048 \
+  node:20-alpine sh -c '
   set -e
-  apk add --no-cache libc6-compat
+  # dl-cdn.alpinelinux.org часто падает по TLS на VPS — то же зеркало, что в Dockerfile
+  sed -i "s/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g" /etc/apk/repositories
+  if ! apk add --no-cache libc6-compat; then
+    echo "ПРЕДУПРЕЖДЕНИЕ: libc6-compat не установлен — пробуем сборку без него"
+  fi
+  chmod +x scripts/fix-stale-routes.sh && sh scripts/fix-stale-routes.sh /app
   npm config set registry https://registry.npmmirror.com
   npm config set fetch-retries 5
   npm ci --no-audit --no-fund
+  test -x node_modules/.bin/next || (echo "ERROR: next CLI missing after npm ci" && exit 1)
+  test -n "$AUTH_SECRET" || (echo "ERROR: AUTH_SECRET required for build" && exit 1)
   npm run build
 '
 
@@ -55,6 +67,12 @@ if [ -n "$IGNORE_BACKUP" ]; then
   mv "$ROOT/.dockerignore.bak" "$ROOT/.dockerignore"
 fi
 
-echo ">>> Перезапуск app + caddy..."
-docker compose up -d --force-recreate app caddy
+COMPOSE_IMAGE="$(docker compose config --images app 2>/dev/null || true)"
+if [ -n "$COMPOSE_IMAGE" ] && [ "$COMPOSE_IMAGE" != "emkaro-app" ]; then
+  docker tag emkaro-app "$COMPOSE_IMAGE"
+  echo ">>> Образ помечен как $COMPOSE_IMAGE"
+fi
+
+echo ">>> Перезапуск app + caddy (без повторной сборки через Docker Hub)..."
+docker compose up -d --force-recreate --no-build app caddy
 echo "PREBUILT_OK"

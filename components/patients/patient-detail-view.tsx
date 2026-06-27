@@ -14,7 +14,7 @@ import {
   Phone,
   Trash2,
 } from "lucide-react";
-import type { Patient, PatientFile, TreatmentPlan } from "@/lib/types";
+import type { Appointment, Patient, PatientFile, TreatmentPlan } from "@/lib/types";
 import {
   DISABILITY_LABELS,
   FILE_TYPE_LABELS,
@@ -47,6 +47,10 @@ import {
 import { PatientDebtPanel } from "@/components/patients/patient-debt-panel";
 import { PatientModal } from "@/components/patients/patient-modal";
 import { PatientNotesPanel } from "@/components/patients/patient-notes-panel";
+import { PatientVisitDetailDialog } from "@/components/patients/patient-visit-detail-dialog";
+import { WorkActModal } from "@/components/finance/work-act-modal";
+import { findMedicalRecordForAppointment, findWorkActForAppointment } from "@/lib/visit-work-act";
+import { printWorkAct } from "@/lib/work-act-print";
 import { getPatientDebtAmount } from "@/lib/patient-balance";
 
 const TABS = ["overview", "appointments", "records", "teeth", "plans", "finance", "files", "notes"] as const;
@@ -71,6 +75,9 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const [planOpen, setPlanOpen] = useState(false);
   const [prepayOpen, setPrepayOpen] = useState(false);
   const [editPatientOpen, setEditPatientOpen] = useState(false);
+  const [selectedVisit, setSelectedVisit] = useState<Appointment | null>(null);
+  const [visitDetailOpen, setVisitDetailOpen] = useState(false);
+  const [visitActId, setVisitActId] = useState<string | null>(null);
   const [editingPlan, setEditingPlan] = useState<TreatmentPlan | null>(null);
   const {
     appointments,
@@ -83,6 +90,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
     patientNotes,
     doctors,
     services,
+    clinicSettings,
     getPatientTeeth,
     updateTeeth,
     addPatientFile,
@@ -155,6 +163,21 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const teeth = getPatientTeeth(patient.id);
   const activePlan = plans.find((p) => ["accepted", "in_progress", "proposed"].includes(p.status));
   const debtAmount = getPatientDebtAmount(patient.balance);
+
+  const selectedVisitWorkAct = useMemo(() => {
+    if (!selectedVisit) return undefined;
+    return findWorkActForAppointment(selectedVisit, workActs, records);
+  }, [selectedVisit, workActs, records]);
+
+  const selectedVisitRecord = useMemo(() => {
+    if (!selectedVisit) return undefined;
+    return findMedicalRecordForAppointment(selectedVisit, records, selectedVisitWorkAct);
+  }, [selectedVisit, records, selectedVisitWorkAct]);
+
+  const openVisitDetail = (apt: Appointment) => {
+    setSelectedVisit(apt);
+    setVisitDetailOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -379,8 +402,14 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               patientAppointments.map((apt) => {
                 const doctor = doctors.find((d) => d.id === apt.doctorId);
                 const isOther = apt.isOtherClinicVisit;
+                const visitAct = findWorkActForAppointment(apt, workActs, records);
                 return (
-                  <div key={apt.id} className="flex justify-between gap-3 px-4 py-3 text-sm">
+                  <button
+                    key={apt.id}
+                    type="button"
+                    onClick={() => openVisitDetail(apt)}
+                    className="flex w-full justify-between gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-slate-50"
+                  >
                     <div className="min-w-0">
                       <p className="font-medium text-slate-900">
                         {isOther ? "Визит в другой клинике (до нас)" : `${formatDate(apt.date)} ${apt.startTime}`}
@@ -390,6 +419,12 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                           ? apt.complaints?.trim() || "Без описания"
                           : `${apt.complaints ?? apt.reason ?? "—"} · ${doctor?.name ?? "врач не назначен"}`}
                       </p>
+                      {visitAct && (
+                        <p className="mt-1 text-xs text-teal-700">
+                          Акт № {visitAct.actNumber}
+                          {visitAct.notes?.trim() ? " · есть примечание" : ""}
+                        </p>
+                      )}
                       {isOther && apt.reason && (
                         <p className="mt-1 text-xs text-amber-800">{apt.reason}</p>
                       )}
@@ -403,7 +438,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                         <AppointmentStatusBadge status={apt.status} />
                       )}
                     </div>
-                  </div>
+                  </button>
                 );
               })
             )}
@@ -702,6 +737,33 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
         </Card>
       )}
       {tab === "notes" && <PatientNotesPanel patient={patient} notes={notes} />}
+      <PatientVisitDetailDialog
+        open={visitDetailOpen}
+        onOpenChange={(open) => {
+          setVisitDetailOpen(open);
+          if (!open) setSelectedVisit(null);
+        }}
+        appointment={selectedVisit}
+        patient={patient}
+        doctor={
+          selectedVisit?.doctorId
+            ? doctors.find((d) => d.id === selectedVisit.doctorId)
+            : undefined
+        }
+        workAct={selectedVisitWorkAct}
+        medicalRecord={selectedVisitRecord}
+        onOpenAct={(actId) => {
+          setVisitActId(actId);
+          setVisitDetailOpen(false);
+        }}
+        onPrintAct={(act) => printWorkAct(act, patient, clinicSettings)}
+      />
+      <WorkActModal
+        open={!!visitActId}
+        onOpenChange={(open) => !open && setVisitActId(null)}
+        existingActId={visitActId ?? undefined}
+        mode="admin_view"
+      />
       <AppointmentModal open={appointmentOpen} onOpenChange={setAppointmentOpen} />
       <MedicalRecordModal
         open={recordOpen}
