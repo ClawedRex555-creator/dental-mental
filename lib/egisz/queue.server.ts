@@ -1,9 +1,12 @@
 import "server-only";
 
+import { isWorkActAlreadyPaid } from "@/lib/appointment-act-payment";
 import { getEgiszConfig, queueEgiszSubmission } from "@/lib/egisz/db.server";
 import { buildDentalSemdDraft } from "@/lib/egisz/export";
 import type { EgiszDocumentType } from "@/lib/egisz/types";
+import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
+import { findMedicalRecordForWorkAct } from "@/lib/work-act-medical-record";
 import { getPatientEgiszTransferConsentStatus } from "@/lib/patient-consents.server";
 import type { MedicalRecord, Patient } from "@/lib/types";
 
@@ -66,7 +69,8 @@ export async function queueMedicalRecordEgisz(input: {
 export async function maybeAutoQueueMedicalRecords(
   clinicId: string,
   prev: MedicalRecord[],
-  next: MedicalRecord[]
+  next: MedicalRecord[],
+  context?: Pick<ClinicPersistedState, "workActs" | "payments">
 ): Promise<void> {
   const config = await getEgiszConfig(clinicId);
   if (!config.enabled || !config.autoSubmitSemd) return;
@@ -74,6 +78,31 @@ export async function maybeAutoQueueMedicalRecords(
   const prevIds = new Set(prev.map((r) => r.id));
   const added = next.filter((r) => !prevIds.has(r.id));
   for (const record of added) {
+    if (record.workActId && context) {
+      const act = context.workActs.find((a) => a.id === record.workActId);
+      if (act && !isWorkActAlreadyPaid(act, context.payments)) continue;
+    }
+    await queueMedicalRecordEgisz({ clinicId, medicalRecordId: record.id });
+  }
+}
+
+export async function maybeAutoQueuePaidWorkActs(
+  clinicId: string,
+  prev: Pick<ClinicPersistedState, "workActs" | "payments" | "medicalRecords">,
+  next: Pick<ClinicPersistedState, "workActs" | "payments" | "medicalRecords">
+): Promise<void> {
+  const config = await getEgiszConfig(clinicId);
+  if (!config.enabled || !config.autoSubmitSemd) return;
+
+  for (const act of next.workActs) {
+    if (!isWorkActAlreadyPaid(act, next.payments)) continue;
+
+    const prevAct = prev.workActs.find((a) => a.id === act.id);
+    if (prevAct && isWorkActAlreadyPaid(prevAct, prev.payments)) continue;
+
+    const record = findMedicalRecordForWorkAct(act, next.medicalRecords);
+    if (!record) continue;
+
     await queueMedicalRecordEgisz({ clinicId, medicalRecordId: record.id });
   }
 }

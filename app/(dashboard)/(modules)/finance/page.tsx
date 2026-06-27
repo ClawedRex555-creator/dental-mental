@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   endOfDay,
   endOfMonth,
@@ -79,6 +80,7 @@ export default function FinancePage() {
   const [actModalOpen, setActModalOpen] = useState(false);
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
+  const searchParams = useSearchParams();
 
   const getActPaymentStatus = (act: WorkAct) =>
     act.paymentStatus ??
@@ -100,9 +102,7 @@ export default function FinancePage() {
   }, [repairPaidActAppointments]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get("tab");
+    const tabParam = searchParams.get("tab");
     if (
       tabParam === "acts" ||
       tabParam === "salaries" ||
@@ -111,7 +111,7 @@ export default function FinancePage() {
     ) {
       setTab(tabParam as FinanceTab);
     }
-    const payActId = params.get("payAct");
+    const payActId = searchParams.get("payAct");
     if (payActId) {
       const act = workActs.find((a) => a.id === payActId);
       if (act) {
@@ -121,7 +121,7 @@ export default function FinancePage() {
         }
       }
     }
-  }, [workActs, invoices]);
+  }, [searchParams, workActs, invoices]);
 
   const totalPaid = useMemo(
     () => payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount, 0),

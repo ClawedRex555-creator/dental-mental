@@ -31,8 +31,9 @@ done
 SSH_OPTS=(
   -4
   -o ConnectTimeout=25
-  -o ServerAliveInterval=10
-  -o ServerAliveCountMax=3
+  -o TCPKeepAlive=yes
+  -o ServerAliveInterval=30
+  -o ServerAliveCountMax=60
 )
 
 echo ">>> Очистка на $SERVER (режим: ${REMOTE_ARGS[*]:-просмотр})"

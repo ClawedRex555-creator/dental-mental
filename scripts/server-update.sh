@@ -103,9 +103,36 @@ else
   export DEPLOY_VERSION="unknown"
 fi
 
-if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
-  echo ">>> DEPLOY_USE_PREBUILT=1 — host npm build + Dockerfile.prebuilt"
+# По умолчанию prebuilt: один npm ci на VPS, без тяжёлого `docker compose build` (npm ci внутри Docker зависает на 5–15 мин)
+DEPLOY_USE_PREBUILT="${DEPLOY_USE_PREBUILT:-1}"
+
+has_local_node_image() {
+  docker image inspect node:20-alpine >/dev/null 2>&1
+}
+
+has_mac_bundle() {
+  [ -f "$ROOT/.deploy-next-bundle" ] && [ -d "$ROOT/.next/standalone" ] && [ -d "$ROOT/.next/static" ]
+}
+
+if [ "$DEPLOY_USE_PREBUILT" = "1" ] && has_mac_bundle; then
+  echo ">>> Bundle с Mac (.next в архиве) — npm на сервере не нужен, ~1 мин"
+  bash scripts/server-docker-prebuilt-image.sh
+elif [ "$DEPLOY_USE_PREBUILT" = "1" ] && [ -f "$ROOT/Dockerfile.prebuilt" ] && has_local_node_image; then
+  echo ">>> Prebuilt path (npm на сервере — медленно; лучше деплой с Mac без DEPLOY_SKIP_LOCAL_BUILD)"
   bash scripts/server-build-prebuilt.sh
+elif [ "$DEPLOY_USE_PREBUILT" = "1" ]; then
+  echo "ОШИБКА: DEPLOY_USE_PREBUILT=1, но нет Dockerfile.prebuilt или образа node:20-alpine."
+  echo "  docker pull node:20-alpine   # если Docker Hub доступен"
+  echo "  или: DEPLOY_USE_PREBUILT=0 DEPLOY_FORCE_DOCKER_BUILD=1 bash scripts/server-update.sh"
+  exit 1
+elif [ "${DEPLOY_FORCE_DOCKER_BUILD:-0}" = "1" ] && [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
+  echo ">>> docker compose build --no-cache app (DEPLOY_FORCE_DOCKER_BUILD=1)"
+  if ! docker compose build --no-cache app; then
+    echo "ПРЕДУПРЕЖДЕНИЕ: docker compose build не удался — пробуем prebuilt path..."
+    bash scripts/server-build-prebuilt.sh
+  else
+    docker compose up -d --force-recreate app caddy
+  fi
 elif ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
   echo ""
   echo "ПРЕДУПРЕЖДЕНИЕ: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
@@ -129,7 +156,7 @@ elif ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
     exit 1
   fi
 elif [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
-  echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
+  echo ">>> docker compose build --no-cache app (медленно на VPS; лучше DEPLOY_USE_PREBUILT=1)"
   if ! docker compose build --no-cache app; then
     echo "ПРЕДУПРЕЖДЕНИЕ: docker compose build не удался — пробуем prebuilt path..."
     bash scripts/server-build-prebuilt.sh

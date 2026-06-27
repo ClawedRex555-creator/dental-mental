@@ -15,6 +15,7 @@ import {
   calcWorkActAmounts,
   getWorkActCustomerName,
 } from "@/lib/work-act-utils";
+import { buildMedicalRecordFromWorkAct } from "@/lib/work-act-medical-record";
 import { printWorkAct } from "@/lib/work-act-print";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -95,7 +96,13 @@ export function WorkActModal({
   const [discountBearer, setDiscountBearer] = useState<DiscountBearer>("shared");
   const [notes, setNotes] = useState("");
   const [savedActId, setSavedActId] = useState<string | null>(null);
+  const savedActIdRef = useRef<string | null>(null);
   const initialized = useRef(false);
+
+  const rememberSavedActId = (actId: string) => {
+    savedActIdRef.current = actId;
+    setSavedActId(actId);
+  };
 
   const { subtotalAmount, afterRowDiscounts, totalAmount, discountValue } = useMemo(
     () => calcWorkActAmounts(items, discountType, Number(discount) || 0),
@@ -146,12 +153,13 @@ export function WorkActModal({
     setDiscount(String(act.discount ?? 0));
     setDiscountBearer(act.discountBearer ?? "shared");
     setNotes(act.notes ?? "");
-    setSavedActId(act.id);
+    rememberSavedActId(act.id);
   };
 
   useEffect(() => {
     if (!open) {
       initialized.current = false;
+      savedActIdRef.current = null;
       setSavedActId(null);
       return;
     }
@@ -175,6 +183,7 @@ export function WorkActModal({
     setDiscountType("percent");
     setDiscount("0");
     setDiscountBearer("shared");
+    savedActIdRef.current = null;
     setSavedActId(null);
 
     const mapDefault = (it: {
@@ -245,9 +254,10 @@ export function WorkActModal({
       return null;
     }
 
-    const actId = savedActId ?? generateId("act");
-    const actNumber = savedActId
-      ? (workActs.find((a) => a.id === savedActId)?.actNumber ?? getNextActNumber())
+    const existingId = savedActIdRef.current ?? savedActId;
+    const actId = existingId ?? generateId("act");
+    const actNumber = existingId
+      ? (workActs.find((a) => a.id === existingId)?.actNumber ?? getNextActNumber())
       : getNextActNumber();
 
     const act: WorkAct = {
@@ -270,36 +280,21 @@ export function WorkActModal({
       submittedToAdmin: submittedToAdmin ?? workActs.find((a) => a.id === actId)?.submittedToAdmin,
     };
 
-    if (savedActId) {
+    if (existingId) {
       updateWorkAct(actId, act);
       syncMedicalRecordForWorkAct(act);
-      setSavedActId(actId);
+      rememberSavedActId(actId);
       return act;
     } else {
       const invoiceId = generateId("inv");
       const actWithInvoice = { ...act, invoiceId };
       addWorkAct(actWithInvoice);
       addInvoice(createInvoiceFromWorkAct(actWithInvoice, invoiceId));
-      const servicesList = filledItems.map((i) => i.serviceName).join("; ");
-      addMedicalRecord({
-        id: generateId("mr"),
-        patientId,
-        doctorId,
-        appointmentId: defaultAppointmentId,
-        workActId: actId,
-        complaints: "По акту оказанных услуг",
-        diagnosis: "Оказаны стоматологические услуги",
-        treatment: servicesList,
-        recommendations: buildWorkActMedicalRecommendations({
-          actNumber,
-          actDate,
-          totalAmount,
-          notes: notes.trim() || undefined,
-        }),
-        createdAt: actDate,
-        serviceName: servicesList,
-      });
-      setSavedActId(actId);
+      const appointment = defaultAppointmentId
+        ? appointments.find((a) => a.id === defaultAppointmentId)
+        : undefined;
+      addMedicalRecord(buildMedicalRecordFromWorkAct(actWithInvoice, appointment));
+      rememberSavedActId(actId);
     }
 
     if (defaultAppointmentId) {
@@ -338,7 +333,11 @@ export function WorkActModal({
   };
 
   const handleGoToPayment = () => {
-    const actId = savedActId ?? persistAct()?.id;
+    const existingId = savedActIdRef.current;
+    const act = existingId
+      ? (workActs.find((a) => a.id === existingId) ?? persistAct())
+      : persistAct();
+    const actId = act?.id ?? savedActIdRef.current;
     if (!actId) return;
     onOpenChange(false);
     router.push(`/finance?tab=acts&payAct=${actId}`);
@@ -782,15 +781,7 @@ export function WorkActModal({
                 <Button variant="secondary" onClick={handleSaveAndPrint}>
                   Сохранить и печать
                 </Button>
-                <Button onClick={savedActId ? handleGoToPayment : () => {
-                  const act = persistAct();
-                  if (act) {
-                    toast.success(`Акт № ${act.actNumber} сохранён`);
-                    onOpenChange(false);
-                  }
-                }}>
-                  {savedActId ? "Перейти к оплате" : "Сохранить акт"}
-                </Button>
+                <Button onClick={handleGoToPayment}>Перейти к оплате</Button>
               </>
             )}
           </div>

@@ -16,6 +16,7 @@ services:
     restart: unless-stopped
 
   app:
+    image: emkaro-app
     build:
       context: .
       args:

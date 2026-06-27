@@ -26,53 +26,55 @@ else
   export DEPLOY_VERSION="unknown"
 fi
 
-echo ">>> Prebuilt path: npm ci + build in node:20-alpine (без Docker Hub)..."
-docker run --rm -v "$ROOT:/app" -w /app \
+log() {
+  echo ">>> [prebuilt $(date -u +%H:%M:%S)] $*"
+}
+
+if [ -f "$ROOT/.deploy-next-bundle" ] && [ -d "$ROOT/.next/standalone" ]; then
+  log "готовый .next из архива — npm на сервере пропущен"
+else
+  log "npm ci + next build в node:20-alpine (медленно; деплойте с Mac: bash scripts/deploy-to-server.sh)"
+  log "npm ci ~3–10 мин на VPS — ETIMEDOUT возможен"
+
+docker run --rm --network host -v "$ROOT:/app" -w /app \
   -e AUTH_SECRET="${AUTH_SECRET}" \
   -e APP_ROOT_DOMAIN="${APP_ROOT_DOMAIN:-emkaro.ru}" \
   -e NEXT_TELEMETRY_DISABLED=1 \
   -e NODE_OPTIONS=--max-old-space-size=2048 \
   node:20-alpine sh -c '
   set -e
-  # dl-cdn.alpinelinux.org часто падает по TLS на VPS — то же зеркало, что в Dockerfile
-  sed -i "s/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g" /etc/apk/repositories
-  if ! apk add --no-cache libc6-compat; then
-    echo "ПРЕДУПРЕЖДЕНИЕ: libc6-compat не установлен — пробуем сборку без него"
+  step() { echo ">>> [prebuilt $(date -u +%H:%M:%S)] $*"; }
+
+  # libc6-compat опционален; зеркало Aliyun на VPS часто падает — не блокируем сборку
+  step "optional: libc6-compat (apk, до 45 с)"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 45 apk add --no-cache libc6-compat 2>/dev/null || \
+      timeout 45 sh -c "sed -i \"s/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g\" /etc/apk/repositories && apk add --no-cache libc6-compat" 2>/dev/null || \
+      step "libc6-compat пропущен — продолжаем без него"
+  else
+    apk add --no-cache libc6-compat 2>/dev/null || step "libc6-compat пропущен"
   fi
+
   chmod +x scripts/fix-stale-routes.sh && sh scripts/fix-stale-routes.sh /app
+
+  step "npm ci"
   npm config set registry https://registry.npmmirror.com
-  npm config set fetch-retries 5
-  npm ci --no-audit --no-fund
+  npm config set fetch-retries 8
+  npm config set fetch-timeout 300000
+  npm config set fetch-retry-mintimeout 20000
+  npm config set fetch-retry-maxtimeout 300000
+  npm ci --no-audit --no-fund --prefer-offline 2>/dev/null || npm ci --no-audit --no-fund
   test -x node_modules/.bin/next || (echo "ERROR: next CLI missing after npm ci" && exit 1)
   test -n "$AUTH_SECRET" || (echo "ERROR: AUTH_SECRET required for build" && exit 1)
+
+  step "npm run build"
   npm run build
+  step "next build finished"
 '
 
 test -d "$ROOT/.next/standalone" || { echo "ОШИБКА: нет .next/standalone после build"; exit 1; }
-
-IGNORE_BACKUP=""
-if [ -f "$ROOT/.dockerignore" ]; then
-  cp "$ROOT/.dockerignore" "$ROOT/.dockerignore.bak"
-  IGNORE_BACKUP=1
-fi
-printf 'node_modules\n.git\nbackups\n.env\n.env.*\n' > "$ROOT/.dockerignore"
-
-echo ">>> docker build -f Dockerfile.prebuilt ..."
-docker build -f Dockerfile.prebuilt \
-  --build-arg CACHEBUST="${DEPLOY_VERSION}" \
-  -t emkaro-app \
-  "$ROOT"
-
-if [ -n "$IGNORE_BACKUP" ]; then
-  mv "$ROOT/.dockerignore.bak" "$ROOT/.dockerignore"
 fi
 
-COMPOSE_IMAGE="$(docker compose config --images app 2>/dev/null || true)"
-if [ -n "$COMPOSE_IMAGE" ] && [ "$COMPOSE_IMAGE" != "emkaro-app" ]; then
-  docker tag emkaro-app "$COMPOSE_IMAGE"
-  echo ">>> Образ помечен как $COMPOSE_IMAGE"
-fi
-
-echo ">>> Перезапуск app + caddy (без повторной сборки через Docker Hub)..."
-docker compose up -d --force-recreate --no-build app caddy
+log "docker image из .next/standalone"
+bash scripts/server-docker-prebuilt-image.sh
 echo "PREBUILT_OK"

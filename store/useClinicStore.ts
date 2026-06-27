@@ -83,6 +83,7 @@ import {
   type ClinicModules,
 } from "@/lib/modules";
 import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
+import { ensureMedicalRecordForWorkAct } from "@/lib/work-act-medical-record";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
   isWorkActAlreadyPaid,
@@ -745,15 +746,34 @@ export const useClinicStore = create<ClinicState>()(
         const act = state.workActs.find((a) => a.id === actId);
         if (!act) return false;
 
+        const appointment = act.appointmentId
+          ? state.appointments.find((a) => a.id === act.appointmentId)
+          : undefined;
+        const medicalSync = ensureMedicalRecordForWorkAct(
+          act,
+          state.medicalRecords,
+          appointment
+        );
+
+        const applyMedicalAndActPaid = (s: typeof state) => {
+          let workActs = s.workActs.map((a) => {
+            if (a.id !== actId) return a;
+            const next: WorkAct = { ...a, paymentStatus: "paid" as const };
+            if (medicalSync.actMedicalRecordId) {
+              next.medicalRecordId = medicalSync.actMedicalRecordId;
+            }
+            return next;
+          });
+          const paidAct = workActs.find((a) => a.id === actId)!;
+          return {
+            workActs,
+            medicalRecords: medicalSync.records,
+            appointments: syncAppointmentsAfterActPaid(s.appointments, paidAct),
+          };
+        };
+
         if (isWorkActAlreadyPaid(act, state.payments)) {
-          set((s) => ({
-            workActs: s.workActs.map((a) =>
-              a.id === actId && a.paymentStatus !== "paid"
-                ? { ...a, paymentStatus: "paid" as const }
-                : a
-            ),
-            appointments: syncAppointmentsAfterActPaid(s.appointments, act),
-          }));
+          set((s) => applyMedicalAndActPaid(s));
           scheduleClinicDataFlush();
           return true;
         }
@@ -776,9 +796,7 @@ export const useClinicStore = create<ClinicState>()(
         };
 
         set((s) => ({
-          workActs: s.workActs.map((a) =>
-            a.id === actId ? { ...a, paymentStatus: "paid" as const } : a
-          ),
+          ...applyMedicalAndActPaid(s),
           invoices: s.invoices.map((inv) => {
             const linked =
               inv.id === invoice?.id ||
@@ -802,7 +820,6 @@ export const useClinicStore = create<ClinicState>()(
                 }
               : p
           ),
-          appointments: syncAppointmentsAfterActPaid(s.appointments, act),
         }));
         scheduleClinicDataFlush();
         return true;
