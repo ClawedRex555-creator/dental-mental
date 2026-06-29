@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Payment, PaymentMethod, WorkAct } from "@/lib/types";
 import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
 import {
@@ -30,29 +30,19 @@ interface PayActDialogProps {
   onConfirm: (actId: string, method: PaymentMethod, amount: number) => void;
 }
 
-export function PayActDialog({
+function PayActDialogContent({
   act,
   payments,
-  open,
   onOpenChange,
   onConfirm,
-}: PayActDialogProps) {
+}: Omit<PayActDialogProps, "open" | "act"> & { act: WorkAct }) {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [mode, setMode] = useState<PayMode>("full");
   const [partialAmount, setPartialAmount] = useState("");
 
-  const isServiceAct = act?.actType !== "prepayment";
-  const paidSoFar = act ? getWorkActPaidAmount(payments, act.id) : 0;
-  const remaining = act ? getWorkActRemainingAmount(act, payments) : 0;
-
-  useEffect(() => {
-    if (!open) return;
-    setMethod("cash");
-    setMode("full");
-    setPartialAmount("");
-  }, [open, act?.id]);
-
-  if (!act) return null;
+  const isServiceAct = act.actType !== "prepayment";
+  const paidSoFar = getWorkActPaidAmount(payments, act.id);
+  const remaining = getWorkActRemainingAmount(act, payments);
 
   const payAmount =
     mode === "partial" && isServiceAct
@@ -60,8 +50,7 @@ export function PayActDialog({
       : remaining;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+    <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Оплата акта № {act.actNumber}</DialogTitle>
         </DialogHeader>
@@ -163,6 +152,27 @@ export function PayActDialog({
           </div>
         </div>
       </DialogContent>
+  );
+}
+
+export function PayActDialog({
+  act,
+  payments,
+  open,
+  onOpenChange,
+  onConfirm,
+}: PayActDialogProps) {
+  if (!act) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <PayActDialogContent
+        key={`${act.id}-${open}`}
+        act={act}
+        payments={payments}
+        onOpenChange={onOpenChange}
+        onConfirm={onConfirm}
+      />
     </Dialog>
   );
 }
