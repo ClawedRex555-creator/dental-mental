@@ -76,6 +76,12 @@ has_mac_bundle || {
   exit 1
 }
 
+if [ ! -f "$ROOT/.next/standalone/node_modules/next/package.json" ]; then
+  echo "ОШИБКА: в .next/standalone нет node_modules/next (архив собран с --exclude=node_modules)."
+  echo "  Пересоберите: bash scripts/deploy-to-server.sh"
+  exit 1
+fi
+
 echo ">>> Docker image из .next/standalone (~1 мин)..."
 bash scripts/server-docker-prebuilt-image.sh
 

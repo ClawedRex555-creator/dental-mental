@@ -34,10 +34,15 @@ bash "$ROOT/scripts/local-build-for-deploy.sh"
 echo ">>> Сборка архива..."
 cd "$ROOT"
 COPYFILE_DISABLE=1 tar --no-xattrs \
-  --exclude=node_modules --exclude=.git --exclude=.tools \
+  --exclude='^./node_modules$' --exclude=.git --exclude=.tools \
   --exclude=.next/cache \
   --exclude=.env --exclude='.env.*' --exclude=backups --exclude='*.tar.gz' \
   -czf "$ARCHIVE" .
+
+if ! tar -tzf "$ARCHIVE" | grep -qE '(^|\.)/\.next/standalone/node_modules/next/package\.json$'; then
+  echo "ОШИБКА: в архиве нет .next/standalone/node_modules/next — проверьте tar --exclude"
+  exit 1
+fi
 
 echo ">>> Очистка linux node_modules (для dev на Mac: npm ci)"
 rm -rf "$ROOT/node_modules"

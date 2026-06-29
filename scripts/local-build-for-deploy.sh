@@ -57,6 +57,10 @@ docker run --rm \
 test -d .next/standalone || { echo "ОШИБКА: нет .next/standalone"; exit 1; }
 test -d .next/static || { echo "ОШИБКА: нет .next/static"; exit 1; }
 test -f .next/standalone/server.js || { echo "ОШИБКА: нет .next/standalone/server.js"; exit 1; }
+test -f .next/standalone/node_modules/next/package.json || {
+  echo "ОШИБКА: нет .next/standalone/node_modules/next — standalone сборка неполная"
+  exit 1
+}
 
 if [ "$DEPLOY_TARGET_PLATFORM" = "linux/amd64" ]; then
   if find .next/standalone -path '*linuxmusl-arm64*' 2>/dev/null | grep -q .; then
