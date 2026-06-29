@@ -226,27 +226,20 @@ export function WorkActModal({
       setItems(defaultItems.map(mapDefault));
     } else if (defaultAppointmentId) {
       const apt = appointments.find((a) => a.id === defaultAppointmentId);
-      const svcById = apt?.serviceId
+      const svc = apt?.serviceId
         ? services.find((s) => s.id === apt.serviceId)
         : undefined;
-      const svcByReason =
-        !svcById && apt?.reason?.trim()
-          ? services.find(
-              (s) => s.name.trim().toLowerCase() === apt.reason!.trim().toLowerCase()
-            )
-          : undefined;
-      const svc = svcById ?? svcByReason;
-      if (apt) {
-        const normalized = svc ? normalizeServiceFields(svc) : null;
+      if (svc) {
+        const normalized = normalizeServiceFields(svc);
         setItems([
           {
             id: generateId("wai"),
-            serviceId: svc?.id,
-            serviceName: svc?.name ?? apt.reason ?? "Стоматологические услуги",
-            serviceCategory: normalized?.category,
+            serviceId: svc.id,
+            serviceName: svc.name,
+            serviceCategory: normalized.category,
             quantity: 1,
-            price: apt.price > 0 ? apt.price : (svc?.price ?? 0),
-            total: apt.price > 0 ? apt.price : (svc?.price ?? 0),
+            price: apt!.price > 0 ? apt!.price : svc.price,
+            total: apt!.price > 0 ? apt!.price : svc.price,
           },
         ]);
       } else {

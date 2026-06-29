@@ -9,6 +9,7 @@ import {
   patientsLostButAppointmentsRemain,
   repairMissingPatientsInSnapshot,
 } from "@/lib/patient-visits";
+import { filterPaymentsWithExistingWorkActs } from "@/lib/work-act-payment";
 import type {
   Appointment,
   Cabinet,
@@ -491,12 +492,38 @@ function mergeEntityArraysForSave<T extends { id: string }>(
   return incoming;
 }
 
+/** Убрать платежи/счета по удалённым актам после merge или удаления. */
+export function repairFinancialCoupling(
+  snapshot: ClinicPersistedState
+): ClinicPersistedState {
+  const actIds = new Set(snapshot.workActs.map((a) => a.id));
+  return {
+    ...snapshot,
+    payments: filterPaymentsWithExistingWorkActs(snapshot.payments, snapshot.workActs),
+    invoices: snapshot.invoices.filter(
+      (inv) => !inv.workActId || actIds.has(inv.workActId)
+    ),
+  };
+}
+
 /** merge с сервера: новые акты/оплаты с другого устройства не отбрасываются */
-function mergeFinancialEntityList<T extends { id: string }>(remote: T[], local: T[]): T[] {
-  if (hasEntityIdsNotInIncoming(remote, local)) {
-    return mergeByIdPreferLocal(remote, local);
+function mergeFinancialEntityList<T extends { id: string }>(client: T[], server: T[]): T[] {
+  const clientIds = new Set(client.map((x) => x.id));
+  const clientHasNewRows = hasEntityIdsNotInIncoming(client, server);
+  const serverHasRowsMissingOnClient = server.some((x) => !clientIds.has(x.id));
+
+  // Клиент удалил строки (в т.ч. заменил акты): не поднимать устаревшие id с сервера.
+  if (serverHasRowsMissingOnClient && (clientHasNewRows || client.length < server.length)) {
+    return mergeByIdPreferLocal(
+      server.filter((x) => clientIds.has(x.id)),
+      client
+    );
   }
-  return mergeByIdPreferLocalRespectingDeletions(remote, local);
+
+  if (clientHasNewRows) {
+    return mergeByIdPreferLocal(client, server);
+  }
+  return mergeByIdPreferLocalRespectingDeletions(client, server);
 }
 
 /** Слияние remote + local перед hydrate (загрузка с сервера) */
@@ -568,8 +595,9 @@ export function mergeClinicSnapshotWithLocal(
       local.assistantManualHours ?? {}
     ),
   };
-  if (!findOrphanPatientIds(merged).length) return merged;
-  return repairMissingPatientsInSnapshot(merged);
+  const repaired = repairFinancialCoupling(merged);
+  if (!findOrphanPatientIds(repaired).length) return repaired;
+  return repairMissingPatientsInSnapshot(repaired);
 }
 
 /** Перед записью в БД: не терять записи при урезанном снимке без явного удаления */
@@ -671,7 +699,7 @@ export function mergeClinicDataForSave(
   };
 
   if (!hasPatientDeletion) {
-    return repairMissingPatientsInSnapshot(merged);
+    return repairFinancialCoupling(repairMissingPatientsInSnapshot(merged));
   }
 
   // Жёстко применяем удаление пациента ко всем зависимым сущностям и зубам.
@@ -683,19 +711,21 @@ export function mergeClinicDataForSave(
     delete nextTeeth[id];
   }
 
-  return repairMissingPatientsInSnapshot({
-    ...merged,
-    appointments: filterByPatient(merged.appointments),
-    medicalRecords: filterByPatient(merged.medicalRecords),
-    treatmentPlans: filterByPatient(merged.treatmentPlans),
-    payments: filterByPatient(merged.payments),
-    invoices: filterByPatient(merged.invoices),
-    workActs: filterByPatient(merged.workActs),
-    prepayments: filterByPatient(merged.prepayments),
-    patientFiles: filterByPatient(merged.patientFiles),
-    patientNotes: filterByPatient(merged.patientNotes),
-    teethByPatient: nextTeeth,
-  });
+  return repairFinancialCoupling(
+    repairMissingPatientsInSnapshot({
+      ...merged,
+      appointments: filterByPatient(merged.appointments),
+      medicalRecords: filterByPatient(merged.medicalRecords),
+      treatmentPlans: filterByPatient(merged.treatmentPlans),
+      payments: filterByPatient(merged.payments),
+      invoices: filterByPatient(merged.invoices),
+      workActs: filterByPatient(merged.workActs),
+      prepayments: filterByPatient(merged.prepayments),
+      patientFiles: filterByPatient(merged.patientFiles),
+      patientNotes: filterByPatient(merged.patientNotes),
+      teethByPatient: nextTeeth,
+    })
+  );
 }
 
 /**

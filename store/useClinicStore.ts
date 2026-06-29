@@ -58,6 +58,7 @@ import {
   mergeClinicPatients,
   pickPersistedState,
   pickPersistedStateForStorage,
+  repairFinancialCoupling,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
@@ -869,7 +870,7 @@ export const useClinicStore = create<ClinicState>()(
           amount: payAmount,
           method,
           status: "paid",
-          date: format(new Date(), "yyyy-MM-dd"),
+          date: act.actDate,
           comment: fullyPaid
             ? `Оплата по акту ${act.actNumber}`
             : `Предоплата по акту ${act.actNumber}`,
@@ -1077,38 +1078,40 @@ export const useClinicStore = create<ClinicState>()(
           ),
         })),
 
-      replacePersistedState: (data) =>
+      replacePersistedState: (data) => {
+        const repaired = repairFinancialCoupling(data);
         set((s) => ({
-          doctors: data.doctors ?? [],
-          services: migrateServices(data.services ?? []),
-          cabinets: data.cabinets ?? [],
-          patients: data.patients ?? [],
-          appointments: data.appointments ?? [],
-          medicalRecords: data.medicalRecords ?? [],
-          treatmentPlans: data.treatmentPlans ?? [],
-          payments: data.payments ?? [],
-          invoices: data.invoices ?? [],
-          workActs: data.workActs ?? [],
-          actCounter: data.actCounter ?? 1,
-          warehouse: data.warehouse ?? [],
-          tasks: data.tasks ?? [],
-          onlineBookings: data.onlineBookings ?? [],
-          patientFiles: data.patientFiles ?? [],
-          patientNotes: data.patientNotes ?? [],
-          teethByPatient: data.teethByPatient ?? {},
-          clinicSettings: data.clinicSettings,
-          documentTemplates: data.documentTemplates ?? [],
-          clinicExpenses: data.clinicExpenses ?? [],
-          legalDocuments: data.legalDocuments ?? [],
-          doctorSchedules: data.doctorSchedules ?? [],
-          prepayments: data.prepayments ?? [],
-          assistantManualHours: normalizeAssistantManualHours(data.assistantManualHours),
+          doctors: repaired.doctors ?? [],
+          services: migrateServices(repaired.services ?? []),
+          cabinets: repaired.cabinets ?? [],
+          patients: repaired.patients ?? [],
+          appointments: repaired.appointments ?? [],
+          medicalRecords: repaired.medicalRecords ?? [],
+          treatmentPlans: repaired.treatmentPlans ?? [],
+          payments: repaired.payments ?? [],
+          invoices: repaired.invoices ?? [],
+          workActs: repaired.workActs ?? [],
+          actCounter: repaired.actCounter ?? 1,
+          warehouse: repaired.warehouse ?? [],
+          tasks: repaired.tasks ?? [],
+          onlineBookings: repaired.onlineBookings ?? [],
+          patientFiles: repaired.patientFiles ?? [],
+          patientNotes: repaired.patientNotes ?? [],
+          teethByPatient: repaired.teethByPatient ?? {},
+          clinicSettings: repaired.clinicSettings,
+          documentTemplates: repaired.documentTemplates ?? [],
+          clinicExpenses: repaired.clinicExpenses ?? [],
+          legalDocuments: repaired.legalDocuments ?? [],
+          doctorSchedules: repaired.doctorSchedules ?? [],
+          prepayments: repaired.prepayments ?? [],
+          assistantManualHours: normalizeAssistantManualHours(repaired.assistantManualHours),
           userThemePreferences: mergeThemePreferences(
-            data.userThemePreferences,
+            repaired.userThemePreferences,
             readThemePreferencesFromStorage(),
             s.userThemePreferences
           ),
-        })),
+        }));
+      },
 
       hydratePersistedState: (data) =>
         set((s) => ({

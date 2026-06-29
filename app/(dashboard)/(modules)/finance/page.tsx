@@ -20,6 +20,8 @@ import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip"
 import type { PaymentMethod, PaymentStatus, WorkAct } from "@/lib/types";
 import {
   getWorkActPaidAmount,
+  getPaymentReportingDate,
+  filterPaymentsWithExistingWorkActs,
   isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
 import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange } from "@/lib/finance-utils";
@@ -188,7 +190,14 @@ export default function FinancePage() {
     return d >= salaryRangeFrom && d <= salaryRangeTo;
   };
 
-  const periodPayments = payments.filter((p) => inPeriod(p.date));
+  const linkedPayments = useMemo(
+    () => filterPaymentsWithExistingWorkActs(payments, workActs),
+    [payments, workActs]
+  );
+
+  const periodPayments = linkedPayments.filter((p) =>
+    inPeriod(getPaymentReportingDate(p, workActs))
+  );
   const periodActs = workActs.filter((a) => inPeriod(a.actDate));
   const periodExpensesTotal = useMemo(
     () => sumClinicExpensesInRange(clinicExpenses, from, to),
@@ -237,8 +246,18 @@ export default function FinancePage() {
   );
 
   const salaryPeriodRevenue = useMemo(
-    () => sumPaidPaymentsInRange(payments, salaryRangeFrom, salaryRangeTo),
-    [payments, salaryRangeFrom, salaryRangeTo]
+    () =>
+      linkedPayments
+        .filter(
+          (p) =>
+            p.status === "paid" &&
+            (() => {
+              const d = new Date(getPaymentReportingDate(p, workActs));
+              return d >= salaryRangeFrom && d <= salaryRangeTo;
+            })()
+        )
+        .reduce((s, p) => s + p.amount, 0),
+    [linkedPayments, workActs, salaryRangeFrom, salaryRangeTo]
   );
 
   const salaryPeriodSalaries = useMemo(
@@ -1367,7 +1386,7 @@ export default function FinancePage() {
                       const patient = patients.find((p) => p.id === pay.patientId);
                       return (
                         <tr key={pay.id} className="border-b border-slate-50">
-                          <td className="px-4 py-3">{formatDate(pay.date)}</td>
+                          <td className="px-4 py-3">{formatDate(getPaymentReportingDate(pay, workActs))}</td>
                           <td className="px-4 py-3">
                             {patient
                               ? getFullName(

@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   getWorkActPaidAmount,
   getWorkActRemainingAmount,
+  getPaymentReportingDate,
+  filterPaymentsWithExistingWorkActs,
   isWorkActFullyPaid,
   resolvePatientBalanceAfterActPayment,
 } from "@/lib/work-act-payment";
@@ -46,5 +48,35 @@ describe("work-act-payment", () => {
     assert.equal(balance, -7000);
     balance = resolvePatientBalanceAfterActPayment(balance, 10000, 3000, 7000);
     assert.equal(balance, 0);
+  });
+
+  it("drops payments for deleted acts", () => {
+    const payments: Payment[] = [
+      {
+        id: "p1",
+        patientId: "pat-1",
+        workActId: "act-deleted",
+        amount: 5000,
+        method: "cash",
+        status: "paid",
+        date: "2026-06-29",
+      },
+    ];
+    assert.equal(filterPaymentsWithExistingWorkActs(payments, [act]).length, 0);
+  });
+
+  it("uses act date for reporting when payment date differs", () => {
+    const payments: Payment[] = [
+      {
+        id: "p1",
+        patientId: "pat-1",
+        workActId: "act-1",
+        amount: 10000,
+        method: "cash",
+        status: "paid",
+        date: "2026-06-29",
+      },
+    ];
+    assert.equal(getPaymentReportingDate(payments[0]!, [act]), "2026-06-27");
   });
 });

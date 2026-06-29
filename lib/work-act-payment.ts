@@ -31,3 +31,22 @@ export function resolvePatientBalanceAfterActPayment(
   const shouldApplyActDebt = alreadyPaid <= 0;
   return previousBalance + payAmount - (shouldApplyActDebt ? actTotal : 0);
 }
+
+/** Дата для отчётов: у платежа по акту — дата акта, иначе дата платежа. */
+export function getPaymentReportingDate(
+  payment: Payment,
+  workActs: WorkAct[]
+): string {
+  if (!payment.workActId) return payment.date;
+  const act = workActs.find((a) => a.id === payment.workActId);
+  return act?.actDate ?? payment.date;
+}
+
+/** Платежи без существующего акта (после удаления акта или сбоя sync). */
+export function filterPaymentsWithExistingWorkActs(
+  payments: Payment[],
+  workActs: WorkAct[]
+): Payment[] {
+  const actIds = new Set(workActs.map((a) => a.id));
+  return payments.filter((p) => !p.workActId || actIds.has(p.workActId));
+}
