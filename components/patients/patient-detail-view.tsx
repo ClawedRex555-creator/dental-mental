@@ -50,6 +50,7 @@ import { PatientNotesPanel } from "@/components/patients/patient-notes-panel";
 import { PatientVisitDetailDialog } from "@/components/patients/patient-visit-detail-dialog";
 import { WorkActModal } from "@/components/finance/work-act-modal";
 import { findMedicalRecordForAppointment, findWorkActForAppointment } from "@/lib/visit-work-act";
+import { isWorkActSyntheticVisit } from "@/lib/work-act-visit";
 import { printWorkAct } from "@/lib/work-act-print";
 import { getPatientDebtAmount } from "@/lib/patient-balance";
 
@@ -74,6 +75,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const [recordOpen, setRecordOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [prepayOpen, setPrepayOpen] = useState(false);
+  const [prepayPlan, setPrepayPlan] = useState<TreatmentPlan | null>(null);
   const [editPatientOpen, setEditPatientOpen] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Appointment | null>(null);
   const [visitDetailOpen, setVisitDetailOpen] = useState(false);
@@ -402,6 +404,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               patientAppointments.map((apt) => {
                 const doctor = doctors.find((d) => d.id === apt.doctorId);
                 const isOther = apt.isOtherClinicVisit;
+                const isActVisit = isWorkActSyntheticVisit(apt);
                 const visitAct = findWorkActForAppointment(apt, workActs, records);
                 return (
                   <button
@@ -412,7 +415,11 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                   >
                     <div className="min-w-0">
                       <p className="font-medium text-slate-900">
-                        {isOther ? "Визит в другой клинике (до нас)" : `${formatDate(apt.date)} ${apt.startTime}`}
+                        {isOther
+                          ? "Визит в другой клинике (до нас)"
+                          : isActVisit
+                            ? `Акт · ${formatDate(apt.date)}`
+                            : `${formatDate(apt.date)} ${apt.startTime}`}
                       </p>
                       <p className="text-slate-500">
                         {isOther
@@ -636,8 +643,13 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                     <ul className="text-slate-600">
                       {pre.items.map((it, i) => (
                         <li key={i} className="flex justify-between">
-                          <span>{it.serviceName}</span>
-                          <span>{formatCurrency(it.price)}</span>
+                          <span>
+                            {it.serviceName}
+                            {(it.quantity ?? 1) > 1 ? ` × ${it.quantity}` : ""}
+                          </span>
+                          <span>
+                            {formatCurrency(it.price * Math.max(1, it.quantity ?? 1))}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -778,11 +790,20 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
         }}
         plan={editingPlan}
         defaultPatientId={patient.id}
+        onRequestPrepayment={(plan) => {
+          setEditingPlan(null);
+          setPrepayPlan(plan);
+          setPrepayOpen(true);
+        }}
       />
       <PrepaymentModal
         open={prepayOpen}
-        onOpenChange={setPrepayOpen}
+        onOpenChange={(open) => {
+          setPrepayOpen(open);
+          if (!open) setPrepayPlan(null);
+        }}
         defaultPatientId={patient.id}
+        defaultTreatmentPlan={prepayPlan}
       />
       <PatientModal
         open={editPatientOpen}

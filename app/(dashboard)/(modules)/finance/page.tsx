@@ -17,7 +17,11 @@ import { WorkActModal } from "@/components/finance/work-act-modal";
 import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { PayActDialog } from "@/components/finance/pay-act-dialog";
 import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip";
-import type { PaymentMethod, WorkAct } from "@/lib/types";
+import type { PaymentMethod, PaymentStatus, WorkAct } from "@/lib/types";
+import {
+  getWorkActPaidAmount,
+  isWorkActFullyPaid,
+} from "@/lib/work-act-payment";
 import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange } from "@/lib/finance-utils";
 import { calcAssistantHoursInRange, normalizeAssistantManualHours } from "@/lib/assistant-hours";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
@@ -82,19 +86,23 @@ export default function FinancePage() {
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
   const searchParams = useSearchParams();
 
-  const getActPaymentStatus = (act: WorkAct) =>
-    act.paymentStatus ??
-    (invoices.some(
-      (inv) =>
-        inv.workActId === act.id &&
-        inv.status === "paid"
-    ) ||
-    invoices.some(
-      (inv) =>
-        inv.description.includes(act.actNumber) && inv.status === "paid"
-    )
-      ? "paid"
-      : "pending");
+  const getActPaymentStatus = (act: WorkAct): PaymentStatus => {
+    if (isWorkActFullyPaid(act, payments)) return "paid";
+    const paid = getWorkActPaidAmount(payments, act.id);
+    if (paid > 0 || act.paymentStatus === "partial") return "partial";
+    if (act.paymentStatus) return act.paymentStatus;
+    if (
+      invoices.some(
+        (inv) => inv.workActId === act.id && inv.status === "paid"
+      ) ||
+      invoices.some(
+        (inv) => inv.description.includes(act.actNumber) && inv.status === "paid"
+      )
+    ) {
+      return "paid";
+    }
+    return "pending";
+  };
 
   useEffect(() => {
     requestClinicDataPull({ force: true });
@@ -1176,8 +1184,15 @@ export default function FinancePage() {
                       <ul className="text-sm text-slate-700">
                         {pre.items.map((it, i) => (
                           <li key={i} className="flex justify-between gap-2">
-                            <span>{it.serviceName}</span>
-                            <span>{formatCurrency(it.price)}</span>
+                            <span>
+                              {it.serviceName}
+                              {(it.quantity ?? 1) > 1 ? ` × ${it.quantity}` : ""}
+                            </span>
+                            <span>
+                              {formatCurrency(
+                                it.price * Math.max(1, it.quantity ?? 1)
+                              )}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -1230,6 +1245,7 @@ export default function FinancePage() {
                     const patient = patients.find((p) => p.id === act.patientId);
                     const status = getActPaymentStatus(act);
                     const isPaid = status === "paid";
+                    const paidSoFar = getWorkActPaidAmount(payments, act.id);
                     const isPrepay = act.actType === "prepayment";
                     const prep = isPrepay
                       ? prepayments.find((p) => p.id === act.prepaymentId)
@@ -1257,6 +1273,11 @@ export default function FinancePage() {
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {formatCurrency(act.totalAmount)}
+                          {status === "partial" && paidSoFar > 0 && (
+                            <span className="block text-xs font-normal text-slate-500">
+                              внесено {formatCurrency(paidSoFar)}
+                            </span>
+                          )}
                           {isPrepay && act.plannedTotalAmount != null && (
                             <span className="block text-xs font-normal text-slate-500">
                               план {formatCurrency(act.plannedTotalAmount)}
@@ -1434,19 +1455,28 @@ export default function FinancePage() {
 
       <PayActDialog
         act={payAct}
+        payments={payments}
         open={!!payAct}
         onOpenChange={(open) => !open && setPayAct(null)}
-        onConfirm={(actId, method: PaymentMethod) => {
+        onConfirm={(actId, method: PaymentMethod, amount: number) => {
           const act = workActs.find((a) => a.id === actId);
           if (act && getActPaymentStatus(act) === "paid") {
-            if (payWorkAct(actId, method)) {
+            if (payWorkAct(actId, method, amount)) {
               toast.info("Акт уже был оплачен — статус приёма в расписании обновлён");
             }
             setPayAct(null);
             return;
           }
-          if (payWorkAct(actId, method)) {
-            toast.success("Акт отмечен как оплаченный");
+          if (payWorkAct(actId, method, amount)) {
+            const actRow = workActs.find((a) => a.id === actId);
+            const dueBefore = actRow
+              ? actRow.totalAmount - getWorkActPaidAmount(payments, actId)
+              : 0;
+            toast.success(
+              amount > 0 && amount < dueBefore
+                ? "Предоплата по акту внесена"
+                : "Акт отмечен как оплаченный"
+            );
             setPayAct(null);
           } else {
             toast.error("Не удалось провести оплату");

@@ -381,7 +381,7 @@ export interface WorkAct {
 export interface PatientPrepayment {
   id: string;
   patientId: string;
-  items: { serviceId?: string; serviceName: string; price: number }[];
+  items: { serviceId?: string; serviceName: string; price: number; quantity?: number }[];
   /** Сумма услуг до скидки */
   totalAmount: number;
   paidAmount: number;
