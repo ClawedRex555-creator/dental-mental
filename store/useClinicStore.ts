@@ -785,7 +785,7 @@ export const useClinicStore = create<ClinicState>()(
 
         const applyFullyPaidState = (
           s: typeof state,
-          medicalSync: ReturnType<typeof ensureMedicalRecordForWorkAct>
+          medicalSync: { records: MedicalRecord[]; actMedicalRecordId?: string }
         ) => {
           const workActs = s.workActs.map((a) => {
             if (a.id !== actId) return a;
@@ -893,7 +893,7 @@ export const useClinicStore = create<ClinicState>()(
           if (fullyPaid) {
             const full = applyFullyPaidState(
               { ...s, workActs, payments: paymentsNext },
-              medicalSync
+              ensureMedicalRecordForWorkAct(act, s.medicalRecords, appointment)
             );
             appointments = full.appointments;
             medicalRecords = full.medicalRecords;
