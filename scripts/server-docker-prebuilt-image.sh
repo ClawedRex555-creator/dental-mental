@@ -39,6 +39,36 @@ if [ -n "$IGNORE_BACKUP" ]; then
   mv "$ROOT/.dockerignore.bak" "$ROOT/.dockerignore"
 fi
 
+if [ -f "$ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/.env"
+  set +a
+fi
+
+echo ">>> Smoke: запуск server.js (до 8 сек)..."
+smoke_log="$(mktemp)"
+set +e
+timeout 8 docker run --rm \
+  -e NODE_ENV=production \
+  -e AUTH_SECRET="${AUTH_SECRET:?set AUTH_SECRET in .env}" \
+  -e PHI_ENCRYPTION_KEY="${PHI_ENCRYPTION_KEY:?set PHI_ENCRYPTION_KEY in .env}" \
+  -e ENABLE_DEMO_ACCOUNTS=false \
+  -e APP_ROOT_DOMAIN="${APP_ROOT_DOMAIN:?set APP_ROOT_DOMAIN in .env}" \
+  -e DATABASE_URL="postgresql://mis:${POSTGRES_PASSWORD:?}@127.0.0.1:5432/dentalcloud" \
+  -e DEPLOY_VERSION="${DEPLOY_VERSION}" \
+  emkaro-app node server.js >"$smoke_log" 2>&1
+smoke_rc=$?
+set -e
+if ! grep -qE 'Ready|Next\.js' "$smoke_log"; then
+  echo "ОШИБКА: образ не стартует (smoke test)."
+  tail -40 "$smoke_log"
+  rm -f "$smoke_log"
+  exit 1
+fi
+echo "Smoke OK"
+rm -f "$smoke_log"
+
 echo ">>> docker compose up --no-build app caddy"
 docker compose up -d --force-recreate --no-build app caddy
 echo "PREBUILT_IMAGE_OK"

@@ -82,11 +82,55 @@ bash scripts/server-docker-prebuilt-image.sh
 echo ">>> Статус:"
 docker compose ps
 
-health="$(docker compose exec -T app sh -c 'wget -qO- http://127.0.0.1:3000/api/health 2>/dev/null' || echo '{}')"
-if ! echo "$health" | grep -q 'patientAppointmentSearch'; then
-  echo "ОШИБКА: старый bundle. /api/health: $health"
+fetch_app_health() {
+  docker compose exec -T app node -e "
+    fetch('http://127.0.0.1:3000/api/health')
+      .then((r) => r.text())
+      .then((t) => process.stdout.write(t))
+      .catch(() => process.exit(1));
+  " 2>/dev/null || echo '{}'
+}
+
+if docker compose ps app 2>/dev/null | grep -qE 'Restarting|Exit'; then
+  echo "ОШИБКА: контейнер app не запущен (crash loop или exit)."
+  if [ -f "$ROOT/.deploy-next-bundle" ]; then
+    echo ">>> Bundle:"
+    cat "$ROOT/.deploy-next-bundle"
+  fi
+  echo ">>> uname на сервере: $(uname -m)"
+  echo ">>> Логи app:"
+  docker compose logs app --tail 100 || true
   exit 1
 fi
-echo "OK: новый bundle"
 
-echo "Готово. Бэкап: $ROOT/backups/"
+health="{}"
+health_ok=0
+for _ in $(seq 1 30); do
+  health="$(fetch_app_health)"
+  if echo "$health" | grep -q 'patientAppointmentSearch'; then
+    health_ok=1
+    break
+  fi
+  if docker compose ps app 2>/dev/null | grep -qE 'Restarting|Exit'; then
+    break
+  fi
+  sleep 2
+done
+
+if [ "$health_ok" = 1 ]; then
+  echo "OK: новый bundle"
+  echo ">>> /api/health: $health"
+  echo "Готово. Бэкап: $ROOT/backups/"
+  exit 0
+fi
+
+echo "ОШИБКА: /api/health не отвечает или старый bundle."
+echo ">>> /api/health: $health"
+if [ -f "$ROOT/.deploy-next-bundle" ]; then
+  echo ">>> Bundle:"
+  cat "$ROOT/.deploy-next-bundle"
+fi
+echo ">>> uname на сервере: $(uname -m)"
+echo ">>> Логи app:"
+docker compose logs app --tail 100 || true
+exit 1

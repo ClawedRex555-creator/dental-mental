@@ -55,12 +55,22 @@ echo ">>> Загрузка на $SERVER:/opt/ ..."
 scp "${SSH_OPTS[@]}" "$ARCHIVE" "$SERVER:/opt/"
 
 echo ">>> Обновление на сервере..."
-ssh "${SSH_OPTS[@]}" "$SERVER" bash -s <<'REMOTE'
+if ! ssh "${SSH_OPTS[@]}" "$SERVER" bash -s <<'REMOTE'
 set -euo pipefail
 cd /opt/emkaro
-bash scripts/server-update.sh /opt/emkaro-update.tar.gz
+if ! bash scripts/server-update.sh /opt/emkaro-update.tar.gz; then
+  echo ""
+  echo "=== Логи app (после ошибки server-update) ==="
+  docker compose logs app --tail 120 2>/dev/null || true
+  exit 1
+fi
 bash scripts/apply-migrations.sh
 REMOTE
+then
+  echo ""
+  echo "Деплой не завершён. На сервере: cd /opt/emkaro && docker compose logs app --tail 120"
+  exit 1
+fi
 
 echo ""
 bash "$ROOT/scripts/check-server-version.sh" "https://demo.emkaro.ru" || true
