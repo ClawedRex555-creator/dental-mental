@@ -18,6 +18,10 @@ import {
 } from "@/lib/work-act-utils";
 import { buildMedicalRecordFromWorkAct } from "@/lib/work-act-medical-record";
 import { printWorkAct } from "@/lib/work-act-print";
+import {
+  getWorkActPaidAmount,
+  isWorkActFullyPaid,
+} from "@/lib/work-act-payment";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
@@ -72,6 +76,7 @@ export function WorkActModal({
     services,
     clinicSettings,
     workActs,
+    payments,
     addWorkAct,
     updateWorkAct,
     addInvoice,
@@ -88,6 +93,16 @@ export function WorkActModal({
   const existingAct = existingActId
     ? workActs.find((a) => a.id === existingActId)
     : undefined;
+
+  const existingActFullyPaid = useMemo(
+    () => (existingAct ? isWorkActFullyPaid(existingAct, payments) : false),
+    [existingAct, payments]
+  );
+  const existingActPaidAmount = existingAct
+    ? getWorkActPaidAmount(payments, existingAct.id)
+    : 0;
+  const existingActPartiallyPaid =
+    Boolean(existingAct) && !existingActFullyPaid && existingActPaidAmount > 0;
 
   const canDeleteAct = canDeleteWorkActs(currentUser.role) && Boolean(existingAct);
 
@@ -362,7 +377,13 @@ export function WorkActModal({
     mode === "doctor"
       ? "Акт оказанных услуг — заполнение врачом"
       : mode === "admin_view"
-        ? `Акт № ${existingAct?.actNumber ?? ""} (готов к оплате)`
+        ? `Акт № ${existingAct?.actNumber ?? ""} (${
+            existingActFullyPaid
+              ? "оплачен"
+              : existingActPartiallyPaid
+                ? "частично оплачен"
+                : "готов к оплате"
+          })`
         : "Акт оказанных услуг (РФ)";
 
   return (
@@ -372,9 +393,14 @@ export function WorkActModal({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {mode === "admin_view" && (
+          {mode === "admin_view" && !existingActFullyPaid && (
             <p className="text-sm text-slate-600">
               Акт заполнен врачом. Проверьте услуги и перейдите к оплате.
+            </p>
+          )}
+          {mode === "admin_view" && existingActFullyPaid && (
+            <p className="text-sm text-emerald-700">
+              Акт оплачен. Можно распечатать или закрыть окно.
             </p>
           )}
           {mode === "doctor" && (
@@ -784,15 +810,17 @@ export function WorkActModal({
                 >
                   Печать
                 </Button>
-                <Button onClick={() => router.push(`/finance?tab=acts&payAct=${existingAct.id}`)}>
-                  Перейти к оплате
-                </Button>
+                {!existingActFullyPaid && (
+                  <Button onClick={() => router.push(`/finance?tab=acts&payAct=${existingAct.id}`)}>
+                    Перейти к оплате
+                  </Button>
+                )}
                 {canDeleteAct && (
                   <Button
                     variant="outline"
                     className="border-red-200 text-red-700 hover:bg-red-50"
                     onClick={() => {
-                      const paid = existingAct.paymentStatus === "paid";
+                      const paid = existingActFullyPaid;
                       if (
                         !window.confirm(
                           paid
