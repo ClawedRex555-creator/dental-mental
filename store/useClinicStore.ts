@@ -338,14 +338,16 @@ export const useClinicStore = create<ClinicState>()(
         });
       },
 
-      updateClinicSettings: (data) =>
+      updateClinicSettings: (data) => {
         set((s) => {
           const next = { ...s.clinicSettings, ...data };
           if (data.weeklySchedule) {
             next.workHours = formatWeeklyScheduleSummary(data.weeklySchedule);
           }
           return { clinicSettings: next };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       updateCurrentUser: (data) =>
         set((s) => ({
@@ -372,7 +374,7 @@ export const useClinicStore = create<ClinicState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
-      addDoctor: (doctor) =>
+      addDoctor: (doctor) => {
         set((s) => {
           const schedules = s.doctorSchedules ?? [];
           const mk = monthKey();
@@ -391,16 +393,20 @@ export const useClinicStore = create<ClinicState>()(
               ? [scheduleEntry, ...schedules]
               : schedules,
           };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       setDoctors: (doctors) => set({ doctors }),
 
-      updateDoctor: (id, data) =>
+      updateDoctor: (id, data) => {
         set((s) => ({
           doctors: s.doctors.map((d) => (d.id === id ? { ...d, ...data } : d)),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
-      removeDoctor: (id) =>
+      removeDoctor: (id) => {
         set((s) => {
           const schedules = s.doctorSchedules ?? [];
           return {
@@ -426,7 +432,9 @@ export const useClinicStore = create<ClinicState>()(
             act.doctorId === id ? { ...act, doctorId: undefined } : act
           ),
           };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       addCabinet: (cabinet) =>
         set((s) => ({ cabinets: [cabinet, ...s.cabinets] })),
@@ -501,6 +509,7 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({
           services: [normalizeServiceFields(service), ...s.services],
         }));
+        scheduleClinicDataFlush();
       },
 
       updateService: (id, data) => {
@@ -510,6 +519,7 @@ export const useClinicStore = create<ClinicState>()(
             svc.id === id ? normalizeServiceFields({ ...svc, ...data }) : svc
           ),
         }));
+        scheduleClinicDataFlush();
       },
 
       removeService: (id) => {
@@ -517,6 +527,7 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({
           services: s.services.filter((svc) => svc.id !== id),
         }));
+        scheduleClinicDataFlush();
       },
 
       addPatient: (patient) => {
@@ -638,15 +649,19 @@ export const useClinicStore = create<ClinicState>()(
         return true;
       },
 
-      addTreatmentPlan: (plan) =>
-        set((s) => ({ treatmentPlans: [plan, ...s.treatmentPlans] })),
+      addTreatmentPlan: (plan) => {
+        set((s) => ({ treatmentPlans: [plan, ...s.treatmentPlans] }));
+        scheduleClinicDataFlush();
+      },
 
-      updateTreatmentPlan: (id, data) =>
+      updateTreatmentPlan: (id, data) => {
         set((s) => ({
           treatmentPlans: s.treatmentPlans.map((p) =>
             p.id === id ? { ...p, ...data } : p
           ),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
       deleteTreatmentPlan: (id) => {
         if (!get().treatmentPlans.some((p) => p.id === id)) return false;
@@ -657,6 +672,7 @@ export const useClinicStore = create<ClinicState>()(
             (n) => n.sourceTreatmentPlanId !== id && n.id !== linkedNoteId
           ),
         }));
+        scheduleClinicDataFlush();
         return true;
       },
 
@@ -730,20 +746,8 @@ export const useClinicStore = create<ClinicState>()(
       addPrepayment: (prepayment) => {
         set((s) => {
           const prepayments = s.prepayments ?? [];
-          const patient = s.patients.find((p) => p.id === prepayment.patientId);
-          const debt = prepayment.remainingAmount;
-          const newBalance = (patient?.balance ?? 0) - debt;
           return {
             prepayments: [prepayment, ...prepayments],
-            patients: s.patients.map((p) =>
-              p.id === prepayment.patientId
-                ? {
-                    ...p,
-                    balance: newBalance,
-                    status: newBalance < 0 ? ("debtor" as const) : p.status,
-                  }
-                : p
-            ),
           };
         });
         scheduleClinicDataFlush();

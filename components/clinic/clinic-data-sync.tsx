@@ -56,7 +56,7 @@ import { useClinicStore } from "@/store/useClinicStore";
 const SAVE_DEBOUNCE_MS = 400;
 const PERIODIC_FLUSH_MS = 60_000;
 /** Лёгкий опрос meta (только updatedAt) — полный snapshot только при изменениях */
-const PERIODIC_PULL_MS = 4_000;
+const PERIODIC_PULL_MS = 10_000;
 
 function syncErrorMessage(error: unknown): string {
   if (error instanceof FetchTimeoutError) return error.message;
@@ -79,6 +79,7 @@ export function ClinicDataSync() {
   const syncForbidden = useRef(false);
   const canWrite = useRef(false);
   const saving = useRef(false);
+  const pulling = useRef(false);
   /** replacePersistedState синхронно дергает subscribe — не считать это правкой пользователя */
   const suppressPersistedChange = useRef(false);
   const lastSavedJson = useRef("");
@@ -89,6 +90,7 @@ export function ClinicDataSync() {
   const flushAfterBaseline = useRef(false);
   const pendingFlushAfterSave = useRef(false);
   const pendingPullAfterSave = useRef(false);
+  const pendingPullAfterPull = useRef(false);
   /** Снимок для подписки — без clinicDataUnsaved, иначе бесконечный subscribe */
   const lastTrackedSnap = useRef("");
 
@@ -196,11 +198,16 @@ export function ClinicDataSync() {
       force?: boolean;
       allowApplyDespitePending?: boolean;
     }) => {
+      if (pulling.current) {
+        pendingPullAfterPull.current = true;
+        return;
+      }
       if (!syncReady.current || syncForbidden.current) return;
       if (saving.current) {
         pendingPullAfterSave.current = true;
         return;
       }
+      pulling.current = true;
 
       try {
         if (!options?.force && lastServerUpdatedAt.current) {
@@ -236,6 +243,12 @@ export function ClinicDataSync() {
         applyRemoteSnapshot(remote.data, remote.updatedAt);
       } catch {
         /* ignore background refresh */
+      } finally {
+        pulling.current = false;
+        if (pendingPullAfterPull.current) {
+          pendingPullAfterPull.current = false;
+          void pullRemoteSnapshot();
+        }
       }
     };
 
@@ -352,6 +365,7 @@ export function ClinicDataSync() {
           pendingPullAfterSave.current = false;
           void pullRemoteSnapshot();
         } else if (saveResult?.ok && saveResult.merged) {
+          toast.info("Данные объединены с сервером — проверьте изменения");
           void pullRemoteSnapshot({ force: true });
         }
       }

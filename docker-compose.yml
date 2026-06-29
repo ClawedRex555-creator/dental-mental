@@ -1,6 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       POSTGRES_USER: mis
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -16,13 +21,18 @@ services:
     restart: unless-stopped
 
   app:
-    image: emkaro-app
+    image: emkaro-app:${EMKARO_IMAGE_TAG:-latest}
     build:
       context: .
       args:
         APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
         AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
         CACHEBUST: ${DEPLOY_VERSION:-unknown}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       NODE_ENV: production
       DEPLOY_VERSION: ${DEPLOY_VERSION:-unknown}
@@ -61,6 +71,11 @@ services:
 
   caddy:
     image: caddy:2-alpine
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "80:80"
       - "443:443"

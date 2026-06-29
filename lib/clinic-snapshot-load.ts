@@ -107,6 +107,16 @@ function serverEntityListChanged<T extends { id: string }>(
   );
 }
 
+function objectKeysChanged(
+  remote: Record<string, unknown>,
+  baseline: Record<string, unknown>
+): boolean {
+  const remoteKeys = Object.keys(remote);
+  const baselineKeys = Object.keys(baseline);
+  if (remoteKeys.length !== baselineKeys.length) return true;
+  return remoteKeys.some((key) => !(key in baseline));
+}
+
 /** Есть ли на сервере изменения относительно последнего известного снимка (не текущих правок вкладки) */
 export function serverSnapshotHasIncomingUpdates(
   remote: ClinicPersistedState,
@@ -130,6 +140,20 @@ export function serverSnapshotHasIncomingUpdates(
   if (serverEntityListChanged(remote.patientFiles, baseline.patientFiles)) return true;
   if (serverEntityListChanged(remote.tasks, baseline.tasks)) return true;
   if (serverEntityListChanged(remote.warehouse, baseline.warehouse)) return true;
+  if (serverEntityListChanged(remote.legalDocuments, baseline.legalDocuments)) return true;
+  if (serverEntityListChanged(remote.documentTemplates, baseline.documentTemplates)) return true;
+  if (
+    JSON.stringify(remote.assistantManualHours) !==
+    JSON.stringify(baseline.assistantManualHours)
+  ) {
+    return true;
+  }
+  if (objectKeysChanged(remote.teethByPatient, baseline.teethByPatient)) return true;
+  if (
+    JSON.stringify(remote.clinicSettings) !== JSON.stringify(baseline.clinicSettings)
+  ) {
+    return true;
+  }
   return false;
 }
 

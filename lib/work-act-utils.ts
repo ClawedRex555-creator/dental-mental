@@ -14,6 +14,11 @@ export function calcWorkActLine(item: WorkActItem): WorkActLineCalc {
   return { sum, discountPercent, totalAfterDiscount };
 }
 
+/** Строка акта с названием и суммой (в т.ч. без serviceId — предоплата, приём без прайса). */
+export function isWorkActLineFilled(item: WorkActItem): boolean {
+  return Boolean(item.serviceName?.trim()) && ((item.price ?? 0) > 0 || (item.quantity ?? 0) > 0);
+}
+
 export function calcWorkActAmounts(
   items: WorkActItem[],
   discountType: DiscountType = "rubles",

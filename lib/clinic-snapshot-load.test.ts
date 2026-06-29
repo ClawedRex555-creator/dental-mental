@@ -225,4 +225,44 @@ describe("clinic-snapshot-load", () => {
     ];
     assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
   });
+
+  it("serverSnapshotHasIncomingUpdates detects new phase-1 sync fields", () => {
+    const baseline = createFreshPersistedState();
+    const remote = createFreshPersistedState();
+
+    remote.legalDocuments = [
+      {
+        id: "ld1",
+        category: "policy",
+        title: "Политика",
+        date: "2026-06-22",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+
+    const remoteTemplate = createFreshPersistedState();
+    remoteTemplate.documentTemplates = [
+      {
+        id: "tpl1",
+        name: "Согласие",
+        category: "consent",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteTemplate, baseline), true);
+
+    const remoteHours = createFreshPersistedState();
+    remoteHours.assistantManualHours = { a1: { "2026-06-22": "4" } };
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteHours, baseline), true);
+
+    const remoteTeethKeys = createFreshPersistedState();
+    remoteTeethKeys.teethByPatient = { p1: [] };
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteTeethKeys, baseline), true);
+
+    const remoteSettings = createFreshPersistedState();
+    remoteSettings.clinicSettings = {
+      ...baseline.clinicSettings,
+      workHours: "Пн-Пт 09:00-18:00",
+    };
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteSettings, baseline), true);
+  });
 });

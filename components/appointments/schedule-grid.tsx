@@ -11,18 +11,25 @@ import {
   SCHEDULE_DAY_START,
   SCHEDULE_DAY_END,
 } from "@/lib/appointment-utils";
-import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_LABELS } from "@/lib/constants";
+import {
+  getScheduleAppointmentCellClass,
+  getScheduleAppointmentStatusLabel,
+  resolveAppointmentWorkAct,
+} from "@/lib/appointment-schedule-display";
 import { getDoctorHoursForDate } from "@/lib/clinic-schedule";
-import type { Appointment, Doctor, DoctorMonthSchedule, Patient } from "@/lib/types";
+import type { Appointment, Doctor, DoctorMonthSchedule, Patient, Payment, WorkAct } from "@/lib/types";
 
 interface ScheduleGridProps {
   days: Date[];
   doctors: Doctor[];
   appointments: Appointment[];
   patients: Patient[];
+  workActs?: WorkAct[];
+  payments?: Payment[];
   doctorSchedules?: DoctorMonthSchedule[];
   onSlotClick: (date: string, time: string, doctorId: string) => void;
   onAppointmentClick: (apt: Appointment) => void;
+  onActClick?: (actId: string) => void;
 }
 
 export function ScheduleGrid({
@@ -30,9 +37,12 @@ export function ScheduleGrid({
   doctors,
   appointments,
   patients,
+  workActs = [],
+  payments = [],
   doctorSchedules = [],
   onSlotClick,
   onAppointmentClick,
+  onActClick,
 }: ScheduleGridProps) {
   const slots = generateTimeSlots();
   const cols = doctors.length > 0 ? doctors : [{ id: "_none", name: "Без врача" } as Doctor];
@@ -173,6 +183,20 @@ export function ScheduleGrid({
                           patient.middleName
                         )
                       : "Карточка не найдена";
+                    const linkedAct = resolveAppointmentWorkAct(apt, workActs);
+                    const statusLabel = getScheduleAppointmentStatusLabel(
+                      apt,
+                      linkedAct,
+                      payments
+                    );
+                    const cellTitle = [
+                      `${apt.startTime}–${apt.endTime}`,
+                      apt.complaints ?? apt.reason,
+                      linkedAct ? `Акт № ${linkedAct.actNumber}` : undefined,
+                      statusLabel,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
                     return (
                       <td
                         key={`${dateStr}-${doc.id}-${slot}`}
@@ -182,23 +206,34 @@ export function ScheduleGrid({
                           backgroundColor: "var(--schedule-cell-bg)",
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => onAppointmentClick(apt)}
+                        <div
                           className={cn(
                             "min-h-[52px] w-full rounded-md px-2 py-1.5 text-left text-sm leading-snug",
-                            APPOINTMENT_STATUS_COLORS[apt.status]
+                            getScheduleAppointmentCellClass(apt, linkedAct, payments)
                           )}
-                          title={`${apt.startTime}–${apt.endTime} · ${apt.complaints ?? apt.reason}`}
+                          title={cellTitle}
                         >
-                          <span className="block text-xs font-medium opacity-90">
-                            {apt.startTime}–{apt.endTime}
-                          </span>
-                          <span className="block truncate font-semibold">{patientName}</span>
-                          <span className="block truncate text-xs opacity-85">
-                            {APPOINTMENT_STATUS_LABELS[apt.status]}
-                          </span>
-                        </button>
+                          <button
+                            type="button"
+                            className="w-full text-left"
+                            onClick={() => onAppointmentClick(apt)}
+                          >
+                            <span className="block text-xs font-medium opacity-90">
+                              {apt.startTime}–{apt.endTime}
+                            </span>
+                            <span className="block truncate font-semibold">{patientName}</span>
+                            <span className="block truncate text-xs opacity-85">{statusLabel}</span>
+                          </button>
+                          {linkedAct && (
+                            <button
+                              type="button"
+                              className="mt-0.5 block w-full truncate text-left text-xs font-semibold text-emerald-800 underline decoration-emerald-600/60 underline-offset-2 hover:text-emerald-950"
+                              onClick={() => onActClick?.(linkedAct.id)}
+                            >
+                              Акт № {linkedAct.actNumber}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     );
                   }

@@ -14,6 +14,7 @@ import {
   buildWorkActMedicalRecommendations,
   calcWorkActAmounts,
   getWorkActCustomerName,
+  isWorkActLineFilled,
 } from "@/lib/work-act-utils";
 import { buildMedicalRecordFromWorkAct } from "@/lib/work-act-medical-record";
 import { printWorkAct } from "@/lib/work-act-print";
@@ -106,6 +107,8 @@ export function WorkActModal({
     savedActIdRef.current = actId;
     setSavedActId(actId);
   };
+
+  const visibleItems = useMemo(() => items.filter(isWorkActLineFilled), [items]);
 
   const { subtotalAmount, afterRowDiscounts, totalAmount, discountValue } = useMemo(
     () => calcWorkActAmounts(items, discountType, Number(discount) || 0),
@@ -208,7 +211,16 @@ export function WorkActModal({
       setItems(defaultItems.map(mapDefault));
     } else if (defaultAppointmentId) {
       const apt = appointments.find((a) => a.id === defaultAppointmentId);
-      const svc = apt ? services.find((s) => s.id === apt.serviceId) : undefined;
+      const svcById = apt?.serviceId
+        ? services.find((s) => s.id === apt.serviceId)
+        : undefined;
+      const svcByReason =
+        !svcById && apt?.reason?.trim()
+          ? services.find(
+              (s) => s.name.trim().toLowerCase() === apt.reason!.trim().toLowerCase()
+            )
+          : undefined;
+      const svc = svcById ?? svcByReason;
       if (apt) {
         const normalized = svc ? normalizeServiceFields(svc) : null;
         setItems([
@@ -218,8 +230,8 @@ export function WorkActModal({
             serviceName: svc?.name ?? apt.reason ?? "Стоматологические услуги",
             serviceCategory: normalized?.category,
             quantity: 1,
-            price: apt.price,
-            total: apt.price,
+            price: apt.price > 0 ? apt.price : (svc?.price ?? 0),
+            total: apt.price > 0 ? apt.price : (svc?.price ?? 0),
           },
         ]);
       } else {
@@ -243,7 +255,7 @@ export function WorkActModal({
 
   const persistAct = (submittedToAdmin?: boolean): WorkAct | null => {
     const filledItems = items
-      .filter((i) => i.serviceId && i.serviceName.trim())
+      .filter(isWorkActLineFilled)
       .map((i) => {
         const quantity = Math.max(1, i.quantity || 1);
         return {
@@ -253,7 +265,7 @@ export function WorkActModal({
         };
       });
     if (!patientId || !doctorId || filledItems.length === 0) {
-      toast.error("Укажите пациента, врача и услуги из прайса");
+      toast.error("Укажите пациента, врача и услуги");
       return null;
     }
 
@@ -493,7 +505,7 @@ export function WorkActModal({
               </div>
             )}
 
-            {items.some((i) => i.serviceId) && (
+            {visibleItems.length > 0 && (
               <div className="grid grid-cols-12 gap-2 px-1 text-xs font-medium text-[var(--muted)]">
                 <span className="col-span-3">Услуга</span>
                 <span className="col-span-2 text-center">Зуб №</span>
@@ -503,15 +515,18 @@ export function WorkActModal({
                 <span className="col-span-2" />
               </div>
             )}
-            {items
-              .filter((item) => item.serviceId)
-              .map((item) => (
+            {visibleItems.map((item) => (
               <div
                 key={item.id}
                 className="grid grid-cols-12 gap-2 items-center border-t border-[var(--border)] pt-3"
               >
                 <div className="col-span-3 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
                   {item.serviceName}
+                  {!item.serviceId && !readOnly && (
+                    <span className="mt-0.5 block text-xs font-normal text-amber-700">
+                      Не из прайса — замените услугу при необходимости
+                    </span>
+                  )}
                 </div>
                 <div className="col-span-2">
                   {readOnly ? (
@@ -651,7 +666,7 @@ export function WorkActModal({
                 )}
               </div>
             ))}
-            {!readOnly && !items.some((i) => i.serviceId) && (
+            {!readOnly && visibleItems.length === 0 && (
               <p className="text-sm text-slate-500">Добавьте услуги из прайса клиники</p>
             )}
           </div>

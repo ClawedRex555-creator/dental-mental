@@ -8,10 +8,8 @@ export function normalizeAuthLogin(login: string): string {
   return login.trim().toLowerCase();
 }
 
-export function authLoginTakenError(clinicSlug: string): Error {
-  return new Error(
-    `Этот email уже зарегистрирован в системе (клиника «${clinicSlug}»). Используйте другой адрес.`
-  );
+export function authLoginTakenError(_clinicSlug: string): Error {
+  return new Error("Этот email уже зарегистрирован в системе. Используйте другой адрес.");
 }
 
 /** Email занят другой учёткой (любая клиника) */

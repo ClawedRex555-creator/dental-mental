@@ -31,21 +31,27 @@ echo "$BRANCH $COMMIT $(date -u +%Y-%m-%dT%H:%MZ)" > "$ROOT/.deploy-version"
 
 bash "$ROOT/scripts/local-build-for-deploy.sh"
 
+echo ">>> Удаление корневого node_modules (linux из Docker; для dev на Mac потом: npm ci)..."
+rm -rf "$ROOT/node_modules"
+
 echo ">>> Сборка архива..."
 cd "$ROOT"
+# Не используем --exclude=node_modules: на macOS bsdtar режет ВСЕ node_modules, включая .next/standalone/
 COPYFILE_DISABLE=1 tar --no-xattrs \
-  --exclude='^./node_modules$' --exclude=.git --exclude=.tools \
+  --exclude=.git --exclude=.tools \
   --exclude=.next/cache \
   --exclude=.env --exclude='.env.*' --exclude=backups --exclude='*.tar.gz' \
   -czf "$ARCHIVE" .
 
-if ! tar -tzf "$ARCHIVE" | grep -qE '(^|\.)/\.next/standalone/node_modules/next/package\.json$'; then
-  echo "ОШИБКА: в архиве нет .next/standalone/node_modules/next — проверьте tar --exclude"
+if tar -tzf "$ARCHIVE" | grep -qE '^./node_modules/'; then
+  echo "ОШИБКА: в архив попал корневой ./node_modules/ — проверьте tar --exclude"
   exit 1
 fi
 
-echo ">>> Очистка linux node_modules (для dev на Mac: npm ci)"
-rm -rf "$ROOT/node_modules"
+if ! tar -tzf "$ARCHIVE" | grep -qE '^(\./)?\.next/standalone/node_modules/next/package\.json$'; then
+  echo "ОШИБКА: в архиве нет .next/standalone/node_modules/next — проверьте сборку standalone"
+  exit 1
+fi
 
 if [ "$PACK_ONLY" = "1" ]; then
   echo ""
@@ -78,5 +84,5 @@ then
 fi
 
 echo ""
-bash "$ROOT/scripts/check-server-version.sh" "https://demo.emkaro.ru" || true
+bash "$ROOT/scripts/check-server-version.sh" "https://demo.emkaro.ru" "$COMMIT" || true
 echo "Готово."

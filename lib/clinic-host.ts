@@ -91,7 +91,8 @@ export function clinicSlugMismatch(
   sessionSlug: string | undefined,
   hostHeader: string | null
 ): boolean {
+  if (!sessionSlug) return false;
   const hostSlug = parseClinicSlugFromHost(hostHeader);
-  if (!sessionSlug || !hostSlug) return false;
+  if (!hostSlug) return true;
   return sessionSlug.trim().toLowerCase() !== hostSlug;
 }

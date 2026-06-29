@@ -28,5 +28,6 @@ export function resolvePatientBalanceAfterActPayment(
   alreadyPaid: number,
   payAmount: number
 ): number {
-  return previousBalance + payAmount - actTotal + alreadyPaid;
+  const shouldApplyActDebt = alreadyPaid <= 0;
+  return previousBalance + payAmount - (shouldApplyActDebt ? actTotal : 0);
 }

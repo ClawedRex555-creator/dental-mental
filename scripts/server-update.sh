@@ -85,6 +85,13 @@ fi
 echo ">>> Docker image из .next/standalone (~1 мин)..."
 bash scripts/server-docker-prebuilt-image.sh
 
+if [ -f "$ROOT/.deploy-version" ]; then
+  _tag="$(awk '{print $2}' "$ROOT/.deploy-version" | tr -cd 'a-zA-Z0-9_.-')"
+  if [ -n "$_tag" ]; then
+    echo ">>> Активный тег образа: emkaro-app:${_tag} (rollback: EMKARO_IMAGE_TAG=<старый-commit> docker compose up -d --no-build app)"
+  fi
+fi
+
 echo ">>> Статус:"
 docker compose ps
 

@@ -21,6 +21,13 @@ else
   export DEPLOY_VERSION="unknown"
 fi
 
+# Docker tag: только short commit из строки "branch <commit> <timestamp>"
+IMAGE_TAG="$(echo "$DEPLOY_VERSION" | awk '{print $2}')"
+IMAGE_TAG="${IMAGE_TAG:-unknown}"
+IMAGE_TAG="$(echo "$IMAGE_TAG" | tr -cd 'a-zA-Z0-9_.-')"
+IMAGE_TAG="${IMAGE_TAG:-unknown}"
+export EMKARO_IMAGE_TAG="$IMAGE_TAG"
+
 IGNORE_BACKUP=""
 if [ -f "$ROOT/.dockerignore" ]; then
   cp "$ROOT/.dockerignore" "$ROOT/.dockerignore.bak"
@@ -32,7 +39,8 @@ printf 'node_modules\n.git\nbackups\n.env\n.env.*\n.next/cache\n' > "$ROOT/.dock
 echo ">>> docker build -f Dockerfile.prebuilt (контекст включает .next/standalone)..."
 docker build -f Dockerfile.prebuilt \
   --build-arg CACHEBUST="${DEPLOY_VERSION}" \
-  -t emkaro-app \
+  -t emkaro-app:latest \
+  -t "emkaro-app:${EMKARO_IMAGE_TAG}" \
   "$ROOT"
 
 if [ -n "$IGNORE_BACKUP" ]; then
@@ -57,7 +65,7 @@ timeout 8 docker run --rm \
   -e APP_ROOT_DOMAIN="${APP_ROOT_DOMAIN:?set APP_ROOT_DOMAIN in .env}" \
   -e DATABASE_URL="postgresql://mis:${POSTGRES_PASSWORD:?}@127.0.0.1:5432/dentalcloud" \
   -e DEPLOY_VERSION="${DEPLOY_VERSION}" \
-  emkaro-app node server.js >"$smoke_log" 2>&1
+  emkaro-app:latest node server.js >"$smoke_log" 2>&1
 smoke_rc=$?
 set -e
 if ! grep -qE 'Ready|Next\.js' "$smoke_log"; then
@@ -69,6 +77,9 @@ fi
 echo "Smoke OK"
 rm -f "$smoke_log"
 
-echo ">>> docker compose up --no-build app caddy"
+echo ">>> docker compose up (image: emkaro-app:${EMKARO_IMAGE_TAG})"
+# Rollback: EMKARO_IMAGE_TAG="<commit>" docker compose up -d --force-recreate --no-build app caddy
 docker compose up -d --force-recreate --no-build app caddy
+echo ">>> Образы emkaro-app:"
+docker images emkaro-app --format 'table {{.Repository}}\t{{.Tag}}\t{{.CreatedSince}}' | head -6
 echo "PREBUILT_IMAGE_OK"

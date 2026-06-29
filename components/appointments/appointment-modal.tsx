@@ -41,6 +41,7 @@ interface AppointmentModalProps {
   defaultDate?: string;
   defaultDoctorId?: string;
   defaultTime?: string;
+  onOpenAct?: (actId: string) => void;
 }
 
 export function AppointmentModal({
@@ -50,6 +51,7 @@ export function AppointmentModal({
   defaultDate,
   defaultDoctorId,
   defaultTime,
+  onOpenAct,
 }: AppointmentModalProps) {
   const {
     patients,
@@ -97,9 +99,17 @@ export function AppointmentModal({
     if (!appointment) return undefined;
     return (
       appointment.workActId ??
-      workActs.find((a) => a.appointmentId === appointment.id)?.id
+      workActs.find((a) => a.appointmentId === appointment.id && a.actType !== "prepayment")?.id
     );
   }, [appointment, workActs]);
+
+  const linkedAct = useMemo(() => {
+    if (!linkedActId) return undefined;
+    return workActs.find((a) => a.id === linkedActId);
+  }, [linkedActId, workActs]);
+
+  const linkedActPaid =
+    appointment?.paymentStatus === "paid" || linkedAct?.paymentStatus === "paid";
 
   const doctorCanEdit = isDoctor && (appointment?.status === "in_progress" || status === "in_progress");
   const adminCanEdit = isAdmin || !appointment;
@@ -205,6 +215,7 @@ export function AppointmentModal({
     }
 
     const endTime = calcEndTime(startTime, durationMinutes);
+    const preservePaidStatus = appointment?.paymentStatus === "paid";
     const payload: Appointment = {
       id: appointment?.id ?? generateId("apt"),
       patientId,
@@ -224,7 +235,7 @@ export function AppointmentModal({
       complaints: complaints.trim(),
       reason: complaints.trim(),
       price: appointment?.price ?? 0,
-      paymentStatus: isAdmin ? paymentStatus : appointment?.paymentStatus ?? "pending",
+      paymentStatus: preservePaidStatus ? "paid" : "pending",
       workActId: appointment?.workActId,
     };
 
@@ -297,6 +308,23 @@ export function AppointmentModal({
                 }}
               >
                 Открыть акт оказанных услуг
+              </Button>
+            )}
+            {linkedActId && linkedActPaid && (
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  if (onOpenAct) {
+                    onOpenAct(linkedActId);
+                    return;
+                  }
+                  setExistingActId(linkedActId);
+                  setActMode("admin_view");
+                  setActModalOpen(true);
+                }}
+              >
+                {linkedAct ? `Акт № ${linkedAct.actNumber} · Оплачен` : "Открыть оплаченный акт"}
               </Button>
             )}
             <div className="space-y-4">

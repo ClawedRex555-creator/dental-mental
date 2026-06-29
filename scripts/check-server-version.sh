@@ -1,13 +1,28 @@
 #!/bin/bash
 # Проверка версии на проде после деплоя
-# Использование: bash scripts/check-server-version.sh https://tstom.emkaro.ru
+# Использование:
+#   bash scripts/check-server-version.sh https://tstom.emkaro.ru
+#   bash scripts/check-server-version.sh https://tstom.emkaro.ru <ожидаемый-коммит>
 set -euo pipefail
 
 BASE="${1:-https://tstom.emkaro.ru}"
+EXPECTED_COMMIT="${2:-}"
 echo ">>> $BASE/api/health"
 json="$(curl -fsS "$BASE/api/health")"
 echo "$json" | python3 -m json.tool 2>/dev/null || echo "$json"
 echo ""
+version="$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)"
+if [ -n "$version" ]; then
+  echo "Version: $version"
+fi
+if [ -n "$EXPECTED_COMMIT" ]; then
+  if echo "$version" | grep -q "$EXPECTED_COMMIT"; then
+    echo "OK: commit $EXPECTED_COMMIT присутствует в version"
+  else
+    echo "ПРОБЛЕМА: commit $EXPECTED_COMMIT не найден в version."
+    exit 1
+  fi
+fi
 if echo "$json" | grep -q 'patientAppointmentSearch'; then
   echo "OK: новый bundle на проде"
 else

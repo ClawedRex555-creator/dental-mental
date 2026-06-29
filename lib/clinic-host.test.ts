@@ -16,12 +16,18 @@ describe("clinic-host", () => {
     else process.env.APP_ROOT_DOMAIN = prev;
   });
 
-  it("does not flag slug mismatch when host slug cannot be parsed", () => {
+  it("flags mismatch when session has clinic slug but host is platform or unparseable", () => {
     const prev = process.env.APP_ROOT_DOMAIN;
     process.env.APP_ROOT_DOMAIN = "localhost";
-    assert.equal(clinicSlugMismatch("tstom", "app:3000"), false);
+    assert.equal(clinicSlugMismatch("tstom", "app:3000"), true);
+    process.env.APP_ROOT_DOMAIN = "emkaro.ru";
+    assert.equal(clinicSlugMismatch("tstom", "emkaro.ru"), true);
     if (prev === undefined) delete process.env.APP_ROOT_DOMAIN;
     else process.env.APP_ROOT_DOMAIN = prev;
+  });
+
+  it("does not flag mismatch when session has no clinic slug", () => {
+    assert.equal(clinicSlugMismatch(undefined, "app:3000"), false);
   });
 
   it("flags mismatch when both slugs are known and differ", () => {
