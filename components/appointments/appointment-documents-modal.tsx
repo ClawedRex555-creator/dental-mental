@@ -14,14 +14,19 @@ import {
 import {
   buildArrivalDocumentsPrintHtml,
   buildArrivalDocumentTokens,
+  isDocxArrivalDocument,
   isPdfArrivalDocument,
 } from "@/lib/arrival-documents";
+import { fillLegalDocxToPrintHtml } from "@/lib/legal-docx-fill";
 import { fillLegalPdf } from "@/lib/legal-pdf-fill";
 import {
-  openPdfBytesInTab,
-  openStoredFileInTab,
+  closeBrowserTab,
+  printHtmlDocumentInTab,
+  printPdfBytesInTab,
+  printStoredDataUrlInTab,
   readFileAsDataUrl,
   reserveBrowserTab,
+  showTabLoading,
 } from "@/lib/open-stored-file";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -232,7 +237,7 @@ function AppointmentDocumentsModalBody({
     }
   }, [patientId, sendToEgisz]);
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!patient) {
       toast.error("Пациент не найден — обновите страницу");
       return;
@@ -276,94 +281,148 @@ function AppointmentDocumentsModalBody({
     };
 
     const pdfDocs = toPrint.filter((d) => isPdfArrivalDocument(d));
+    const docxDocs = toPrint.filter((d) => isDocxArrivalDocument(d));
     const imageDocs = toPrint.filter(
-      (d) => d.fileDataUrl?.startsWith("data:image/") && !isPdfArrivalDocument(d)
+      (d) =>
+        d.fileDataUrl?.startsWith("data:image/") &&
+        !isPdfArrivalDocument(d) &&
+        !isDocxArrivalDocument(d)
     );
     const htmlDocs = toPrint.filter(
-      (d) => !isPdfArrivalDocument(d) && !d.fileDataUrl?.startsWith("data:image/")
+      (d) =>
+        !isPdfArrivalDocument(d) &&
+        !isDocxArrivalDocument(d) &&
+        !d.fileDataUrl?.startsWith("data:image/")
     );
 
-    // Вкладки резервируем сразу по клику — после await браузер блокирует window.open
+    // Вкладки открываем сразу по клику — иначе браузер блокирует popup после async
     const pdfTabs = pdfDocs.map(() => reserveBrowserTab());
+    const docxTabs = docxDocs.map(() => reserveBrowserTab());
     const imageTabs = imageDocs.map(() => reserveBrowserTab());
     const htmlTab = htmlDocs.length > 0 ? reserveBrowserTab() : null;
 
-    let openedCount = 0;
+    for (const tab of [...pdfTabs, ...docxTabs, ...imageTabs, htmlTab]) {
+      if (tab) showTabLoading(tab);
+    }
 
-    for (let i = 0; i < pdfDocs.length; i++) {
-      const doc = pdfDocs[i];
-      const tab = pdfTabs[i];
-      if (!doc.fileDataUrl) {
-        tab?.close();
-        continue;
-      }
+    const loadingId = toast.loading("Подготовка документов…");
 
-      const fileName = doc.fileName ?? `${doc.name}.pdf`;
-      const result = await fillLegalPdf(doc.fileDataUrl, ctx);
+    void (async () => {
+      let printedCount = 0;
 
-      if (result.ok) {
-        if (openPdfBytesInTab(tab, result.bytes, fileName)) {
-          openedCount++;
+      try {
+        for (let i = 0; i < pdfDocs.length; i++) {
+          const doc = pdfDocs[i];
+          const tab = pdfTabs[i] ?? null;
+          if (!doc.fileDataUrl) {
+            closeBrowserTab(tab);
+            toast.warning(`${doc.name}: файл не прикреплён`);
+            continue;
+          }
+
+          const result = await fillLegalPdf(doc.fileDataUrl, ctx);
+          if (result.ok) {
+            if (
+              printPdfBytesInTab(tab, result.bytes, doc.fileName ?? `${doc.name}.pdf`)
+            ) {
+              printedCount++;
+            }
+            if (result.unmatchedFields.length > 0) {
+              toast.warning(
+                `${doc.name}: заполнено ${result.filledCount} из ${result.fieldCount} полей`
+              );
+            }
+            continue;
+          }
+
+          closeBrowserTab(tab);
+          toast.error(`${doc.name}: ${result.error}`, { duration: 12_000 });
+          if (result.fieldNames?.length) {
+            console.info("[legal-pdf] поля в документе:", result.fieldNames.join(", "));
+            toast.warning(
+              `Имена полей в PDF: ${result.fieldNames.slice(0, 8).join(", ")}${
+                result.fieldNames.length > 8 ? "…" : ""
+              }. Сверьте с юр. отделом.`,
+              { duration: 12_000 }
+            );
+          }
+          if (result.fieldCount === 0) {
+            toast.info(
+              "Сохраните договор как .docx с {patient_full_name} в тексте — это проще на Mac, чем PDF с полями.",
+              { duration: 14_000 }
+            );
+          }
         }
-        if (result.unmatchedFields.length > 0) {
-          toast.warning(
-            `${doc.name}: заполнено ${result.filledCount} из ${result.fieldCount} полей`
+
+        for (let i = 0; i < docxDocs.length; i++) {
+          const doc = docxDocs[i];
+          const tab = docxTabs[i] ?? null;
+          if (!doc.fileDataUrl) {
+            closeBrowserTab(tab);
+            toast.warning(`${doc.name}: файл не прикреплён`);
+            continue;
+          }
+
+          const result = await fillLegalDocxToPrintHtml(
+            doc.fileDataUrl,
+            ctx,
+            doc.fileName ?? doc.name
           );
+          if (result.ok) {
+            if (printHtmlDocumentInTab(tab, result.html)) {
+              printedCount++;
+            }
+            if (result.filledCount < result.placeholderCount) {
+              toast.warning(
+                `${doc.name}: подставлено ${result.filledCount} из ${result.placeholderCount} плейсхолдеров`
+              );
+            }
+            continue;
+          }
+
+          closeBrowserTab(tab);
+          toast.error(`${doc.name}: ${result.error}`, { duration: 12_000 });
         }
-        continue;
-      }
 
-      toast.warning(
-        `${doc.name}: ${result.error} Открываем исходный файл без подстановки.`
-      );
-      if (result.fieldNames?.length) {
-        console.info("[legal-pdf] поля в документе:", result.fieldNames.join(", "));
-      }
-      if (openStoredFileInTab(tab, doc.fileDataUrl, fileName)) {
-        openedCount++;
-      }
-    }
-
-    imageDocs.forEach((doc, i) => {
-      if (
-        openStoredFileInTab(imageTabs[i], doc.fileDataUrl, doc.fileName ?? doc.name)
-      ) {
-        openedCount++;
-      }
-    });
-
-    if (htmlDocs.length > 0) {
-      const html = buildArrivalDocumentsPrintHtml({
-        documents: htmlDocs,
-        ctx,
-        sendToEgisz,
-      });
-      if (htmlTab && !htmlTab.closed) {
-        htmlTab.document.open();
-        htmlTab.document.write(html);
-        htmlTab.document.close();
-        openedCount++;
-      } else {
-        const w = window.open("", "_blank");
-        if (w) {
-          w.document.write(html);
-          w.document.close();
-          openedCount++;
+        for (let i = 0; i < imageDocs.length; i++) {
+          const doc = imageDocs[i];
+          if (
+            printStoredDataUrlInTab(
+              imageTabs[i] ?? null,
+              doc.fileDataUrl,
+              doc.fileName ?? doc.name
+            )
+          ) {
+            printedCount++;
+          }
         }
+
+        if (htmlDocs.length > 0) {
+          const html = buildArrivalDocumentsPrintHtml({
+            documents: htmlDocs,
+            ctx,
+            sendToEgisz,
+          });
+          if (printHtmlDocumentInTab(htmlTab, html)) {
+            printedCount++;
+          }
+        }
+
+        if (printedCount === 0) {
+          toast.error("Не удалось подготовить документы к печати", { id: loadingId });
+          return;
+        }
+
+        toast.success(`Отправлено на печать: ${printedCount} из ${toPrint.length}`, {
+          id: loadingId,
+        });
+        await persistEgiszConsent();
+        onDone();
+        onOpenChange(false);
+      } catch {
+        toast.error("Ошибка при подготовке документов", { id: loadingId });
       }
-    }
-
-    if (openedCount === 0) {
-      toast.error(
-        "Документы не открылись. Разрешите всплывающие окна для этого сайта и попробуйте снова."
-      );
-      return;
-    }
-
-    toast.success(`Открыто документов: ${openedCount} из ${toPrint.length}`);
-    await persistEgiszConsent();
-    onDone();
-    onOpenChange(false);
+    })();
   };
 
   return (
@@ -409,14 +468,8 @@ function AppointmentDocumentsModalBody({
         <p className="text-sm text-red-600">Пациент не найден в базе клиники</p>
       )}
       <p className="text-sm text-[var(--muted)]">
-        Договоры и согласия — из{" "}
-        <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. PDF заполняется
-        данными пациента и клиники <strong>внутри загруженного файла</strong>, если в нём есть
-        поля формы с именами вроде{" "}
-        <code className="text-xs">customer_full_name</code>,{" "}
-        <code className="text-xs">patient_full_name</code>,{" "}
-        <code className="text-xs">clinic_name</code>. Скан с подчёркиваниями не подставляется
-        автоматически — см. инструкцию в юр. отделе.
+        Договоры и согласия подставляются из шаблонов <strong>Юр. отдела</strong> при печати с
+        визита.
       </p>
 
       <p className="text-sm text-[var(--muted)]">
@@ -531,7 +584,7 @@ function AppointmentDocumentsModalBody({
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button onClick={handlePrint}>Печать / открыть выбранные</Button>
+        <Button onClick={handlePrint}>Печать выбранных</Button>
       </div>
     </>
   );

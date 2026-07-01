@@ -14,6 +14,7 @@ import {
 } from "@/lib/modules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LegalTemplateGuide } from "@/components/platform/legal-template-guide";
 import { toast } from "sonner";
 
 interface ClinicRow {
@@ -138,6 +139,16 @@ export default function PlatformAdminPage() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Шаблоны юр. документов</h2>
+            <p className="text-sm text-slate-500">
+              Справочник плейсхолдеров для договоров и согласий — виден только супер-админу
+            </p>
+          </div>
+          <LegalTemplateGuide />
+        </section>
+
         {!loading && !loadError && (
           <Card>
             <CardHeader>

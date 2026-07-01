@@ -13,7 +13,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https: http:",
       "font-src 'self' data:",
-      "connect-src 'self'",
+      "connect-src 'self' https://cdn.jsdelivr.net",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

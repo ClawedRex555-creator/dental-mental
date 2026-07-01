@@ -10,43 +10,231 @@ export function reserveBrowserTab(): Window | null {
   }
 }
 
-function renderParsedFileInTab(
+export function closeBrowserTab(tab: Window | null | undefined): void {
+  if (!tab) return;
+  try {
+    if (!tab.closed) tab.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+function isTabAccessible(tab: Window | null): tab is Window {
+  if (!tab) return false;
+  try {
+    return !tab.closed;
+  } catch {
+    return true;
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function writeHtmlToTab(tab: Window, html: string): boolean {
+  try {
+    const doc = tab.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Показать «загрузка» в зарезервированной вкладке (пока готовится PDF) */
+export function showTabLoading(tab: Window, message = "Подготовка документа…"): void {
+  writeHtmlToTab(
+    tab,
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Документ</title></head>` +
+      `<body style="margin:0;font-family:system-ui,sans-serif;padding:2rem;color:#334155">` +
+      `<p>${escapeHtml(message)}</p></body></html>`
+  );
+}
+
+function navigateTabToUrl(tab: Window, url: string): boolean {
+  try {
+    tab.location.href = url;
+    return true;
+  } catch {
+    try {
+      tab.location.assign(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function scheduleBlobUrlRevoke(url: string): void {
+  window.setTimeout(() => URL.revokeObjectURL(url), 300_000);
+}
+
+function isNonEmptyPdfBytes(bytes: Uint8Array): boolean {
+  if (bytes.length < 64) return false;
+  const head = String.fromCharCode(...bytes.slice(0, 5));
+  return head.startsWith("%PDF");
+}
+
+const PRINT_ON_LOAD_SCRIPT =
+  `<script>function __emkaroPrint(){try{window.focus();window.print();}catch(e){}}` +
+  `window.addEventListener("load",function(){setTimeout(__emkaroPrint,400);});` +
+  `setTimeout(__emkaroPrint,2000);</script>`;
+
+function buildPdfPrintShellHtml(blobUrl: string, title: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeUrl = blobUrl.replace(/"/g, "&quot;");
+  return (
+    `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">` +
+    `<title>${safeTitle}</title>` +
+    `<style>html,body{margin:0;height:100%;}embed{width:100%;height:100%;}</style></head>` +
+    `<body><embed src="${safeUrl}" type="application/pdf" />` +
+    PRINT_ON_LOAD_SCRIPT +
+    `</body></html>`
+  );
+}
+
+function buildImagePrintShellHtml(src: string, title: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeSrc = src.replace(/"/g, "&quot;");
+  return (
+    `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">` +
+    `<title>${safeTitle}</title></head>` +
+    `<body style="margin:0;text-align:center">` +
+    `<img src="${safeSrc}" alt="" style="max-width:100%;max-height:100vh" />` +
+    PRINT_ON_LOAD_SCRIPT +
+    `</body></html>`
+  );
+}
+
+/** Печать HTML в заранее открытой вкладке (как акт оказанных услуг) */
+export function printHtmlDocumentInTab(tab: Window | null, html: string): boolean {
+  if (isTabAccessible(tab) && writeHtmlToTab(tab, html)) return true;
+  closeBrowserTab(tab);
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    toast.error("Разрешите всплывающие окна для печати");
+    return false;
+  }
+  if (writeHtmlToTab(win, html)) return true;
+  closeBrowserTab(win);
+  toast.error("Не удалось открыть окно печати");
+  return false;
+}
+
+/** Печать PDF из байтов в заранее открытой вкладке */
+export function printPdfBytesInTab(
+  tab: Window | null,
+  bytes: Uint8Array,
+  fileName = "document.pdf"
+): boolean {
+  if (!isNonEmptyPdfBytes(bytes)) {
+    closeBrowserTab(tab);
+    toast.error("PDF пустой или повреждён — перезагрузите файл в юр. отделе");
+    return false;
+  }
+
+  const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  scheduleBlobUrlRevoke(url);
+
+  const html = buildPdfPrintShellHtml(url, fileName);
+  if (isTabAccessible(tab) && writeHtmlToTab(tab, html)) return true;
+  closeBrowserTab(tab);
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    toast.error("Разрешите всплывающие окна для печати");
+    return downloadBlob(blob, fileName);
+  }
+  if (writeHtmlToTab(win, html)) return true;
+  closeBrowserTab(win);
+
+  const viewer = window.open(url, "_blank", "noopener,noreferrer");
+  if (viewer) return true;
+  return downloadBlob(blob, fileName);
+}
+
+/** Печать PDF/изображения из data URL в заранее открытой вкладке */
+export function printStoredDataUrlInTab(
+  tab: Window | null,
+  dataUrl: string | undefined,
+  fileName = "document"
+): boolean {
+  if (!dataUrl) {
+    closeBrowserTab(tab);
+    toast.error("Файл не прикреплён. Загрузите PDF или фото к документу.");
+    return false;
+  }
+
+  const parsed = parseAllowedDataUrl(dataUrl);
+  if (!parsed) {
+    closeBrowserTab(tab);
+    toast.error(
+      "Файл не открывается: слишком большой или неподдерживаемый формат. Загрузите PDF до 4 МБ."
+    );
+    return false;
+  }
+
+  if (parsed.kind === "pdf") {
+    const base64 = parsed.dataUrl.split(",")[1] ?? "";
+    if (!base64) {
+      closeBrowserTab(tab);
+      toast.error("PDF пустой — загрузите файл заново в юр. отделе");
+      return false;
+    }
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return printPdfBytesInTab(tab, bytes, fileName);
+  }
+
+  const html = buildImagePrintShellHtml(parsed.dataUrl, fileName);
+  if (isTabAccessible(tab) && writeHtmlToTab(tab, html)) return true;
+  closeBrowserTab(tab);
+  return printHtmlDocumentInTab(null, html);
+}
+
+/** @deprecated Используйте printPdfBytesInTab с вкладкой, зарезервированной по клику */
+export async function printPdfBytes(bytes: Uint8Array, fileName = "document.pdf"): Promise<boolean> {
+  return printPdfBytesInTab(reserveBrowserTab(), bytes, fileName);
+}
+
+/** @deprecated Используйте printStoredDataUrlInTab */
+export async function printStoredDataUrl(
+  dataUrl: string | undefined,
+  fileName = "document"
+): Promise<boolean> {
+  return printStoredDataUrlInTab(reserveBrowserTab(), dataUrl, fileName);
+}
+
+/** @deprecated Используйте printHtmlDocumentInTab */
+export async function printHtmlDocument(html: string): Promise<boolean> {
+  return printHtmlDocumentInTab(reserveBrowserTab(), html);
+}
+
+function renderParsedImageInTab(
   tab: Window,
   parsed: ParsedAllowedDataUrl,
   fileName: string
-): void {
-  const doc = tab.document;
-  doc.title = fileName;
-  const head = doc.head;
-  const meta = doc.createElement("meta");
-  meta.setAttribute("charset", "utf-8");
-  head.appendChild(meta);
-
-  const body = doc.body;
-  body.style.margin = "0";
-
-  if (parsed.kind === "pdf") {
-    body.style.height = "100vh";
-    const embed = doc.createElement("embed");
-    embed.src = parsed.dataUrl;
-    embed.type = "application/pdf";
-    embed.style.width = "100%";
-    embed.style.height = "100%";
-    body.appendChild(embed);
-    return;
-  }
-
-  body.style.background = "#111";
-  body.style.display = "flex";
-  body.style.alignItems = "center";
-  body.style.justifyContent = "center";
-  body.style.minHeight = "100vh";
-  const img = doc.createElement("img");
-  img.src = parsed.dataUrl;
-  img.alt = "";
-  img.style.maxWidth = "100%";
-  img.style.maxHeight = "100vh";
-  body.appendChild(img);
+): boolean {
+  if (parsed.kind === "pdf") return false;
+  const title = escapeHtml(fileName);
+  const src = escapeHtml(parsed.dataUrl);
+  return writeHtmlToTab(
+    tab,
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
+      `<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh">` +
+      `<img src="${src}" alt="" style="max-width:100%;max-height:100vh" />` +
+      `</body></html>`
+  );
 }
 
 /** Открывает PDF из байтов в заранее зарезервированной вкладке или скачивает */
@@ -56,36 +244,47 @@ export function openPdfBytesInTab(
   fileName = "document.pdf"
 ): boolean {
   try {
-    const copy = new Uint8Array(bytes);
-    const blob = new Blob([copy], { type: "application/pdf" });
+    const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
 
-    if (tab && !tab.closed) {
-      tab.location.href = url;
-      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
-      return true;
+    if (isTabAccessible(tab)) {
+      if (navigateTabToUrl(tab, url)) {
+        scheduleBlobUrlRevoke(url);
+        return true;
+      }
+      closeBrowserTab(tab);
     }
 
     URL.revokeObjectURL(url);
     return openPdfBytes(bytes, fileName);
   } catch {
+    closeBrowserTab(tab);
     toast.error("Не удалось открыть PDF");
     return false;
   }
 }
 
+/** Открывает PDF из байтов: вкладка → новое окно → скачивание */
+export function openPdfBytesWithFallbacks(
+  tab: Window | null,
+  bytes: Uint8Array,
+  fileName = "document.pdf"
+): boolean {
+  if (openPdfBytesInTab(tab, bytes, fileName)) return true;
+  return openPdfBytes(bytes, fileName);
+}
+
 /** Открывает PDF из байтов в новой вкладке */
 export function openPdfBytes(bytes: Uint8Array, fileName = "document.pdf"): boolean {
   try {
-    const copy = new Uint8Array(bytes);
-    const blob = new Blob([copy], { type: "application/pdf" });
+    const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, "_blank", "noopener,noreferrer");
     if (!w) {
       URL.revokeObjectURL(url);
       return downloadBlob(blob, fileName);
     }
-    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    scheduleBlobUrlRevoke(url);
     return true;
   } catch {
     toast.error("Не удалось открыть PDF");
@@ -106,23 +305,34 @@ export function openStoredFileInTab(
 
   const parsed = parseAllowedDataUrl(dataUrl);
   if (!parsed) {
-    toast.error("Неподдерживаемый или небезопасный формат файла");
+    toast.error(
+      "Файл не открывается: слишком большой или неподдерживаемый формат. Загрузите PDF до 4 МБ."
+    );
     return false;
   }
 
   try {
-    if (tab && !tab.closed) {
-      renderParsedFileInTab(tab, parsed, fileName);
-      return true;
+    if (isTabAccessible(tab)) {
+      if (parsed.kind === "pdf") {
+        if (navigateTabToUrl(tab, parsed.dataUrl)) return true;
+      } else if (renderParsedImageInTab(tab, parsed, fileName)) {
+        return true;
+      }
+      closeBrowserTab(tab);
     }
     return openStoredFile(dataUrl, fileName);
   } catch {
+    closeBrowserTab(tab);
     toast.error("Не удалось открыть файл");
     return false;
   }
 }
 
 function downloadBlob(blob: Blob, fileName: string): boolean {
+  if (blob.size < 64) {
+    toast.error("Файл пустой — загрузите PDF заново в юр. отделе");
+    return false;
+  }
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   link.href = url;
@@ -145,19 +355,30 @@ export function openStoredFile(dataUrl: string | undefined, fileName = "document
 
   const parsed = parseAllowedDataUrl(dataUrl);
   if (!parsed) {
-    toast.error("Неподдерживаемый или небезопасный формат файла");
+    toast.error(
+      "Файл не открывается: слишком большой или неподдерживаемый формат. Загрузите PDF до 4 МБ."
+    );
     return false;
   }
 
   try {
+    if (parsed.kind === "pdf") {
+      const w = window.open(parsed.dataUrl, "_blank", "noopener,noreferrer");
+      if (w) return true;
+      return downloadDataUrl(parsed.dataUrl, fileName);
+    }
+
     const w = window.open("", "_blank", "noopener,noreferrer");
     if (!w) {
       toast.error("Разрешите всплывающие окна в браузере");
       return downloadDataUrl(parsed.dataUrl, fileName);
     }
 
-    renderParsedFileInTab(w, parsed, fileName);
-    return true;
+    if (renderParsedImageInTab(w, parsed, fileName)) {
+      return true;
+    }
+    closeBrowserTab(w);
+    return downloadDataUrl(parsed.dataUrl, fileName);
   } catch {
     toast.error("Не удалось открыть файл");
     return false;

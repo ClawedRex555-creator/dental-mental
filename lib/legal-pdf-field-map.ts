@@ -9,6 +9,13 @@ export const PDF_FIELD_TOKEN_ALIASES: Record<string, string[]> = {
     "заказчик.фио",
     "customername",
   ],
+  "customer.passport": [
+    "customer_passport",
+    "customerpassport",
+    "заказчикпаспорт",
+    "паспортзаказчика",
+    "customer_pass",
+  ],
   "patient.fullName": [
     "patient.fullname",
     "patientfullname",
@@ -48,6 +55,7 @@ export const PDF_FIELD_TOKEN_ALIASES: Record<string, string[]> = {
   "patient.passportNumber": ["passportnumber", "паспортномер", "номерпаспорта"],
   "patient.snils": ["patientsnils", "snils", "снилс"],
   "patient.contractNumber": [
+    "patient_contract_no",
     "patient_contract_number",
     "contractnumber",
     "contract",
@@ -56,18 +64,22 @@ export const PDF_FIELD_TOKEN_ALIASES: Record<string, string[]> = {
     "patientcontract",
   ],
   "patient.representativeFullName": [
+    "patient_repr_fio",
     "patient_representative_full_name",
+    "patient_representativefullname",
     "representative",
     "представитель",
     "законныйпредставитель",
     "representativefullname",
   ],
   "patient.representativePassport": [
+    "patient_repr_pass",
     "patient_representative_passport",
     "representativepassport",
     "паспортпредставителя",
   ],
   "patient.birthCertificate": [
+    "patient_birth_cert",
     "patient_birth_certificate",
     "birthcertificate",
     "свидетельство",
@@ -80,6 +92,7 @@ export const PDF_FIELD_TOKEN_ALIASES: Record<string, string[]> = {
   "clinic.workHours": ["clinicworkhours", "workhours", "режимработы"],
   "doctor.name": ["doctorname", "doctor", "врач", "врачфио", "doctor_fio"],
   "doctor.specialization": [
+    "doctor_specialty",
     "doctor_specialization",
     "doctorspecialization",
     "specialization",

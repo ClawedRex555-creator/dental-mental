@@ -2,9 +2,26 @@
 
 export type LegalPdfFieldGroup = "patient" | "customer" | "clinic" | "doctor" | "date";
 
-/** Имя поля для Word (только латиница и _, без точек) */
+/** Word legacy form: закладка/тег поля — обычно не больше 20 символов */
+export const WORD_FORM_FIELD_NAME_MAX_LEN = 20;
+
+/** Короткие имена для полей, не влезающих в лимит Word */
+const WORD_FIELD_SHORT_NAMES: Record<string, string> = {
+  "patient.contractNumber": "patient_contract_no",
+  "patient.representativeFullName": "patient_repr_fio",
+  "patient.representativePassport": "patient_repr_pass",
+  "patient.birthCertificate": "patient_birth_cert",
+  "doctor.specialization": "doctor_specialty",
+};
+
+/** Имя поля для Word (латиница, подчёркивания, ≤20 символов где нужно) */
 export function tokenKeyToWordFieldName(tokenKey: string): string {
-  return tokenKey.replace(/\./g, "_");
+  const short = WORD_FIELD_SHORT_NAMES[tokenKey];
+  if (short) return short;
+  return tokenKey
+    .replace(/\./g, "_")
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase();
 }
 
 export interface LegalPdfFieldDef {
@@ -42,6 +59,13 @@ export const LEGAL_PDF_FIELD_CATALOG: LegalPdfFieldDef[] = [
     "Заказчик (ФИО для подписи)",
     "Иванов Иван Иванович",
     "Договор — для ребёнка подставится представитель"
+  ),
+  field(
+    "customer.passport",
+    "customer",
+    "Паспорт заказчика",
+    "6012 345678",
+    "Для ребёнка — паспорт представителя, иначе — пациента"
   ),
   field(
     "patient.fullName",
@@ -111,11 +135,12 @@ export const LEGAL_PDF_TEMPLATE_PRESETS: { title: string; fields: string[] }[] =
     title: "Договор оказания услуг",
     fields: [
       "customer_full_name",
+      "customer_passport",
       "patient_full_name",
       "patient_birth_date",
       "patient_phone",
       "patient_passport",
-      "patient_contract_number",
+      "patient_contract_no",
       "clinic_name",
       "clinic_inn",
       "clinic_address",
@@ -139,9 +164,9 @@ export const LEGAL_PDF_TEMPLATE_PRESETS: { title: string; fields: string[] }[] =
     fields: [
       "patient_full_name",
       "patient_birth_date",
-      "patient_representative_full_name",
-      "patient_representative_passport",
-      "patient_birth_certificate",
+      "patient_repr_fio",
+      "patient_repr_pass",
+      "patient_birth_cert",
       "clinic_name",
       "date_today",
     ],

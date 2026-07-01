@@ -16,11 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { LEGAL_CATEGORIES, type LegalCategory } from "@/lib/legal-categories";
-import {
-  LEGAL_PDF_FIELD_CATALOG,
-  LEGAL_PDF_FIELD_GROUP_LABELS,
-  LEGAL_PDF_TEMPLATE_PRESETS,
-} from "@/lib/legal-pdf-fields";
+import { getLegalDocumentUploadFeedback } from "@/lib/legal-pdf-upload-feedback";
 
 export default function LegalPage() {
   const { legalDocuments, addLegalDocument, updateLegalDocument, removeLegalDocument } =
@@ -46,11 +42,34 @@ export default function LegalPage() {
     });
     setTitle("");
     setNotes("");
-    toast.success(
-      fileDataUrl
-        ? "Документ сохранён — нажмите «Открыть»"
-        : "Запись создана. Прикрепите файл кнопкой «Загрузить файл»"
-    );
+    if (!fileDataUrl) {
+      toast.success("Запись создана. Прикрепите файл кнопкой «Загрузить файл»");
+    } else if (
+      !fileDataUrl.startsWith("data:application/pdf;base64,") &&
+      !fileDataUrl.startsWith(
+        "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,"
+      )
+    ) {
+      toast.success("Документ сохранён — нажмите «Открыть»");
+    }
+  };
+
+  const notifyFileUpload = async (dataUrl: string, fileName: string) => {
+    const feedback = await getLegalDocumentUploadFeedback(dataUrl);
+    if (feedback.status === "other") {
+      toast.success(`Файл «${fileName}» прикреплён`);
+      return;
+    }
+    if (feedback.status === "error") {
+      toast.warning(`Файл загружен, но не прочитан: ${feedback.message}`);
+      return;
+    }
+    if (feedback.status === "no_fields") {
+      toast.error(feedback.message, { duration: 14_000 });
+      if (feedback.hint) toast.info(feedback.hint, { duration: 14_000 });
+      return;
+    }
+    toast.success(`${fileName}: ${feedback.preview}`, { duration: 10_000 });
   };
 
   const attachFile = async (docId: string, file: File) => {
@@ -58,7 +77,7 @@ export default function LegalPage() {
     try {
       const dataUrl = await readFileAsDataUrl(file);
       updateLegalDocument(docId, { fileDataUrl: dataUrl, fileName: file.name });
-      toast.success("Файл прикреплён");
+      await notifyFileUpload(dataUrl, file.name);
     } catch {
       toast.error("Не удалось прочитать файл");
     }
@@ -105,11 +124,8 @@ export default function LegalPage() {
             <Label>Примечание</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
             <p className="text-xs text-slate-500">
-              Для PDF при печати данные подставляются в <strong>поля формы</strong> внутри файла.
-              В Word добавьте поля с именами через подчёркивание: patient_full_name,
-              customer_full_name, clinic_name (точки Word не принимает). Список — ниже.
-              В примечании — плейсхолдеры{" "}
-              {"{{patient.fullName}}"} для текстовых документов без PDF.
+              Прикрепите файл шаблона (.docx или PDF). При печати с визита данные пациента
+              подставятся автоматически.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -131,6 +147,7 @@ export default function LegalPage() {
                   try {
                     const dataUrl = await readFileAsDataUrl(file);
                     handleAdd(dataUrl, file.name);
+                    await notifyFileUpload(dataUrl, file.name);
                   } catch {
                     toast.error("Не удалось загрузить файл");
                   }
@@ -139,109 +156,6 @@ export default function LegalPage() {
               />
             </label>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Как сделать бланк в Word (меню «Разработчик»)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm text-slate-600">
-          <ol className="list-decimal space-y-2 pl-5">
-            <li>
-              Word → <strong>Файл → Параметры → Настроить ленту</strong> → включите вкладку{" "}
-              <strong>Разработчик</strong>.
-            </li>
-            <li>
-              <strong>Разработчик → Режим конструктора</strong> (должен быть включён).
-            </li>
-            <li>
-              Вставляйте поля через <strong>Разработчик → Элементы управления → Поле формы</strong>{" "}
-              (иконка «ab» в группе «Элементы управления») или{" "}
-              <strong>Разработчик → Элементы управления для предыдущих версий → Поле текста</strong>{" "}
-              — так надёжнее сохраняются поля в PDF.
-            </li>
-            <li>
-              Дважды щёлкните по полю → вкладка <strong>Разработчик → Свойства</strong> → в{" "}
-              <strong>Тег</strong> или <strong>Закладка</strong> впишите имя латиницей с{" "}
-              <strong>подчёркиваниями</strong>, например{" "}
-              <code className="text-xs">patient_full_name</code> или{" "}
-              <code className="text-xs">customer_full_name</code> (точку Word не пропускает).
-            </li>
-            <li>
-              Для строки «Заказчик: ________» — поле{" "}
-              <code className="text-xs">customer_full_name</code> (для ребёнка подставится
-              представитель).
-            </li>
-            <li>
-              <strong>Файл → Сохранить как → PDF</strong>. Не печатайте на принтер «в PDF» — только
-              «Сохранить как PDF», иначе поля формы могут пропасть.
-            </li>
-            <li>
-              Загрузите PDF в этот раздел или в шаблоны при визите. При статусе записи{" "}
-              <strong>«Пришёл»</strong> система заполнит поля автоматически.
-            </li>
-          </ol>
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Скан, фото или бланк с одними подчёркиваниями без полей формы заполнить нельзя. В
-            примечании к документу можно использовать текстовые плейсхолдеры{" "}
-            {"{{patient.fullName}}"} — они работают только для печати из текста, не для PDF.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Типовые наборы полей</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {LEGAL_PDF_TEMPLATE_PRESETS.map((preset) => (
-            <div key={preset.title}>
-              <p className="text-sm font-medium text-slate-900">{preset.title}</p>
-              <p className="mt-1 flex flex-wrap gap-1">
-                {preset.fields.map((f) => (
-                  <code
-                    key={f}
-                    className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-800"
-                  >
-                    {f}
-                  </code>
-                ))}
-              </p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Справочник имён полей</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-slate-500">
-                <th className="px-4 py-2 font-medium">Имя в Word / PDF</th>
-                <th className="px-4 py-2 font-medium">Группа</th>
-                <th className="px-4 py-2 font-medium">Что подставится</th>
-                <th className="px-4 py-2 font-medium">Подсказка</th>
-              </tr>
-            </thead>
-            <tbody>
-              {LEGAL_PDF_FIELD_CATALOG.map((field) => (
-                <tr key={field.wordName} className="border-b border-slate-50">
-                  <td className="px-4 py-2">
-                    <code className="text-xs text-teal-800">{field.wordName}</code>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    {LEGAL_PDF_FIELD_GROUP_LABELS[field.group]}
-                  </td>
-                  <td className="px-4 py-2 text-slate-700">{field.label}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{field.hint ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </CardContent>
       </Card>
 

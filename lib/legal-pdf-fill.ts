@@ -8,17 +8,30 @@ import { resolveTokenForPdfField } from "@/lib/legal-pdf-field-map";
 import { LEGAL_PDF_FIELD_HINTS } from "@/lib/legal-pdf-fields";
 import { parseAllowedDataUrl } from "@/lib/safe-data-url";
 
-const NOTO_SANS_URL =
-  "https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf";
+const NOTO_SANS_URLS = [
+  "/fonts/NotoSans-Regular.ttf",
+  "https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
+];
 
 let cyrillicFontPromise: Promise<ArrayBuffer> | null = null;
 
-function loadCyrillicFontBytes(): Promise<ArrayBuffer> {
+async function loadCyrillicFontBytes(): Promise<ArrayBuffer> {
+  let lastError: Error | null = null;
+  for (const url of NOTO_SANS_URLS) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.arrayBuffer();
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error("Не удалось загрузить шрифт для PDF");
+    }
+  }
+  throw lastError ?? new Error("Не удалось загрузить шрифт для PDF");
+}
+
+function loadCyrillicFontBytesCached(): Promise<ArrayBuffer> {
   if (!cyrillicFontPromise) {
-    cyrillicFontPromise = fetch(NOTO_SANS_URL).then((res) => {
-      if (!res.ok) throw new Error("Не удалось загрузить шрифт для PDF");
-      return res.arrayBuffer();
-    });
+    cyrillicFontPromise = loadCyrillicFontBytes();
   }
   return cyrillicFontPromise;
 }
@@ -45,6 +58,63 @@ export type FillLegalPdfResult =
     }
   | { ok: false; error: string; fieldCount?: number; fieldNames?: string[] };
 
+export type InspectLegalPdfResult =
+  | {
+      ok: true;
+      fieldCount: number;
+      fieldNames: string[];
+      pageCount: number;
+      acroFormMarker: boolean;
+    }
+  | { ok: false; error: string };
+
+function pdfBytesContainAcroFormMarker(bytes: Uint8Array): boolean {
+  const sample = bytes.subarray(0, Math.min(bytes.length, 800_000));
+  const text = new TextDecoder("latin1").decode(sample);
+  return text.includes("/AcroForm") || text.includes("/Widget") || text.includes("/Tx");
+}
+
+/** Проверка PDF при загрузке: есть ли поля формы и как они называются */
+export async function inspectLegalPdf(dataUrl: string): Promise<InspectLegalPdfResult> {
+  const parsed = parseAllowedDataUrl(dataUrl);
+  if (!parsed || parsed.kind !== "pdf") {
+    return { ok: false, error: "Файл не является PDF" };
+  }
+
+  try {
+    const bytes = dataUrlToBytes(parsed.dataUrl);
+    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = pdfDoc.getForm();
+    const fields = form.getFields();
+    const fieldNames = fields.map((f) => f.getName());
+
+    return {
+      ok: true,
+      fieldCount: fields.length,
+      fieldNames,
+      pageCount: pdfDoc.getPageCount(),
+      acroFormMarker: pdfBytesContainAcroFormMarker(bytes),
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Ошибка чтения PDF";
+    return { ok: false, error: message };
+  }
+}
+
+function noFormFieldsError(acroFormMarker: boolean): string {
+  if (acroFormMarker) {
+    return (
+      "В PDF есть следы формы, но поля не читаются. В Word используйте только " +
+      "«Разработчик → Элементы управления для предыдущих версий → Поле текста» " +
+      "(не обычное подчёркивание и не современное «Поле формы»). Затем «Сохранить как → PDF»."
+    );
+  }
+  return (
+    "В PDF нет заполняемых полей формы. Обычное подчёркивание ______ или скан " +
+    "заполнить нельзя — в Word вставьте «Поле текста» (legacy) с именем patient_full_name и т.д."
+  );
+}
+
 /** Заполняет PDF с полями формы (AcroForm) данными пациента и клиники */
 export async function fillLegalPdf(
   dataUrl: string,
@@ -56,24 +126,25 @@ export async function fillLegalPdf(
   }
 
   try {
-    const pdfDoc = await PDFDocument.load(dataUrlToBytes(dataUrl));
+    const sourceBytes = dataUrlToBytes(parsed.dataUrl);
+    const pdfDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
     pdfDoc.registerFontkit(fontkit);
 
     const form = pdfDoc.getForm();
     const fields = form.getFields();
     const fieldNames = fields.map((f) => f.getName());
+    const acroFormMarker = pdfBytesContainAcroFormMarker(sourceBytes);
 
     if (fields.length === 0) {
       return {
         ok: false,
-        error:
-          "В PDF нет заполняемых полей формы. Обычный скан или бланк с подчёркиваниями заполнить нельзя — нужен PDF с полями (см. подсказку в юр. отделе).",
+        error: noFormFieldsError(acroFormMarker),
         fieldCount: 0,
       };
     }
 
     const tokens = buildArrivalDocumentTokens(ctx);
-    const fontBytes = await loadCyrillicFontBytes();
+    const fontBytes = await loadCyrillicFontBytesCached();
     const font = await pdfDoc.embedFont(fontBytes);
 
     let filledCount = 0;

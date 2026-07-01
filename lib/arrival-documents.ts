@@ -7,7 +7,7 @@ import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 import type { ClinicSettings, Doctor, Patient } from "@/lib/types";
 import { formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { tokenKeyToWordFieldName } from "@/lib/legal-pdf-fields";
-import { getContractNumber, getPatientActName, getWorkActCustomerName } from "@/lib/work-act-utils";
+import { getContractNumber, getPatientActName, getWorkActCustomerName, getWorkActCustomerPassport } from "@/lib/work-act-utils";
 
 export interface ArrivalDocumentContext {
   patient: Patient;
@@ -61,6 +61,7 @@ export function buildArrivalDocumentTokens(
   const contractNumber = getContractNumber(patient.id);
   const fullName = getFullName(patient.firstName, patient.lastName, patient.middleName);
   const customerName = getWorkActCustomerName(patient);
+  const customerPassport = getWorkActCustomerPassport(patient);
   const actName = getPatientActName(
     patient.firstName,
     patient.lastName,
@@ -71,6 +72,7 @@ export function buildArrivalDocumentTokens(
 
   const tokens: Record<string, string> = {
     "customer.fullName": customerName,
+    "customer.passport": customerPassport,
     "patient.fullName": fullName,
     "patient.beneficiaryFullName": fullName,
     "patient.actName": actName,
@@ -298,6 +300,14 @@ export function renderArrivalDocumentSectionHtml(
 
 export function isPdfArrivalDocument(doc: ArrivalPrintDocument): boolean {
   return Boolean(doc.fileDataUrl?.startsWith("data:application/pdf;base64,"));
+}
+
+export function isDocxArrivalDocument(doc: ArrivalPrintDocument): boolean {
+  return Boolean(
+    doc.fileDataUrl?.startsWith(
+      "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,"
+    )
+  );
 }
 
 export function buildArrivalDocumentsPrintHtml(options: {

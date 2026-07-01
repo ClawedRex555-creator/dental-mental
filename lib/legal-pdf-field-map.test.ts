@@ -45,6 +45,38 @@ describe("resolveTokenForPdfField", () => {
     );
   });
 
+  it("matches short Word field names (≤20 chars)", () => {
+    const childTokens = {
+      "patient.representativeFullName": "Иванов Иван",
+      "patient.representativePassport": "6012 345678",
+      "patient.birthCertificate": "IV-АА 123456",
+      "patient.contractNumber": "1234-5678",
+    };
+    assert.equal(resolveTokenForPdfField("patient_repr_fio", childTokens), "Иванов Иван");
+    assert.equal(resolveTokenForPdfField("patient_repr_pass", childTokens), "6012 345678");
+    assert.equal(resolveTokenForPdfField("patient_birth_cert", childTokens), "IV-АА 123456");
+    assert.equal(resolveTokenForPdfField("patient_contract_no", childTokens), "1234-5678");
+  });
+
+  it("still matches legacy long Word field names", () => {
+    const childTokens = {
+      "patient.representativeFullName": "Иванов Иван",
+    };
+    assert.equal(
+      resolveTokenForPdfField("patient_representative_full_name", childTokens),
+      "Иванов Иван"
+    );
+  });
+
+  it("matches customer passport alias", () => {
+    const tokens = {
+      "customer.passport": "6012 345678",
+      "patient.passport": "1111 222222",
+    };
+    assert.equal(resolveTokenForPdfField("customer_passport", tokens), "6012 345678");
+    assert.equal(resolveTokenForPdfField("паспортзаказчика", tokens), "6012 345678");
+  });
+
   it("returns null for unknown field", () => {
     assert.equal(resolveTokenForPdfField("unknown", tokens), null);
   });

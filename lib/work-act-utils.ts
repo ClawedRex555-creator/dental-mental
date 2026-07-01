@@ -93,6 +93,31 @@ export function getWorkActCustomerName(patient: {
   return getPatientActName(patient.firstName, patient.lastName, patient.middleName);
 }
 
+function formatPassportPair(series?: string, number?: string): string {
+  const s = series?.trim();
+  const n = number?.trim();
+  if (s && n) return `${s} ${n}`;
+  return s || n || "—";
+}
+
+/** Паспорт заказчика: для ребёнка — паспорт представителя, иначе — пациента */
+export function getWorkActCustomerPassport(patient: {
+  passportSeries?: string;
+  passportNumber?: string;
+  isChild?: boolean;
+  representativePassportSeries?: string;
+  representativePassportNumber?: string;
+}): string {
+  if (patient.isChild) {
+    const rep = formatPassportPair(
+      patient.representativePassportSeries,
+      patient.representativePassportNumber
+    );
+    if (rep !== "—") return rep;
+  }
+  return formatPassportPair(patient.passportSeries, patient.passportNumber);
+}
+
 /** Сумма для печати: без символа ₽, с десятичными при необходимости */
 export function formatActAmount(amount: number): string {
   const hasFraction = Math.abs(amount % 1) > 0.001;

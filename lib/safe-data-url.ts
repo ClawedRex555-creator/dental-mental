@@ -1,11 +1,12 @@
 export const ALLOWED_DATA_URL_PREFIXES = [
   "data:application/pdf;base64,",
+  "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,",
   "data:image/png;base64,",
   "data:image/jpeg;base64,",
   "data:image/webp;base64,",
 ] as const;
 
-export type AllowedDataUrlKind = "pdf" | "png" | "jpeg" | "webp";
+export type AllowedDataUrlKind = "pdf" | "docx" | "png" | "jpeg" | "webp";
 
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -18,6 +19,8 @@ function prefixToKind(prefix: string): AllowedDataUrlKind | null {
   switch (prefix) {
     case "data:application/pdf;base64,":
       return "pdf";
+    case "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,":
+      return "docx";
     case "data:image/png;base64,":
       return "png";
     case "data:image/jpeg;base64,":
