@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
@@ -20,7 +21,7 @@ import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
-import { generateId } from "@/lib/utils";
+import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,6 +111,11 @@ export function AppointmentModal({
 
   const linkedActPaid =
     appointment?.paymentStatus === "paid" || linkedAct?.paymentStatus === "paid";
+
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.id === patientId),
+    [patients, patientId]
+  );
 
   const doctorCanEdit = isDoctor && (appointment?.status === "in_progress" || status === "in_progress");
   const adminCanEdit = isAdmin || !appointment;
@@ -350,6 +356,42 @@ export function AppointmentModal({
                   )}
                 </div>
               </div>
+
+              {selectedPatient && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="font-medium text-slate-900">
+                        {getFullName(
+                          selectedPatient.firstName,
+                          selectedPatient.lastName,
+                          selectedPatient.middleName
+                        )}
+                        {selectedPatient.isChild && (
+                          <span className="ml-1.5 text-xs font-normal text-teal-700">
+                            ребёнок
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-slate-600">{formatPhone(selectedPatient.phone)}</p>
+                      <p className="text-slate-600">
+                        Д.р. {formatDate(selectedPatient.birthDate)}
+                      </p>
+                      {selectedPatient.isChild && selectedPatient.representativeFullName && (
+                        <p className="pt-1 text-xs text-slate-500">
+                          Представитель: {selectedPatient.representativeFullName}
+                          {selectedPatient.representativeBirthDate && (
+                            <> · д.р. {formatDate(selectedPatient.representativeBirthDate)}</>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" className="shrink-0" asChild>
+                      <Link href={`/patients/${selectedPatient.id}`}>Карточка</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <SearchAutocomplete
                 label="Основные жалобы"

@@ -9,6 +9,38 @@ import {
 export function LegalTemplateGuide() {
   return (
     <div className="space-y-6">
+      <Card className="border-violet-200 bg-violet-50/50">
+        <CardHeader>
+          <CardTitle className="text-base text-violet-900">
+            Пациент vs представитель — какой плейсхолдер куда
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-violet-950">
+          <ul className="list-disc space-y-2 pl-5">
+            <li>
+              <code className="text-xs">{"{patient_full_name}"}</code> —{" "}
+              <strong>всегда пациент</strong> (у ребёнка — имя ребёнка).
+            </li>
+            <li>
+              <code className="text-xs">{"{patient_or_repr_fio}"}</code> /{" "}
+              <code className="text-xs">{"{customer_full_name}"}</code> —{" "}
+              <strong>сторона договора</strong>: взрослый подписывает сам → его ФИО; ребёнок →
+              ФИО законного представителя.
+            </li>
+            <li>
+              <code className="text-xs">{"{patient_repr_fio}"}</code> — строка{" "}
+              <strong>«в случае подписания законным представителем введите ФИО»</strong>: заполняется
+              только если пациент — ребёнок; у взрослого остаётся пустой.
+            </li>
+          </ul>
+          <p className="text-xs text-violet-800">
+            Не подставляйте {"{patient_or_repr_fio}"} в блок подписи представителя — у взрослого
+            туда попадёт его же ФИО. Для отдельной строки представителя используйте{" "}
+            {"{patient_repr_fio}"}, {"{patient_repr_pass}"}, {"{patient_repr_birth}"}.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="border-teal-200 bg-teal-50/50">
         <CardHeader>
           <CardTitle className="text-base text-teal-900">
@@ -21,7 +53,9 @@ export function LegalTemplateGuide() {
               В Word в местах для данных напишите <strong>обычный текст</strong> в фигурных скобках:{" "}
               <code className="text-xs">{"{patient_full_name}"}</code>,{" "}
               <code className="text-xs">{"{customer_full_name}"}</code>,{" "}
-              <code className="text-xs">{"{customer_passport}"}</code>,{" "}
+              <code className="text-xs">{"{patient_or_repr_fio}"}</code>,{" "}
+              <code className="text-xs">{"{patient_or_repr_birth}"}</code>,{" "}
+              <code className="text-xs">{"{patient_repr_birth}"}</code>,{" "}
               <code className="text-xs">{"{clinic_name}"}</code> — см. таблицу ниже.
             </li>
             <li>

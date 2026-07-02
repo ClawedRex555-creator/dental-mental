@@ -43,10 +43,8 @@ export default function AccountSettingsPage() {
     clinicSettings,
     updateClinicSettings,
     updateCurrentUser,
-    resetAllData,
   } = useClinicStore();
   const currentRole = currentUser.role;
-  const [resetConfirm, setResetConfirm] = useState(false);
   const isLimitedStaff =
     currentRole === "doctor" ||
     currentRole === "assistant" ||
@@ -331,43 +329,6 @@ export default function AccountSettingsPage() {
         </>
       )}
 
-      {canManageClinic && (
-      <Card className="border-red-200">
-        <CardHeader>
-          <CardTitle className="text-red-800">Очистить все данные</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-slate-600">
-            Удалятся все пациенты, сотрудники, кабинеты, услуги, записи, акты, платежи,
-            документы юр. отдела и прочие данные. Настройки клиники и профиль администратора
-            сбросятся к начальным. Действие необратимо.
-          </p>
-          {!resetConfirm ? (
-            <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => setResetConfirm(true)}>
-              Очистить систему…
-            </Button>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  resetAllData();
-                  setResetConfirm(false);
-                  setClinicForm(useClinicStore.getState().clinicSettings);
-                  toast.success("Все данные удалены. Можно заполнять с нуля.");
-                  window.location.reload();
-                }}
-              >
-                Да, удалить всё
-              </Button>
-              <Button variant="outline" onClick={() => setResetConfirm(false)}>
-                Отмена
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
     </div>
   );
 }

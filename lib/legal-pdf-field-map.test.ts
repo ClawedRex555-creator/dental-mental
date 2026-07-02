@@ -77,6 +77,22 @@ describe("resolveTokenForPdfField", () => {
     assert.equal(resolveTokenForPdfField("паспортзаказчика", tokens), "6012 345678");
   });
 
+  it("matches patient or representative aliases", () => {
+    const childTokens = {
+      "patientOrRepresentative.fullName": "Иванов Иван Иванович",
+      "patientOrRepresentative.passport": "6012 345678",
+      "patient.fullName": "Иванова Маша",
+    };
+    assert.equal(
+      resolveTokenForPdfField("patient_or_repr_fio", childTokens),
+      "Иванов Иван Иванович"
+    );
+    assert.equal(
+      resolveTokenForPdfField("patient_or_repr_pass", childTokens),
+      "6012 345678"
+    );
+  });
+
   it("returns null for unknown field", () => {
     assert.equal(resolveTokenForPdfField("unknown", tokens), null);
   });

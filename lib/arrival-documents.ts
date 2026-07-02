@@ -7,7 +7,7 @@ import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 import type { ClinicSettings, Doctor, Patient } from "@/lib/types";
 import { formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { tokenKeyToWordFieldName } from "@/lib/legal-pdf-fields";
-import { getContractNumber, getPatientActName, getWorkActCustomerName, getWorkActCustomerPassport } from "@/lib/work-act-utils";
+import { getContractNumber, getPatientActName, getWorkActCustomerName, getWorkActCustomerPassport, getPatientOrRepresentativeFullName, getPatientOrRepresentativePassport, getPatientOrRepresentativeBirthDate, getLegalRepresentativeFullName, getLegalRepresentativePassport, getLegalRepresentativeBirthDate } from "@/lib/work-act-utils";
 
 export interface ArrivalDocumentContext {
   patient: Patient;
@@ -45,13 +45,6 @@ function formatClinicPhone(phone: string | undefined): string {
   return trimmed;
 }
 
-function formatRepresentativePassport(patient: Patient): string {
-  const series = patient.representativePassportSeries?.trim();
-  const number = patient.representativePassportNumber?.trim();
-  if (series && number) return `${series} ${number}`;
-  return series || number || "—";
-}
-
 /** Плейсхолдеры для текста в юр. отделе (поле «Примечание») и встроенных форм */
 export function buildArrivalDocumentTokens(
   ctx: ArrivalDocumentContext
@@ -62,6 +55,12 @@ export function buildArrivalDocumentTokens(
   const fullName = getFullName(patient.firstName, patient.lastName, patient.middleName);
   const customerName = getWorkActCustomerName(patient);
   const customerPassport = getWorkActCustomerPassport(patient);
+  const patientOrRepresentativeName = getPatientOrRepresentativeFullName(patient);
+  const patientOrRepresentativePassport = getPatientOrRepresentativePassport(patient);
+  const patientOrRepresentativeBirthDate = getPatientOrRepresentativeBirthDate(patient);
+  const legalRepresentativeFullName = getLegalRepresentativeFullName(patient);
+  const legalRepresentativePassport = getLegalRepresentativePassport(patient);
+  const legalRepresentativeBirthDate = getLegalRepresentativeBirthDate(patient);
   const actName = getPatientActName(
     patient.firstName,
     patient.lastName,
@@ -73,6 +72,9 @@ export function buildArrivalDocumentTokens(
   const tokens: Record<string, string> = {
     "customer.fullName": customerName,
     "customer.passport": customerPassport,
+    "patientOrRepresentative.fullName": patientOrRepresentativeName,
+    "patientOrRepresentative.passport": patientOrRepresentativePassport,
+    "patientOrRepresentative.birthDate": patientOrRepresentativeBirthDate,
     "patient.fullName": fullName,
     "patient.beneficiaryFullName": fullName,
     "patient.actName": actName,
@@ -93,8 +95,9 @@ export function buildArrivalDocumentTokens(
     "patient.passportSeries": dash(patient.passportSeries),
     "patient.passportNumber": dash(patient.passportNumber),
     "patient.contractNumber": contractNumber,
-    "patient.representativeFullName": dash(patient.representativeFullName),
-    "patient.representativePassport": formatRepresentativePassport(patient),
+    "patient.representativeFullName": legalRepresentativeFullName,
+    "patient.representativeBirthDate": legalRepresentativeBirthDate,
+    "patient.representativePassport": legalRepresentativePassport,
     "patient.birthCertificate": formatBirthCertificate(patient),
     "patient.isChild": patient.isChild ? "да" : "нет",
     "clinic.name": dash(clinic.name),
@@ -157,10 +160,9 @@ export function fillDocumentTemplate(
 function patientIdentityLine(ctx: ArrivalDocumentContext): string {
   const t = buildArrivalDocumentTokens(ctx);
   if (ctx.patient.isChild) {
-    const rep =
-      t["patient.representativeFullName"] !== "—"
-        ? `, законный представитель: ${t["patient.representativeFullName"]}`
-        : "";
+    const rep = t["patient.representativeFullName"].trim()
+      ? `, законный представитель: ${t["patient.representativeFullName"]}`
+      : "";
     return `${t["patient.fullName"]}, дата рождения ${t["patient.birthDate"]}, свидетельство о рождении ${t["patient.birthCertificate"]}${rep}`;
   }
   return `${t["patient.fullName"]}, дата рождения ${t["patient.birthDate"]}, паспорт ${t["patient.passport"]}`;
@@ -244,7 +246,7 @@ export function renderClinicSummaryHtml(ctx: ArrivalDocumentContext): string {
 export function renderPatientSummaryHtml(ctx: ArrivalDocumentContext): string {
   const t = buildArrivalDocumentTokens(ctx);
   const childBlock =
-    ctx.patient.isChild && t["patient.representativeFullName"] !== "—"
+    ctx.patient.isChild && t["patient.representativeFullName"].trim()
       ? `<p><strong>Законный представитель:</strong> ${escapeHtml(t["patient.representativeFullName"])}</p>`
       : "";
 
@@ -279,7 +281,7 @@ function renderSignatureBlockHtml(ctx: ArrivalDocumentContext): string {
         <p class="sign-caption">подпись / М.П.</p>
       </div>
       <div class="sign-col">
-        <p>Заказчик (${escapeHtml(t["patient.fullName"])})</p>
+        <p>Заказчик (${escapeHtml(t["customer.fullName"])})</p>
         <div class="sign-line"></div>
         <p class="sign-caption">подпись · дата _______</p>
       </div>

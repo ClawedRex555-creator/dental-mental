@@ -9,9 +9,13 @@ export const WORD_FORM_FIELD_NAME_MAX_LEN = 20;
 const WORD_FIELD_SHORT_NAMES: Record<string, string> = {
   "patient.contractNumber": "patient_contract_no",
   "patient.representativeFullName": "patient_repr_fio",
+  "patient.representativeBirthDate": "patient_repr_birth",
   "patient.representativePassport": "patient_repr_pass",
   "patient.birthCertificate": "patient_birth_cert",
   "doctor.specialization": "doctor_specialty",
+  "patientOrRepresentative.fullName": "patient_or_repr_fio",
+  "patientOrRepresentative.passport": "patient_or_repr_pass",
+  "patientOrRepresentative.birthDate": "patient_or_repr_birth",
 };
 
 /** Имя поля для Word (латиница, подчёркивания, ≤20 символов где нужно) */
@@ -72,7 +76,28 @@ export const LEGAL_PDF_FIELD_CATALOG: LegalPdfFieldDef[] = [
     "patient",
     "Пациент (ФИО)",
     "Петрова Мария Сергеевна",
-    "Согласия — всегда имя пациента"
+    "Всегда имя пациента (у ребёнка — ребёнок, не представитель)"
+  ),
+  field(
+    "patientOrRepresentative.fullName",
+    "patient",
+    "Сторона договора (пациент или представитель)",
+    "Иванов Иван Иванович",
+    "Основная строка договора: взрослый → пациент, ребёнок → представитель. Не для блока «подпись представителя»"
+  ),
+  field(
+    "patientOrRepresentative.passport",
+    "patient",
+    "Пациент или представитель (паспорт)",
+    "6012 345678",
+    "Ребёнок → паспорт представителя, взрослый → паспорт пациента"
+  ),
+  field(
+    "patientOrRepresentative.birthDate",
+    "patient",
+    "Пациент или представитель (дата рождения)",
+    "15.03.1985",
+    "Ребёнок → д.р. представителя, взрослый → д.р. пациента"
   ),
   field("patient.birthDate", "patient", "Дата рождения", "15.03.2010"),
   field("patient.age", "patient", "Возраст", "15"),
@@ -91,15 +116,23 @@ export const LEGAL_PDF_FIELD_CATALOG: LegalPdfFieldDef[] = [
   field(
     "patient.representativeFullName",
     "patient",
-    "Законный представитель",
+    "Подпись законного представителя (ФИО)",
     "Иванов Иван Иванович",
-    "Если пациент — ребёнок"
+    "Строка «в случае подписания законным представителем»: только для ребёнка, у взрослого пусто"
+  ),
+  field(
+    "patient.representativeBirthDate",
+    "patient",
+    "Дата рождения представителя (подпись)",
+    "15.03.1985",
+    "Только для ребёнка; у взрослого пусто"
   ),
   field(
     "patient.representativePassport",
     "patient",
-    "Паспорт представителя",
-    "6012 345678"
+    "Паспорт представителя (подпись)",
+    "6012 345678",
+    "Только для ребёнка; у взрослого пусто"
   ),
   field(
     "patient.birthCertificate",
@@ -138,6 +171,12 @@ export const LEGAL_PDF_TEMPLATE_PRESETS: { title: string; fields: string[] }[] =
       "customer_passport",
       "patient_full_name",
       "patient_birth_date",
+      "patient_or_repr_fio",
+      "patient_or_repr_pass",
+      "patient_or_repr_birth",
+      "patient_repr_fio",
+      "patient_repr_pass",
+      "patient_repr_birth",
       "patient_phone",
       "patient_passport",
       "patient_contract_no",
@@ -165,6 +204,7 @@ export const LEGAL_PDF_TEMPLATE_PRESETS: { title: string; fields: string[] }[] =
       "patient_full_name",
       "patient_birth_date",
       "patient_repr_fio",
+      "patient_repr_birth",
       "patient_repr_pass",
       "patient_birth_cert",
       "clinic_name",

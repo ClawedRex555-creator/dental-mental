@@ -309,6 +309,9 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                   <p>
                     <span className="text-slate-500">Представитель:</span>{" "}
                     {patient.representativeFullName || "—"}
+                    {patient.representativeBirthDate && (
+                      <> · д.р. {formatDate(patient.representativeBirthDate)}</>
+                    )}
                   </p>
                   <p>
                     <span className="text-slate-500">Паспорт представителя:</span>{" "}

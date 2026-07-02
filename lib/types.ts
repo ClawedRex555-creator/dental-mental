@@ -108,6 +108,7 @@ export interface Patient {
   birthCertificateSeries?: string;
   birthCertificateNumber?: string;
   representativeFullName?: string;
+  representativeBirthDate?: string;
   representativePassportSeries?: string;
   representativePassportNumber?: string;
   /** Пациент заведён без СНИЛС и паспорта */
