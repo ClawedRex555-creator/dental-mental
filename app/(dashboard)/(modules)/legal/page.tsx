@@ -1,29 +1,62 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, Upload, ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Pencil, Plus, Trash2, Upload, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useClinicStore } from "@/store/useClinicStore";
 import {
-  openStoredFile,
+  legalFileUploadErrorMessage,
   readFileAsDataUrl,
   warnIfFileTooLarge,
 } from "@/lib/open-stored-file";
+import {
+  legalDocumentHasFile,
+  resolveLegalDocumentDataUrl,
+} from "@/lib/resolve-legal-document-source";
+import { missingLegalConsentBundleEntries } from "@/lib/legal-consents-bundle.generated";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { LEGAL_CATEGORIES, type LegalCategory } from "@/lib/legal-categories";
-import { LEGAL_PDF_FIELD_HINTS } from "@/lib/legal-pdf-fill";
+import {
+  LEGAL_CATEGORIES,
+  LEGAL_CATEGORY_CONSENTS,
+  type LegalCategory,
+} from "@/lib/legal-categories";
+import { getLegalDocumentUploadFeedback } from "@/lib/legal-pdf-upload-feedback";
+import type { LegalDocument } from "@/lib/types";
 
 export default function LegalPage() {
   const { legalDocuments, addLegalDocument, updateLegalDocument, removeLegalDocument } =
     useClinicStore();
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<LegalCategory>(LEGAL_CATEGORIES[0]);
+  const [category, setCategory] = useState<LegalCategory>(LEGAL_CATEGORY_CONSENTS);
   const [notes, setNotes] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const bundleImported = useRef(false);
+
+  useEffect(() => {
+    if (bundleImported.current) return;
+    const missing = missingLegalConsentBundleEntries(legalDocuments);
+    if (missing.length === 0) return;
+    bundleImported.current = true;
+    const today = new Date().toISOString().slice(0, 10);
+    for (const entry of missing) {
+      addLegalDocument({
+        id: entry.id,
+        title: entry.title,
+        category: LEGAL_CATEGORY_CONSENTS,
+        date: today,
+        templateUrl: entry.templateUrl,
+        fileName: entry.fileName,
+      });
+    }
+    toast.success(`Добавлен комплект ИДС: ${missing.length} документов`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз при первом открытии
+  }, [legalDocuments.length]);
 
   const handleAdd = (fileDataUrl?: string, fileName?: string) => {
     const docTitle = title.trim() || fileName?.replace(/\.[^.]+$/, "") || "";
@@ -42,22 +75,95 @@ export default function LegalPage() {
     });
     setTitle("");
     setNotes("");
-    toast.success(
-      fileDataUrl
-        ? "Документ сохранён — нажмите «Открыть»"
-        : "Запись создана. Прикрепите файл кнопкой «Загрузить файл»"
-    );
+    if (!fileDataUrl) {
+      toast.success("Запись создана. Прикрепите файл кнопкой «Загрузить файл»");
+    } else if (
+      !fileDataUrl.startsWith("data:application/pdf;base64,") &&
+      !fileDataUrl.startsWith(
+        "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,"
+      )
+    ) {
+      toast.success("Документ сохранён — нажмите «Открыть»");
+    }
+  };
+
+  const notifyFileUpload = async (dataUrl: string, fileName: string) => {
+    const feedback = await getLegalDocumentUploadFeedback(dataUrl);
+    if (feedback.status === "other") {
+      toast.success(`Файл «${fileName}» прикреплён`);
+      return;
+    }
+    if (feedback.status === "error") {
+      toast.warning(`Файл загружен, но не прочитан: ${feedback.message}`);
+      return;
+    }
+    if (feedback.status === "no_fields") {
+      toast.warning(`Файл сохранён. ${feedback.message}`, { duration: 14_000 });
+      if (feedback.hint) toast.info(feedback.hint, { duration: 14_000 });
+      return;
+    }
+    toast.success(`${fileName}: ${feedback.preview}`, { duration: 10_000 });
   };
 
   const attachFile = async (docId: string, file: File) => {
     warnIfFileTooLarge(file);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      updateLegalDocument(docId, { fileDataUrl: dataUrl, fileName: file.name });
-      toast.success("Файл прикреплён");
-    } catch {
-      toast.error("Не удалось прочитать файл");
+      updateLegalDocument(docId, {
+        fileDataUrl: dataUrl,
+        fileName: file.name,
+        templateUrl: undefined,
+      });
+      await notifyFileUpload(dataUrl, file.name);
+    } catch (err) {
+      toast.error(legalFileUploadErrorMessage(err));
     }
+  };
+
+  const openDocument = async (doc: LegalDocument) => {
+    const dataUrl = await resolveLegalDocumentDataUrl(doc);
+    if (!dataUrl) {
+      toast.error("Файл не найден");
+      return;
+    }
+    const { openStoredFile } = await import("@/lib/open-stored-file");
+    openStoredFile(dataUrl, doc.fileName ?? doc.title);
+  };
+
+  const startEditTitle = (doc: LegalDocument) => {
+    setEditingId(doc.id);
+    setEditingTitle(doc.title);
+  };
+
+  const commitEditTitle = (docId: string) => {
+    const next = editingTitle.trim();
+    if (!next) {
+      toast.error("Название не может быть пустым");
+      return;
+    }
+    updateLegalDocument(docId, { title: next });
+    setEditingId(null);
+    setEditingTitle("");
+  };
+
+  const importBundle = () => {
+    const missing = missingLegalConsentBundleEntries(legalDocuments);
+    if (missing.length === 0) {
+      toast.info("Комплект ИДС уже добавлен");
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    for (const entry of missing) {
+      addLegalDocument({
+        id: entry.id,
+        title: entry.title,
+        category: LEGAL_CATEGORY_CONSENTS,
+        date: today,
+        templateUrl: entry.templateUrl,
+        fileName: entry.fileName,
+      });
+    }
+    toast.success(`Добавлено согласий: ${missing.length}`);
   };
 
   const grouped = LEGAL_CATEGORIES.map((cat) => ({
@@ -67,11 +173,16 @@ export default function LegalPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Юр. отдел</h1>
-        <p className="text-sm text-slate-500">
-          Юридический сборник клиники: журналы, договоры, книги учёта, акты
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Юр. отдел</h1>
+          <p className="text-sm text-slate-500">
+            Юридический сборник клиники: журналы, договоры, книги учёта, акты
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={importBundle}>
+          Импортировать комплект ИДС
+        </Button>
       </div>
 
       <Card>
@@ -101,11 +212,8 @@ export default function LegalPage() {
             <Label>Примечание</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
             <p className="text-xs text-slate-500">
-              Для PDF при печати данные подставляются в <strong>поля формы</strong> внутри файла.
-              В Word/LibreOffice добавьте поля с именами: patient.fullName, patient.phone,
-              clinic.name, clinic.inn, clinic.address и т.д. (список — в подсказке ниже).
-              Скан или бланк только с подчёркиваниями заполнить нельзя. В примечании — плейсхолдеры{" "}
-              {"{{patient.fullName}}"} для текстовых документов без PDF.
+              Прикрепите шаблон (.docx или PDF) или используйте встроенный комплект ИДС.
+              Название можно изменить у любой карточки (иконка карандаша).
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -118,7 +226,7 @@ export default function LegalPage() {
               Добавить с файлом
               <input
                 type="file"
-                accept=".pdf,image/*,.doc,.docx"
+                accept=".pdf,image/*,.docx"
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
@@ -127,8 +235,9 @@ export default function LegalPage() {
                   try {
                     const dataUrl = await readFileAsDataUrl(file);
                     handleAdd(dataUrl, file.name);
-                  } catch {
-                    toast.error("Не удалось загрузить файл");
+                    await notifyFileUpload(dataUrl, file.name);
+                  } catch (err) {
+                    toast.error(legalFileUploadErrorMessage(err));
                   }
                   e.target.value = "";
                 }}
@@ -138,31 +247,14 @@ export default function LegalPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Имена полей для PDF-бланков</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-slate-600">
-          <p>
-            При статусе «Пришёл» система заполняет загруженный PDF, если в нём есть поля формы
-            (AcroForm). Создайте бланк в Word: «Разработчик» → «Режим конструктора» → «Простые
-            поля» → «Текстовое поле», в свойствах укажите имя, например{" "}
-            <code className="text-xs">patient.fullName</code>. Сохраните как PDF.
-          </p>
-          <p className="text-xs text-slate-500">
-            Поддерживаемые имена:{" "}
-            {LEGAL_PDF_FIELD_HINTS.map((h) => (
-              <code key={h} className="mr-1 text-xs">
-                {h}
-              </code>
-            ))}
-          </p>
-        </CardContent>
-      </Card>
-
       {grouped.map(({ cat, docs }) => (
         <section key={cat} className="space-y-3">
-          <h2 className="text-lg font-semibold text-slate-900">{cat}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            {cat}
+            {docs.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-slate-400">({docs.length})</span>
+            )}
+          </h2>
           {docs.length === 0 ? (
             <p className="text-sm text-slate-400">Нет документов</p>
           ) : (
@@ -172,11 +264,49 @@ export default function LegalPage() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{doc.title}</p>
+                        {editingId === doc.id ? (
+                          <div className="flex gap-2">
+                            <Input
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") commitEditTitle(doc.id);
+                                if (e.key === "Escape") setEditingId(null);
+                              }}
+                              autoFocus
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => commitEditTitle(doc.id)}
+                            >
+                              OK
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-1">
+                            <p className="font-medium">{doc.title}</p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => startEditTitle(doc)}
+                              title="Изменить название"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                            </Button>
+                          </div>
+                        )}
                         <p className="text-xs text-slate-500">{doc.date}</p>
                         {doc.fileName && (
                           <p className="mt-1 truncate text-xs text-teal-800">
                             {doc.fileName}
+                          </p>
+                        )}
+                        {doc.templateUrl && !doc.fileDataUrl && (
+                          <p className="mt-1 truncate text-xs text-slate-500">
+                            Встроенный шаблон
                           </p>
                         )}
                         {doc.notes && (
@@ -203,19 +333,18 @@ export default function LegalPage() {
                         type="button"
                         size="sm"
                         variant="default"
-                        onClick={() =>
-                          openStoredFile(doc.fileDataUrl, doc.fileName ?? doc.title)
-                        }
+                        disabled={!legalDocumentHasFile(doc)}
+                        onClick={() => void openDocument(doc)}
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         Открыть
                       </Button>
                       <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs hover:bg-slate-50">
                         <Upload className="h-3.5 w-3.5" />
-                        {doc.fileDataUrl ? "Заменить файл" : "Загрузить файл"}
+                        {legalDocumentHasFile(doc) ? "Заменить файл" : "Загрузить файл"}
                         <input
                           type="file"
-                          accept=".pdf,image/*,.doc,.docx"
+                          accept=".pdf,image/*,.docx"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];

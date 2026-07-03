@@ -34,7 +34,7 @@ function workAct(id: string): WorkAct {
     actDate: "2026-06-22",
     patientId: "p1",
     doctorId: "d1",
-    items: [{ serviceName: "Приём", price: 1000, quantity: 1 }],
+    items: [{ id: "i1", serviceName: "Приём", price: 1000, quantity: 1, total: 1000 }],
     subtotalAmount: 1000,
     discountType: "percent",
     discount: 0,
@@ -159,9 +159,10 @@ describe("clinic-snapshot-load", () => {
         date: "2026-06-22",
         startTime: "10:00",
         endTime: "10:30",
+        durationMinutes: 30,
         status: "scheduled",
+        price: 0,
         paymentStatus: "pending",
-        createdAt: "2026-06-22",
       },
     ];
     const remote = structuredClone(baseline);
@@ -180,11 +181,88 @@ describe("clinic-snapshot-load", () => {
         date: "2026-06-22",
         startTime: "10:00",
         endTime: "10:30",
+        durationMinutes: 30,
         status: "scheduled",
+        price: 0,
         paymentStatus: "pending",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+  });
+
+  it("serverSnapshotHasIncomingUpdates detects patient field change on server", () => {
+    const baseline = createFreshPersistedState();
+    baseline.patients = [patient("p1")];
+    const remote = createFreshPersistedState();
+    remote.patients = [{ ...patient("p1"), phone: "+79991112233" }];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+  });
+
+  it("serverSnapshotHasIncomingUpdates detects medical record content change", () => {
+    const baseline = createFreshPersistedState();
+    baseline.medicalRecords = [
+      {
+        id: "mr1",
+        patientId: "p1",
+        doctorId: "d1",
+        complaints: "Боль",
+        diagnosis: "K02",
+        treatment: "Пломба",
+        createdAt: "2026-06-22",
+      },
+    ];
+    const remote = createFreshPersistedState();
+    remote.medicalRecords = [
+      {
+        id: "mr1",
+        patientId: "p1",
+        doctorId: "d1",
+        complaints: "Боль усилилась",
+        diagnosis: "K02",
+        treatment: "Пломба",
         createdAt: "2026-06-22",
       },
     ];
     assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+  });
+
+  it("serverSnapshotHasIncomingUpdates detects new phase-1 sync fields", () => {
+    const baseline = createFreshPersistedState();
+    const remote = createFreshPersistedState();
+
+    remote.legalDocuments = [
+      {
+        id: "ld1",
+        category: "policy",
+        title: "Политика",
+        date: "2026-06-22",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remote, baseline), true);
+
+    const remoteTemplate = createFreshPersistedState();
+    remoteTemplate.documentTemplates = [
+      {
+        id: "tpl1",
+        name: "Согласие",
+        category: "consent",
+      },
+    ];
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteTemplate, baseline), true);
+
+    const remoteHours = createFreshPersistedState();
+    remoteHours.assistantManualHours = { a1: { "2026-06-22": "4" } };
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteHours, baseline), true);
+
+    const remoteTeethKeys = createFreshPersistedState();
+    remoteTeethKeys.teethByPatient = { p1: [] };
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteTeethKeys, baseline), true);
+
+    const remoteSettings = createFreshPersistedState();
+    remoteSettings.clinicSettings = {
+      ...baseline.clinicSettings,
+      workHours: "Пн-Пт 09:00-18:00",
+    };
+    assert.equal(serverSnapshotHasIncomingUpdates(remoteSettings, baseline), true);
   });
 });

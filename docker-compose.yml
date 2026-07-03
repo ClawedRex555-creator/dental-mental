@@ -1,6 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       POSTGRES_USER: mis
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -16,12 +21,18 @@ services:
     restart: unless-stopped
 
   app:
+    image: emkaro-app:${EMKARO_IMAGE_TAG:-latest}
     build:
       context: .
       args:
         APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
         AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
         CACHEBUST: ${DEPLOY_VERSION:-unknown}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       NODE_ENV: production
       DEPLOY_VERSION: ${DEPLOY_VERSION:-unknown}
@@ -52,7 +63,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"require('http').get('http://127.0.0.1:3000/api/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\"",
+          "node -e \"require('http').get('http://127.0.0.1:3000/api/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.exit(d.includes('patientAppointmentSearch')?0:1))}).on('error',()=>process.exit(1))\"",
         ]
       interval: 30s
       timeout: 5s
@@ -60,6 +71,11 @@ services:
 
   caddy:
     image: caddy:2-alpine
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "80:80"
       - "443:443"

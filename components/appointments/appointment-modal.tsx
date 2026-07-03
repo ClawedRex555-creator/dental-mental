@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
@@ -20,7 +21,7 @@ import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
-import { generateId } from "@/lib/utils";
+import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +42,7 @@ interface AppointmentModalProps {
   defaultDate?: string;
   defaultDoctorId?: string;
   defaultTime?: string;
+  onOpenAct?: (actId: string) => void;
 }
 
 export function AppointmentModal({
@@ -50,6 +52,7 @@ export function AppointmentModal({
   defaultDate,
   defaultDoctorId,
   defaultTime,
+  onOpenAct,
 }: AppointmentModalProps) {
   const {
     patients,
@@ -97,9 +100,22 @@ export function AppointmentModal({
     if (!appointment) return undefined;
     return (
       appointment.workActId ??
-      workActs.find((a) => a.appointmentId === appointment.id)?.id
+      workActs.find((a) => a.appointmentId === appointment.id && a.actType !== "prepayment")?.id
     );
   }, [appointment, workActs]);
+
+  const linkedAct = useMemo(() => {
+    if (!linkedActId) return undefined;
+    return workActs.find((a) => a.id === linkedActId);
+  }, [linkedActId, workActs]);
+
+  const linkedActPaid =
+    appointment?.paymentStatus === "paid" || linkedAct?.paymentStatus === "paid";
+
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.id === patientId),
+    [patients, patientId]
+  );
 
   const doctorCanEdit = isDoctor && (appointment?.status === "in_progress" || status === "in_progress");
   const adminCanEdit = isAdmin || !appointment;
@@ -205,6 +221,7 @@ export function AppointmentModal({
     }
 
     const endTime = calcEndTime(startTime, durationMinutes);
+    const preservePaidStatus = appointment?.paymentStatus === "paid";
     const payload: Appointment = {
       id: appointment?.id ?? generateId("apt"),
       patientId,
@@ -224,7 +241,7 @@ export function AppointmentModal({
       complaints: complaints.trim(),
       reason: complaints.trim(),
       price: appointment?.price ?? 0,
-      paymentStatus: isAdmin ? paymentStatus : appointment?.paymentStatus ?? "pending",
+      paymentStatus: preservePaidStatus ? "paid" : "pending",
       workActId: appointment?.workActId,
     };
 
@@ -299,6 +316,23 @@ export function AppointmentModal({
                 Открыть акт оказанных услуг
               </Button>
             )}
+            {linkedActId && linkedActPaid && (
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  if (onOpenAct) {
+                    onOpenAct(linkedActId);
+                    return;
+                  }
+                  setExistingActId(linkedActId);
+                  setActMode("admin_view");
+                  setActModalOpen(true);
+                }}
+              >
+                {linkedAct ? `Акт № ${linkedAct.actNumber} · Оплачен` : "Открыть оплаченный акт"}
+              </Button>
+            )}
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>{UI.patient}</Label>
@@ -322,6 +356,42 @@ export function AppointmentModal({
                   )}
                 </div>
               </div>
+
+              {selectedPatient && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="font-medium text-slate-900">
+                        {getFullName(
+                          selectedPatient.firstName,
+                          selectedPatient.lastName,
+                          selectedPatient.middleName
+                        )}
+                        {selectedPatient.isChild && (
+                          <span className="ml-1.5 text-xs font-normal text-teal-700">
+                            ребёнок
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-slate-600">{formatPhone(selectedPatient.phone)}</p>
+                      <p className="text-slate-600">
+                        Д.р. {formatDate(selectedPatient.birthDate)}
+                      </p>
+                      {selectedPatient.isChild && selectedPatient.representativeFullName && (
+                        <p className="pt-1 text-xs text-slate-500">
+                          Представитель: {selectedPatient.representativeFullName}
+                          {selectedPatient.representativeBirthDate && (
+                            <> · д.р. {formatDate(selectedPatient.representativeBirthDate)}</>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" className="shrink-0" asChild>
+                      <Link href={`/patients/${selectedPatient.id}`}>Карточка</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <SearchAutocomplete
                 label="Основные жалобы"
@@ -349,7 +419,7 @@ export function AppointmentModal({
                         doctors,
                         cabinets
                       );
-                      if (suggested) setCabinetId(suggested);
+                      setCabinetId(suggested ?? "");
                     }}
                   >
                     <option value="">Выберите врача</option>

@@ -43,6 +43,11 @@ echo "--- .deploy-version ---"
 cat .deploy-version 2>/dev/null || echo "MISSING (старый деплой)"
 
 echo ""
+echo "--- .deploy-next-bundle ---"
+cat .deploy-next-bundle 2>/dev/null || echo "MISSING"
+echo "Server arch: $(uname -m)"
+
+echo ""
 echo "--- docker ---"
 docker compose ps 2>/dev/null || docker-compose ps
 

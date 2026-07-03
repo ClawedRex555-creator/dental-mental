@@ -1,9 +1,6 @@
 #!/bin/bash
-# Безопасное обновление на сервере: бэкап БД → распаковка → пересборка
-# Использование (на сервере):
-#   bash scripts/server-update.sh
+# Обновление на сервере: бэкап → распаковка → docker image из .next/standalone → restart.
 #   bash scripts/server-update.sh /opt/emkaro-update.tar.gz
-#   DEPLOY_USE_PREBUILT=1 bash scripts/server-update.sh   # npm в Docker не тянет registry
 set -euo pipefail
 
 ROOT="${DEPLOY_ROOT:-/opt/emkaro}"
@@ -12,7 +9,7 @@ ARCHIVE="${1:-/opt/emkaro-update.tar.gz}"
 cd "$ROOT"
 
 if [ ! -f "docker-compose.yml" ]; then
-  echo "Запустите из каталога проекта (docker-compose.yml не найден в $ROOT)"
+  echo "ОШИБКА: docker-compose.yml не найден в $ROOT"
   exit 1
 fi
 
@@ -26,27 +23,32 @@ normalize_and_validate_env() {
   if command -v python3 >/dev/null 2>&1; then
     python3 scripts/fix-server-env.py "$env_file"
     python3 scripts/fix-server-env.py --check "$env_file"
-  else
-    echo "ПРЕДУПРЕЖДЕНИЕ: python3 не найден — базовая проверка .env"
-    if grep -qE 'APP_ROOT_DOMAIN=.*\.u$' "$env_file" || grep -qE 'ACME_EMAIL=.*\.u$' "$env_file"; then
-      echo "ОШИБКА: .env повреждён (домен обрезан до .u вместо .ru). Установите python3 и fix-server-env.py"
-      exit 1
-    fi
   fi
 }
 
-fix_deploy_scripts_crlf() {
-  if [ -d "$ROOT/scripts" ]; then
-    # shellcheck disable=SC2044
-    while IFS= read -r -d '' f; do
-      sed -i 's/\r$//' "$f" 2>/dev/null || true
-    done < <(find "$ROOT/scripts" -maxdepth 1 -name '*.sh' -print0 2>/dev/null || true)
-  fi
+has_mac_bundle() {
+  [ -f "$ROOT/.deploy-next-bundle" ] && [ -d "$ROOT/.next/standalone" ] && [ -d "$ROOT/.next/static" ]
 }
 
-echo "=== Emkaro: безопасное обновление ==="
+echo "=== Emkaro: обновление ==="
 
-normalize_and_validate_env
+echo ">>> Бэкап PostgreSQL..."
+bash scripts/backup-db.sh "$ROOT"
+
+if [ -f "$ARCHIVE" ]; then
+  echo ">>> Распаковка $ARCHIVE ..."
+  cp .env /tmp/emkaro.env.bak
+  tar -xzf "$ARCHIVE" -C "$ROOT"
+  cp /tmp/emkaro.env.bak .env
+  normalize_and_validate_env
+  bash scripts/fix-stale-routes.sh "$ROOT"
+  if [ -f "$ROOT/.deploy-version" ]; then
+    echo ">>> Версия: $(cat "$ROOT/.deploy-version")"
+  fi
+else
+  echo "ОШИБКА: архив $ARCHIVE не найден"
+  exit 1
+fi
 
 if [ -f .env ]; then
   set -a
@@ -54,126 +56,108 @@ if [ -f .env ]; then
   . ./.env
   set +a
 fi
-missing_env=()
 for key in AUTH_SECRET APP_ROOT_DOMAIN POSTGRES_PASSWORD PHI_ENCRYPTION_KEY; do
   eval "val=\${$key:-}"
   if [ -z "$val" ]; then
-    missing_env+=("$key")
+    echo "ОШИБКА: в .env не задан $key"
+    exit 1
   fi
 done
-if [ "${#missing_env[@]}" -gt 0 ]; then
-  echo "ОШИБКА: в .env не заданы: ${missing_env[*]}"
-  echo "Добавьте в /opt/emkaro/.env (сгенерировать: openssl rand -base64 48):"
-  echo "  PHI_ENCRYPTION_KEY=<случайная строка>"
-  echo "Без этого docker compose не пересоберёт app — останется старый контейнер."
-  exit 1
-fi
 
-echo ">>> Бэкап PostgreSQL..."
-bash scripts/backup-db.sh "$ROOT"
-
-if [ -f "$ARCHIVE" ]; then
-  echo ">>> Сохраняю .env и распаковываю $ARCHIVE ..."
-  cp .env /tmp/emkaro.env.bak
-  tar -xzf "$ARCHIVE" -C "$ROOT"
-  cp /tmp/emkaro.env.bak .env
-  fix_deploy_scripts_crlf
-  normalize_and_validate_env
-
-  bash scripts/fix-stale-routes.sh "$ROOT"
-  if [ -f "$ROOT/.deploy-version" ]; then
-    echo ">>> Версия деплоя: $(cat "$ROOT/.deploy-version")"
-  fi
-  if ! grep -q 'normalizeSnilsDigits' "$ROOT/lib/egisz/cda/builder.ts" 2>/dev/null; then
-    echo "ПРЕДУПРЕЖДЕНИЕ: lib/egisz/cda/builder.ts без normalizeSnilsDigits — AddMedRecord N3 может падать на СНИЛС"
-  fi
-  if ! grep -q 'doctor' "$ROOT/lib/constants.ts" 2>/dev/null || \
-     ! grep -q '/warehouse' "$ROOT/lib/constants.ts" 2>/dev/null; then
-    echo "ПРЕДУПРЕЖДЕНИЕ: lib/constants.ts на сервере без доступа врача к Услугам — задеплойте свежий код с Mac"
-  fi
-else
-  echo ">>> Архив $ARCHIVE не найден — только пересборка контейнеров"
-  bash scripts/fix-stale-routes.sh "$ROOT"
-fi
-
-echo ">>> Пересборка (данные в volume pg-data не трогаются)..."
 if [ -f "$ROOT/.deploy-version" ]; then
   export DEPLOY_VERSION="$(tr -d '\r' < "$ROOT/.deploy-version")"
 else
   export DEPLOY_VERSION="unknown"
 fi
 
-if [ "${DEPLOY_USE_PREBUILT:-0}" = "1" ]; then
-  echo ">>> DEPLOY_USE_PREBUILT=1 — host npm build + Dockerfile.prebuilt"
-  bash scripts/server-build-prebuilt.sh
-elif ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
-  echo ""
-  echo "ОШИБКА: DNS на сервере не резолвит registry-1.docker.io (Docker Hub)."
-  echo "  lookup через 127.0.0.53: server misbehaving — типичная проблема systemd-resolved на VPS."
-  echo ""
-  bash "$ROOT/scripts/server-check-dns.sh" || true
-  echo ""
-  if docker image inspect node:20-alpine >/dev/null 2>&1; then
-    echo "Образ node:20-alpine уже есть локально. Можно попробовать без --no-cache:"
-    echo "  cd $ROOT && DEPLOY_NO_CACHE=0 bash scripts/server-update.sh ${ARCHIVE:-}"
-    echo "После починки DNS обязательно: DEPLOY_NO_CACHE=1 и полная пересборка."
-  fi
-  echo ""
-  echo "Починка DNS: bash scripts/server-fix-docker-dns.sh"
-  echo "  sudo bash scripts/server-fix-docker-dns.sh --apply"
+has_mac_bundle || {
+  echo "ОШИБКА: в архиве нет .next/standalone."
+  echo "  С Mac: bash scripts/deploy-to-server.sh"
   exit 1
-elif [ "${DEPLOY_NO_CACHE:-1}" = "1" ]; then
-  echo ">>> docker compose build --no-cache app (DEPLOY_NO_CACHE=1)"
-  if ! docker compose build --no-cache app; then
-    echo "ПРЕДУПРЕЖДЕНИЕ: docker compose build не удался — пробуем prebuilt path..."
-    bash scripts/server-build-prebuilt.sh
-  else
-    docker compose up -d --force-recreate app caddy
+}
+
+if [ ! -f "$ROOT/.next/standalone/node_modules/next/package.json" ]; then
+  echo "ОШИБКА: в .next/standalone нет node_modules/next (архив собран с --exclude=node_modules)."
+  echo "  Пересоберите: bash scripts/deploy-to-server.sh"
+  exit 1
+fi
+
+echo ">>> Docker image из .next/standalone (~1 мин)..."
+bash scripts/server-docker-prebuilt-image.sh --build-only
+
+echo ">>> Миграции БД (до перезапуска app)..."
+docker compose up -d postgres
+bash scripts/apply-migrations.sh
+
+echo ">>> Перезапуск app..."
+docker compose up -d --force-recreate --no-build app caddy
+
+if [ -f "$ROOT/.deploy-version" ]; then
+  _tag="$(awk '{print $2}' "$ROOT/.deploy-version" | tr -cd 'a-zA-Z0-9_.-')"
+  if [ -n "$_tag" ]; then
+    echo ">>> Активный тег образа: emkaro-app:${_tag} (rollback: EMKARO_IMAGE_TAG=<старый-commit> docker compose up -d --no-build app)"
   fi
-else
-  docker compose up -d --build
 fi
 
 echo ">>> Статус:"
 docker compose ps
 
-echo ">>> Проверка bundle внутри контейнера..."
-health_json="$(docker compose exec -T app node -e "
-fetch('http://127.0.0.1:3000/api/health').then(r=>r.json()).then(j=>console.log(JSON.stringify(j))).catch(e=>{console.error(e);process.exit(1)})
-" 2>/dev/null || echo '{}')"
+echo ">>> Пауза перед проверкой /api/health..."
+sleep 5
 
-if echo "$health_json" | grep -q 'patientAppointmentSearch'; then
-  echo "OK: новый bundle (patientAppointmentSearch в /api/health)"
-  if echo "$health_json" | grep -q 'egiszDocumentUuidAlign'; then
-    echo "OK: UUID документа в CDA и N3 (egiszDocumentUuidAlign)"
-  else
-    echo "ОШИБКА: нет egiszDocumentUuidAlign в /api/health — контейнер со старым bundle."
-    echo "Ответ: $health_json"
-    if grep -q 'egiszDocumentUuidAlign' "$ROOT/app/api/health/route.ts" 2>/dev/null; then
-      echo "На диске код новый — пересоберите: DEPLOY_NO_CACHE=1 docker compose build --no-cache app && docker compose up -d --force-recreate app"
-    else
-      echo "На диске код старый — задеплойте свежий tar с Mac: bash scripts/deploy-to-server.sh"
-    fi
-    exit 1
+fetch_app_health() {
+  docker compose exec -T app node -e "
+    const http = require('http');
+    const req = http.get('http://127.0.0.1:3000/api/health', (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => process.stdout.write(data));
+    });
+    req.on('error', () => process.exit(1));
+    req.setTimeout(8000, () => { req.destroy(); process.exit(1); });
+  " 2>/dev/null || echo '{}'
+}
+
+if docker compose ps app 2>/dev/null | grep -qE 'Restarting|Exit'; then
+  echo "ОШИБКА: контейнер app не запущен (crash loop или exit)."
+  if [ -f "$ROOT/.deploy-next-bundle" ]; then
+    echo ">>> Bundle:"
+    cat "$ROOT/.deploy-next-bundle"
   fi
-  if echo "$health_json" | grep -q 'egiszCdaSnilsDigits'; then
-    echo "OK: fix СНИЛС в CDA (egiszCdaSnilsDigits)"
-  else
-    echo "ПРЕДУПРЕЖДЕНИЕ: нет egiszCdaSnilsDigits в /api/health — пересоберите app без кэша"
-  fi
-else
-  echo "ОШИБКА: контейнер со старым Next.js bundle."
-  echo "Ответ /api/health: $health_json"
-  if grep -q 'patientAppointmentSearch' "$ROOT/app/api/health/route.ts" 2>/dev/null; then
-    echo "На диске код новый — пересоберите: DEPLOY_NO_CACHE=1 docker compose build --no-cache app && docker compose up -d --force-recreate app"
-  else
-    echo "На диске код старый — задеплойте свежий tar с Mac: bash scripts/deploy-to-server.sh"
-  fi
+  echo ">>> uname на сервере: $(uname -m)"
+  echo ">>> Логи app:"
+  docker compose logs app --tail 100 || true
   exit 1
 fi
 
-echo ""
-echo "============================================"
-echo "  Готово. Бэкап в $ROOT/backups/"
-echo "  НЕ используйте: docker compose down -v"
-echo "============================================"
+health="{}"
+health_ok=0
+for _ in $(seq 1 45); do
+  if docker compose ps app 2>/dev/null | grep -qE 'Restarting|Exit'; then
+    break
+  fi
+  health="$(fetch_app_health)"
+  if echo "$health" | grep -q '"database":true' && echo "$health" | grep -q 'patientAppointmentSearch'; then
+    health_ok=1
+    break
+  fi
+  sleep 2
+done
+
+if [ "$health_ok" = 1 ]; then
+  echo "OK: новый bundle"
+  echo ">>> /api/health: $health"
+  echo "Готово. Бэкап: $ROOT/backups/"
+  exit 0
+fi
+
+echo "ОШИБКА: /api/health не отвечает или старый bundle."
+echo ">>> /api/health: $health"
+if [ -f "$ROOT/.deploy-next-bundle" ]; then
+  echo ">>> Bundle:"
+  cat "$ROOT/.deploy-next-bundle"
+fi
+echo ">>> uname на сервере: $(uname -m)"
+echo ">>> Логи app:"
+docker compose logs app --tail 100 || true
+exit 1

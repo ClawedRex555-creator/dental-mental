@@ -46,9 +46,18 @@ export function createInvoiceFromWorkAct(act: WorkAct, invoiceId: string): Invoi
   };
 }
 
-/** Синхронизация счёта с актом (сумма и скидка) */
+/** Синхронизация счёта с актом (сумма, скидка, статус оплаты) */
 export function patchInvoiceFromWorkAct(invoice: Invoice, act: WorkAct): Invoice {
   const totals = resolveWorkActTotals(act);
+  const paid = Math.min(invoice.paid, totals.totalAmount);
+  const status: Invoice["status"] =
+    totals.totalAmount <= 0
+      ? invoice.status
+      : paid >= totals.totalAmount
+        ? "paid"
+        : paid > 0
+          ? "partial"
+          : "pending";
   return {
     ...invoice,
     patientId: act.patientId,
@@ -58,6 +67,8 @@ export function patchInvoiceFromWorkAct(invoice: Invoice, act: WorkAct): Invoice
     discountType: act.discountType,
     discount: act.discount,
     discountValue: totals.discountValue,
+    paid,
+    status,
     date: act.actDate,
     description: formatInvoiceDescription(act),
   };

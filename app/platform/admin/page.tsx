@@ -14,6 +14,8 @@ import {
 } from "@/lib/modules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LegalTemplateGuide } from "@/components/platform/legal-template-guide";
+import { ClinicWipePanel } from "@/components/platform/clinic-wipe-panel";
 import { toast } from "sonner";
 
 interface ClinicRow {
@@ -259,11 +261,26 @@ export default function PlatformAdminPage() {
                       </label>
                     ))}
                   </div>
+                  <ClinicWipePanel
+                    clinicId={clinic.id}
+                    clinicSlug={clinic.slug}
+                    clinicName={clinic.name}
+                  />
                 </CardContent>
               </Card>
             );
           })
         )}
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Шаблоны юр. документов</h2>
+            <p className="text-sm text-slate-500">
+              Справочник плейсхолдеров для договоров и согласий — виден только супер-админу
+            </p>
+          </div>
+          <LegalTemplateGuide />
+        </section>
       </main>
     </div>
   );

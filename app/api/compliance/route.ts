@@ -4,13 +4,16 @@ import { getServerSession } from "@/lib/get-server-session";
 import { getClinicDataDb, saveClinicDataDb } from "@/lib/clinic-data-db.server";
 import { auditFromRequest, writeAuditLog } from "@/lib/audit-log.server";
 import { isPhiEncryptionEnabled } from "@/lib/phi-crypto.server";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { isDatabaseEnabled } from "@/lib/db";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession();
   if (!session?.clinicId || session.isSuperAdmin) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
@@ -56,6 +59,8 @@ export async function POST(request: Request) {
   if (!session?.clinicId || session.isSuperAdmin) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Plus, Upload } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import {
   LEGAL_CATEGORY_CONSENTS,
   LEGAL_CATEGORY_CONTRACTS,
@@ -14,15 +14,21 @@ import {
 import {
   buildArrivalDocumentsPrintHtml,
   buildArrivalDocumentTokens,
+  isDocxArrivalDocument,
   isPdfArrivalDocument,
 } from "@/lib/arrival-documents";
+import { fillLegalDocxToPrintHtml } from "@/lib/legal-docx-fill";
 import { fillLegalPdf } from "@/lib/legal-pdf-fill";
 import {
-  openPdfBytesInTab,
-  openStoredFileInTab,
+  closeBrowserTab,
+  printHtmlDocumentInTab,
+  printPdfBytesInTab,
+  printStoredDataUrlInTab,
   readFileAsDataUrl,
   reserveBrowserTab,
+  showTabLoading,
 } from "@/lib/open-stored-file";
+import { resolveArrivalDocumentDataUrl } from "@/lib/resolve-legal-document-source";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
@@ -45,27 +51,60 @@ interface AppointmentDocumentsModalProps {
   appointmentDate?: string;
 }
 
+function arrivalDocMatchesQuery(doc: ArrivalPrintDocument, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    doc.name.toLowerCase().includes(q) ||
+    (doc.fileName?.toLowerCase().includes(q) ?? false) ||
+    (doc.notes?.toLowerCase().includes(q) ?? false)
+  );
+}
+
+function filterArrivalDocuments(
+  items: ArrivalPrintDocument[],
+  query: string
+): ArrivalPrintDocument[] {
+  const q = query.trim();
+  if (!q) return items;
+  return items.filter((doc) => arrivalDocMatchesQuery(doc, q));
+}
+
 function DocList({
   title,
   items,
+  totalCount,
   selected,
   onToggle,
   emptyHint,
+  noSearchResultsHint,
   onAttachFile,
 }: {
   title: string;
   items: ArrivalPrintDocument[];
+  totalCount?: number;
   selected: string[];
   onToggle: (id: string) => void;
   emptyHint: string;
+  noSearchResultsHint?: string;
   onAttachFile: (docId: string, file: File) => void;
 }) {
+  const countLabel =
+    totalCount !== undefined && totalCount !== items.length
+      ? `${items.length} из ${totalCount}`
+      : String(items.length);
+
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-[var(--foreground)]">{title}</h3>
+      <h3 className="text-sm font-semibold text-[var(--foreground)]">
+        {title}
+        <span className="ml-1.5 font-normal text-[var(--muted)]">({countLabel})</span>
+      </h3>
       <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
         {items.length === 0 ? (
-          <p className="p-2 text-xs text-[var(--muted)]">{emptyHint}</p>
+          <p className="p-2 text-xs text-[var(--muted)]">
+            {noSearchResultsHint ?? emptyHint}
+          </p>
         ) : (
           items.map((doc) => (
             <div
@@ -145,15 +184,9 @@ function AppointmentDocumentsModalBody({
     [legalDocuments]
   );
 
-  const [selectedContracts, setSelectedContracts] = useState<string[]>(() =>
-    contracts.map((c) => c.id)
-  );
-  const [selectedConsents, setSelectedConsents] = useState<string[]>(() =>
-    consents.map((c) => c.id)
-  );
-  const [selectedEgiszRefusals, setSelectedEgiszRefusals] = useState<string[]>(() =>
-    egiszRefusals.map((c) => c.id)
-  );
+  const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
+  const [selectedConsents, setSelectedConsents] = useState<string[]>([]);
+  const [selectedEgiszRefusals, setSelectedEgiszRefusals] = useState<string[]>([]);
   const [sendToEgisz, setSendToEgisz] = useState<"yes" | "no">("yes");
   const [newDocName, setNewDocName] = useState("");
   const [newDocCategory, setNewDocCategory] = useState<
@@ -162,6 +195,22 @@ function AppointmentDocumentsModalBody({
   const [pendingFile, setPendingFile] = useState<{ dataUrl: string; name: string } | null>(
     null
   );
+  const [docSearch, setDocSearch] = useState("");
+
+  const filteredContracts = useMemo(
+    () => filterArrivalDocuments(contracts, docSearch),
+    [contracts, docSearch]
+  );
+  const filteredConsents = useMemo(
+    () => filterArrivalDocuments(consents, docSearch),
+    [consents, docSearch]
+  );
+  const filteredEgiszRefusals = useMemo(
+    () => filterArrivalDocuments(egiszRefusals, docSearch),
+    [egiszRefusals, docSearch]
+  );
+
+  const searchActive = docSearch.trim().length > 0;
 
   const toggle = (id: string, list: string[], setList: (v: string[]) => void) => {
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -232,7 +281,7 @@ function AppointmentDocumentsModalBody({
     }
   }, [patientId, sendToEgisz]);
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!patient) {
       toast.error("Пациент не найден — обновите страницу");
       return;
@@ -276,94 +325,150 @@ function AppointmentDocumentsModalBody({
     };
 
     const pdfDocs = toPrint.filter((d) => isPdfArrivalDocument(d));
+    const docxDocs = toPrint.filter((d) => isDocxArrivalDocument(d));
     const imageDocs = toPrint.filter(
-      (d) => d.fileDataUrl?.startsWith("data:image/") && !isPdfArrivalDocument(d)
+      (d) =>
+        d.fileDataUrl?.startsWith("data:image/") &&
+        !isPdfArrivalDocument(d) &&
+        !isDocxArrivalDocument(d)
     );
     const htmlDocs = toPrint.filter(
-      (d) => !isPdfArrivalDocument(d) && !d.fileDataUrl?.startsWith("data:image/")
+      (d) =>
+        !isPdfArrivalDocument(d) &&
+        !isDocxArrivalDocument(d) &&
+        !d.fileDataUrl?.startsWith("data:image/")
     );
 
-    // Вкладки резервируем сразу по клику — после await браузер блокирует window.open
+    // Вкладки открываем сразу по клику — иначе браузер блокирует popup после async
     const pdfTabs = pdfDocs.map(() => reserveBrowserTab());
+    const docxTabs = docxDocs.map(() => reserveBrowserTab());
     const imageTabs = imageDocs.map(() => reserveBrowserTab());
     const htmlTab = htmlDocs.length > 0 ? reserveBrowserTab() : null;
 
-    let openedCount = 0;
+    for (const tab of [...pdfTabs, ...docxTabs, ...imageTabs, htmlTab]) {
+      if (tab) showTabLoading(tab);
+    }
 
-    for (let i = 0; i < pdfDocs.length; i++) {
-      const doc = pdfDocs[i];
-      const tab = pdfTabs[i];
-      if (!doc.fileDataUrl) {
-        tab?.close();
-        continue;
-      }
+    const loadingId = toast.loading("Подготовка документов…");
 
-      const fileName = doc.fileName ?? `${doc.name}.pdf`;
-      const result = await fillLegalPdf(doc.fileDataUrl, ctx);
+    void (async () => {
+      let printedCount = 0;
 
-      if (result.ok) {
-        if (openPdfBytesInTab(tab, result.bytes, fileName)) {
-          openedCount++;
+      try {
+        for (let i = 0; i < pdfDocs.length; i++) {
+          const doc = pdfDocs[i];
+          const tab = pdfTabs[i] ?? null;
+          const dataUrl = await resolveArrivalDocumentDataUrl(doc);
+          if (!dataUrl) {
+            closeBrowserTab(tab);
+            toast.warning(`${doc.name}: файл не прикреплён`);
+            continue;
+          }
+
+          const result = await fillLegalPdf(dataUrl, ctx);
+          if (result.ok) {
+            if (
+              printPdfBytesInTab(tab, result.bytes, doc.fileName ?? `${doc.name}.pdf`)
+            ) {
+              printedCount++;
+            }
+            if (result.unmatchedFields.length > 0) {
+              toast.warning(
+                `${doc.name}: заполнено ${result.filledCount} из ${result.fieldCount} полей`
+              );
+            }
+            continue;
+          }
+
+          closeBrowserTab(tab);
+          toast.error(`${doc.name}: ${result.error}`, { duration: 12_000 });
+          if (result.fieldNames?.length) {
+            console.info("[legal-pdf] поля в документе:", result.fieldNames.join(", "));
+            toast.warning(
+              `Имена полей в PDF: ${result.fieldNames.slice(0, 8).join(", ")}${
+                result.fieldNames.length > 8 ? "…" : ""
+              }. Сверьте с юр. отделом.`,
+              { duration: 12_000 }
+            );
+          }
+          if (result.fieldCount === 0) {
+            toast.info(
+              "Сохраните договор как .docx с {patient_full_name} в тексте — это проще на Mac, чем PDF с полями.",
+              { duration: 14_000 }
+            );
+          }
         }
-        if (result.unmatchedFields.length > 0) {
-          toast.warning(
-            `${doc.name}: заполнено ${result.filledCount} из ${result.fieldCount} полей`
+
+        for (let i = 0; i < docxDocs.length; i++) {
+          const doc = docxDocs[i];
+          const tab = docxTabs[i] ?? null;
+          const dataUrl = await resolveArrivalDocumentDataUrl(doc);
+          if (!dataUrl) {
+            closeBrowserTab(tab);
+            toast.warning(`${doc.name}: файл не прикреплён`);
+            continue;
+          }
+
+          const result = await fillLegalDocxToPrintHtml(
+            dataUrl,
+            ctx,
+            doc.fileName ?? doc.name
           );
+          if (result.ok) {
+            if (printHtmlDocumentInTab(tab, result.html)) {
+              printedCount++;
+            }
+            if (result.filledCount < result.placeholderCount) {
+              toast.warning(
+                `${doc.name}: подставлено ${result.filledCount} из ${result.placeholderCount} плейсхолдеров`
+              );
+            }
+            continue;
+          }
+
+          closeBrowserTab(tab);
+          toast.error(`${doc.name}: ${result.error}`, { duration: 12_000 });
         }
-        continue;
-      }
 
-      toast.warning(
-        `${doc.name}: ${result.error} Открываем исходный файл без подстановки.`
-      );
-      if (result.fieldNames?.length) {
-        console.info("[legal-pdf] поля в документе:", result.fieldNames.join(", "));
-      }
-      if (openStoredFileInTab(tab, doc.fileDataUrl, fileName)) {
-        openedCount++;
-      }
-    }
-
-    imageDocs.forEach((doc, i) => {
-      if (
-        openStoredFileInTab(imageTabs[i], doc.fileDataUrl, doc.fileName ?? doc.name)
-      ) {
-        openedCount++;
-      }
-    });
-
-    if (htmlDocs.length > 0) {
-      const html = buildArrivalDocumentsPrintHtml({
-        documents: htmlDocs,
-        ctx,
-        sendToEgisz,
-      });
-      if (htmlTab && !htmlTab.closed) {
-        htmlTab.document.open();
-        htmlTab.document.write(html);
-        htmlTab.document.close();
-        openedCount++;
-      } else {
-        const w = window.open("", "_blank");
-        if (w) {
-          w.document.write(html);
-          w.document.close();
-          openedCount++;
+        for (let i = 0; i < imageDocs.length; i++) {
+          const doc = imageDocs[i];
+          if (
+            printStoredDataUrlInTab(
+              imageTabs[i] ?? null,
+              doc.fileDataUrl,
+              doc.fileName ?? doc.name
+            )
+          ) {
+            printedCount++;
+          }
         }
+
+        if (htmlDocs.length > 0) {
+          const html = buildArrivalDocumentsPrintHtml({
+            documents: htmlDocs,
+            ctx,
+            sendToEgisz,
+          });
+          if (printHtmlDocumentInTab(htmlTab, html)) {
+            printedCount++;
+          }
+        }
+
+        if (printedCount === 0) {
+          toast.error("Не удалось подготовить документы к печати", { id: loadingId });
+          return;
+        }
+
+        toast.success(`Отправлено на печать: ${printedCount} из ${toPrint.length}`, {
+          id: loadingId,
+        });
+        await persistEgiszConsent();
+        onDone();
+        onOpenChange(false);
+      } catch {
+        toast.error("Ошибка при подготовке документов", { id: loadingId });
       }
-    }
-
-    if (openedCount === 0) {
-      toast.error(
-        "Документы не открылись. Разрешите всплывающие окна для этого сайта и попробуйте снова."
-      );
-      return;
-    }
-
-    toast.success(`Открыто документов: ${openedCount} из ${toPrint.length}`);
-    await persistEgiszConsent();
-    onDone();
-    onOpenChange(false);
+    })();
   };
 
   return (
@@ -409,34 +514,48 @@ function AppointmentDocumentsModalBody({
         <p className="text-sm text-red-600">Пациент не найден в базе клиники</p>
       )}
       <p className="text-sm text-[var(--muted)]">
-        Договоры и согласия — из{" "}
-        <span className="font-medium text-[var(--foreground)]">Юр. отдела</span>. PDF заполняется
-        данными пациента и клиники <strong>внутри загруженного файла</strong>, если в нём есть
-        поля формы с именами вроде{" "}
-        <code className="text-xs">patient.fullName</code>,{" "}
-        <code className="text-xs">clinic.name</code>. Скан с подчёркиваниями не подставляется
-        автоматически — см. инструкцию в юр. отделе.
+        Договоры и согласия подставляются из шаблонов <strong>Юр. отдела</strong> при печати с
+        визита.
       </p>
 
       <p className="text-sm text-[var(--muted)]">
         При отказе от ЕГИСЗ — стандартная форма или документы из «{LEGAL_CATEGORY_EGISZ_REFUSAL}».
       </p>
 
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+        <Input
+          value={docSearch}
+          onChange={(e) => setDocSearch(e.target.value)}
+          placeholder="Поиск по названию документа…"
+          className="pl-9"
+          autoComplete="off"
+        />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <DocList
           title={`Договоры (${LEGAL_CATEGORY_CONTRACTS})`}
-          items={contracts}
+          items={filteredContracts}
+          totalCount={contracts.length}
           selected={selectedContracts}
           onToggle={(id) => toggle(id, selectedContracts, setSelectedContracts)}
           emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONTRACTS}»`}
+          noSearchResultsHint={
+            searchActive ? "Нет договоров по этому запросу" : undefined
+          }
           onAttachFile={attachFileToDoc}
         />
         <DocList
           title={`Согласия (${LEGAL_CATEGORY_CONSENTS})`}
-          items={consents}
+          items={filteredConsents}
+          totalCount={consents.length}
           selected={selectedConsents}
           onToggle={(id) => toggle(id, selectedConsents, setSelectedConsents)}
           emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONSENTS}»`}
+          noSearchResultsHint={
+            searchActive ? "Нет согласий по этому запросу" : undefined
+          }
           onAttachFile={attachFileToDoc}
         />
       </div>
@@ -466,10 +585,14 @@ function AppointmentDocumentsModalBody({
           <div className="mt-2 border-t border-[var(--border)] pt-3">
             <DocList
               title={`${LEGAL_CATEGORY_EGISZ_REFUSAL} (необязательно)`}
-              items={egiszRefusals}
+              items={filteredEgiszRefusals}
+              totalCount={egiszRefusals.length}
               selected={selectedEgiszRefusals}
               onToggle={(id) => toggle(id, selectedEgiszRefusals, setSelectedEgiszRefusals)}
               emptyHint=""
+              noSearchResultsHint={
+                searchActive ? "Нет форм отказа по этому запросу" : undefined
+              }
               onAttachFile={attachFileToDoc}
             />
             <p className="mt-1 text-xs text-[var(--muted)]">
@@ -530,7 +653,7 @@ function AppointmentDocumentsModalBody({
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button onClick={handlePrint}>Печать / открыть выбранные</Button>
+        <Button onClick={handlePrint}>Печать выбранных</Button>
       </div>
     </>
   );

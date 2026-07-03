@@ -9,7 +9,11 @@ import {
   ROLE_LABELS,
   UI,
 } from "@/lib/constants";
-import { validatePhone } from "@/lib/document-validation";
+import {
+  formatPassportNumber,
+  formatPassportSeries,
+  validatePhone,
+} from "@/lib/document-validation";
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -36,7 +40,7 @@ function specializationKeyFromDoctor(spec: string): string {
 }
 
 export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
-  const { addDoctor, updateDoctor, cabinets } = useClinicStore();
+  const { addDoctor, updateDoctor, assignStaffToCabinet, cabinets } = useClinicStore();
   const isEdit = !!member;
 
   const [name, setName] = useState("");
@@ -49,6 +53,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
   const [email, setEmail] = useState("");
   const [cabinetId, setCabinetId] = useState("");
   const [address, setAddress] = useState("");
+  const [passportSeries, setPassportSeries] = useState("");
+  const [passportNumber, setPassportNumber] = useState("");
   const [diplomaCertificate, setDiplomaCertificate] = useState("");
   const [commissionPercent, setCommissionPercent] = useState("25");
   const [implantFeeType, setImplantFeeType] = useState<"percent" | "rubles">("percent");
@@ -97,6 +103,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setEmail(member.email ?? "");
       setCabinetId(member.cabinetId ?? "");
       setAddress(member.address ?? "");
+      setPassportSeries(member.passportSeries ?? "");
+      setPassportNumber(member.passportNumber ?? "");
       setDiplomaCertificate(member.diplomaCertificate ?? "");
       setCommissionPercent(String(member.commissionPercent ?? 25));
       setImplantFeeType(member.implantFeeType ?? "percent");
@@ -118,6 +126,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setEmail("");
       setCabinetId("");
       setAddress("");
+      setPassportSeries("");
+      setPassportNumber("");
       setDiplomaCertificate("");
       setCommissionPercent("25");
       setImplantFeeType("percent");
@@ -188,6 +198,8 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       cabinetId: cabinetId || undefined,
       cabinet: cabinets.find((c) => c.id === cabinetId)?.name ?? "—",
       address: address.trim() || undefined,
+      passportSeries: passportSeries.trim() || undefined,
+      passportNumber: passportNumber.trim() || undefined,
       diplomaCertificate: diplomaCertificate.trim() || undefined,
       commissionPercent: role === "doctor" ? Number(commissionPercent) || 0 : 0,
       implantFeeType:
@@ -226,6 +238,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
 
     if (isEdit && member) {
       updateDoctor(member.id, payload);
+      if (role === "doctor" && cabinetId) {
+        assignStaffToCabinet(cabinetId, member.id);
+      }
 
       const passwordChange =
         authPassword.length > 0 || authPasswordConfirm.length > 0;
@@ -315,6 +330,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
         ...payload,
         status: "active",
       });
+      if (role === "doctor" && cabinetId) {
+        assignStaffToCabinet(cabinetId, staffId);
+      }
       toast.success("Сотрудник и учётная запись для входа созданы");
       onOpenChange(false);
     } catch {
@@ -522,6 +540,37 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="г. Москва, ул. ..."
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>
+                {UI.passportSeries}{" "}
+                <span className="text-[var(--muted)]">({UI.optional})</span>
+              </Label>
+              <Input
+                value={passportSeries}
+                onChange={(e) =>
+                  setPassportSeries(formatPassportSeries(e.target.value))
+                }
+                placeholder="0000"
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                {UI.passportNumber}{" "}
+                <span className="text-[var(--muted)]">({UI.optional})</span>
+              </Label>
+              <Input
+                value={passportNumber}
+                onChange={(e) =>
+                  setPassportNumber(formatPassportNumber(e.target.value))
+                }
+                placeholder="000000"
+                inputMode="numeric"
               />
             </div>
           </div>

@@ -20,13 +20,19 @@ import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { AppointmentModal } from "@/components/appointments/appointment-modal";
 import { ScheduleGrid } from "@/components/appointments/schedule-grid";
+import { WorkActModal } from "@/components/finance/work-act-modal";
+import {
+  getScheduleAppointmentCellClass,
+  getScheduleAppointmentStatusLabel,
+  resolveAppointmentWorkAct,
+} from "@/lib/appointment-schedule-display";
 import {
   filterAppointmentsForAssistant,
   getDoctorsFromAssistantAppointments,
   resolveAssistantRecord,
 } from "@/lib/assistant-utils";
 import { getDoctorsInCabinet } from "@/lib/cabinet-utils";
-import { isDoctorWorkingOnDate, needsScheduleReminder } from "@/lib/clinic-schedule";
+import { isDoctorWorkingOnDate, needsScheduleReminder, formatScheduleMonthLabel } from "@/lib/clinic-schedule";
 import {
   isAppointmentActive,
   isAppointmentInDateRange,
@@ -39,7 +45,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  APPOINTMENT_STATUS_COLORS,
   UI,
   VIEW_MODE_LABELS,
   WEEKDAY_SHORT,
@@ -51,7 +56,7 @@ import type { Appointment } from "@/lib/types";
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
-  const { appointments, patients, doctors, cabinets, doctorSchedules, currentUser, repairPaidActAppointments } =
+  const { appointments, patients, doctors, cabinets, doctorSchedules, workActs, payments, currentUser, repairPaidActAppointments } =
     useClinicStore();
   const isAssistant = currentUser.role === "assistant";
   const assistantProfile = useMemo(
@@ -71,6 +76,7 @@ export default function AppointmentsPage() {
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewActId, setViewActId] = useState<string | null>(null);
   const [newSlotDate, setNewSlotDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [newSlotTime, setNewSlotTime] = useState<string>();
   const [newSlotDoctorId, setNewSlotDoctorId] = useState<string>();
@@ -273,7 +279,8 @@ export default function AppointmentsPage() {
       {scheduleReminder && !isAssistant && (
         <Card className="border-amber-300 bg-amber-50">
           <CardContent className="py-3 text-sm text-amber-900">
-            Составьте график смен на <strong>{scheduleReminder.month}</strong> в разделе{" "}
+            Составьте график смен на{" "}
+            <strong>{formatScheduleMonthLabel(scheduleReminder.month)}</strong> в разделе{" "}
             <strong>«Сотрудники»</strong> ({scheduleReminder.missingDoctorIds.length}{" "}
             врач(ей) без графика). Если график не обновить — в расписании останется прошлый
             месяц.
@@ -411,6 +418,12 @@ export default function AppointmentsPage() {
                         const doctor = apt.doctorId
                           ? doctors.find((d) => d.id === apt.doctorId)
                           : undefined;
+                        const linkedAct = resolveAppointmentWorkAct(apt, workActs);
+                        const statusLabel = getScheduleAppointmentStatusLabel(
+                          apt,
+                          linkedAct,
+                          payments
+                        );
                         return (
                           <button
                             key={apt.id}
@@ -418,12 +431,14 @@ export default function AppointmentsPage() {
                             onClick={() => openEdit(apt)}
                             className={cn(
                               "block w-full truncate rounded px-1 py-0.5 text-left text-xs font-medium",
-                              APPOINTMENT_STATUS_COLORS[apt.status]
+                              getScheduleAppointmentCellClass(apt, linkedAct, payments)
                             )}
                             title={
                               doctor
-                                ? `${apt.startTime} · ${doctor.name}`
-                                : apt.startTime
+                                ? `${apt.startTime} · ${doctor.name} · ${statusLabel}${
+                                    linkedAct ? ` · Акт № ${linkedAct.actNumber}` : ""
+                                  }`
+                                : `${apt.startTime} · ${statusLabel}`
                             }
                           >
                             {apt.startTime}{" "}
@@ -434,6 +449,7 @@ export default function AppointmentsPage() {
                                   patient.middleName
                                 )
                               : "Без пациента"}
+                            {linkedAct ? ` · №${linkedAct.actNumber}` : ""}
                           </button>
                         );
                       })}
@@ -464,9 +480,12 @@ export default function AppointmentsPage() {
               doctors={gridDoctors}
               appointments={rangeAppointments}
               patients={patients}
+              workActs={workActs}
+              payments={payments}
               doctorSchedules={doctorSchedules}
               onSlotClick={(date, time, doctorId) => openNew(date, time, doctorId)}
               onAppointmentClick={openEdit}
+              onActClick={(actId) => setViewActId(actId)}
             />
           )}
         </>
@@ -483,6 +502,16 @@ export default function AppointmentsPage() {
         defaultDate={selected ? undefined : newSlotDate}
         defaultTime={selected ? undefined : newSlotTime}
         defaultDoctorId={selected ? undefined : newSlotDoctorId}
+        onOpenAct={(actId) => {
+          setModalOpen(false);
+          setViewActId(actId);
+        }}
+      />
+      <WorkActModal
+        open={!!viewActId}
+        onOpenChange={(open) => !open && setViewActId(null)}
+        existingActId={viewActId ?? undefined}
+        mode="admin_view"
       />
     </div>
   );

@@ -32,14 +32,21 @@ export function printPrepaymentAct(
   );
 
   const rows = prepayment.items
-    .map(
-      (item, i) => `
+    .map((item, i) => {
+      const qty = item.quantity && item.quantity > 1 ? item.quantity : null;
+      const lineTotal =
+        qty != null ? item.price * qty : item.price;
+      const priceCell =
+        qty != null
+          ? `${qty} × ${formatCurrency(item.price)} = ${formatCurrency(lineTotal)}`
+          : formatCurrency(item.price);
+      return `
     <tr>
       <td class="c-num">${i + 1}</td>
       <td class="c-name">${escapeHtml(item.serviceName)}</td>
-      <td class="c-money">${formatCurrency(item.price)}</td>
-    </tr>`
-    )
+      <td class="c-money">${priceCell}</td>
+    </tr>`;
+    })
     .join("");
 
   const html = `<!DOCTYPE html>

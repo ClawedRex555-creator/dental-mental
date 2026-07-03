@@ -210,6 +210,14 @@ export interface StaffSalariesSummary {
   clinicShareFromActs: number;
 }
 
+export const EMPTY_STAFF_SALARIES: StaffSalariesSummary = {
+  doctorSalary: 0,
+  assistantSalary: 0,
+  totalSalaries: 0,
+  actsTurnover: 0,
+  clinicShareFromActs: 0,
+};
+
 export function isDateInRange(dateStr: string, from: Date, to: Date): boolean {
   const d = new Date(dateStr);
   return d >= from && d <= to;

@@ -25,6 +25,7 @@
 
 # misc
 .deploy-version
+.deploy-next-bundle
 .DS_Store
 *.pem
 

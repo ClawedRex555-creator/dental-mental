@@ -108,6 +108,7 @@ export interface Patient {
   birthCertificateSeries?: string;
   birthCertificateNumber?: string;
   representativeFullName?: string;
+  representativeBirthDate?: string;
   representativePassportSeries?: string;
   representativePassportNumber?: string;
   /** Пациент заведён без СНИЛС и паспорта */
@@ -169,6 +170,8 @@ export interface Doctor {
   cabinetId?: string;
   address?: string;
   diplomaCertificate?: string;
+  passportSeries?: string;
+  passportNumber?: string;
   commissionPercent: number;
   /** Вознаграждение за услуги категории «Имплантация»: процент или фикс. ₽ за единицу */
   implantFeeType?: "percent" | "rubles";
@@ -257,6 +260,8 @@ export interface LegalDocument {
   title: string;
   date: string;
   fileDataUrl?: string;
+  /** Статический шаблон из public/ (не раздувает снимок клиники) */
+  templateUrl?: string;
   fileName?: string;
   notes?: string;
 }
@@ -335,6 +340,8 @@ export interface WorkActItem {
   id: string;
   serviceId?: string;
   serviceName: string;
+  /** Номер зуба FDI (11–48), опционально */
+  toothNumber?: number;
   quantity: number;
   price: number;
   total: number;
@@ -377,7 +384,7 @@ export interface WorkAct {
 export interface PatientPrepayment {
   id: string;
   patientId: string;
-  items: { serviceId?: string; serviceName: string; price: number }[];
+  items: { serviceId?: string; serviceName: string; price: number; quantity?: number }[];
   /** Сумма услуг до скидки */
   totalAmount: number;
   paidAmount: number;

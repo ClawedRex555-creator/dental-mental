@@ -24,6 +24,7 @@ import { APP_NAME, NAV_ITEMS, ROLE_LABELS } from "@/lib/constants";
 import { navItemsForRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
+import { flushClinicDataBeforeSessionEnd } from "@/lib/clinic-data-sync.client";
 import { notifySessionChanged } from "@/lib/session-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
@@ -209,6 +210,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             size="sm"
             className="gap-2"
             onClick={async () => {
+              await flushClinicDataBeforeSessionEnd({ keepalive: true });
               await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
               clearSession();
               clearPersistedClinicData();

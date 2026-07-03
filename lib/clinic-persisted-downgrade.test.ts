@@ -5,6 +5,7 @@ import {
   isSuspiciousClinicDataDowngrade,
   mergeClinicDataForSave,
   mergeClinicSnapshotWithLocal,
+  repairFinancialCoupling,
   shouldPushMergedSnapshotAfterLoad,
   shouldRejectEmptyClinicOverwrite,
 } from "./clinic-persisted-state";
@@ -366,5 +367,114 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     const merged = mergeClinicSnapshotWithLocal(remote, local);
     assert.equal(merged.medicalRecords.length, 2);
     assert.equal(merged.medicalRecords.some((r) => r.id === "mr1"), false);
+  });
+
+  it("mergeClinicSnapshotWithLocal drops orphan payments after act delete+replace", () => {
+    const server = createFreshPersistedState();
+    server.patients = [patient("p1")];
+    server.workActs = [
+      {
+        id: "act-old",
+        actNumber: "0001",
+        actDate: "2026-06-29",
+        patientId: "p1",
+        items: [],
+        subtotalAmount: 5000,
+        discountType: "percent",
+        discount: 0,
+        totalAmount: 5000,
+        paymentStatus: "paid",
+        createdAt: "2026-06-29",
+      },
+    ];
+    server.payments = [
+      {
+        id: "pay-old",
+        patientId: "p1",
+        workActId: "act-old",
+        amount: 5000,
+        method: "cash",
+        status: "paid",
+        date: "2026-06-29",
+      },
+    ];
+
+    const client = {
+      ...server,
+      workActs: [
+        {
+          id: "act-new",
+          actNumber: "0002",
+          actDate: "2026-06-15",
+          patientId: "p1",
+          items: [],
+          subtotalAmount: 7000,
+          discountType: "percent",
+          discount: 0,
+          totalAmount: 7000,
+          paymentStatus: "pending",
+          createdAt: "2026-06-15",
+        },
+      ],
+      payments: [],
+    };
+
+    const merged = mergeClinicSnapshotWithLocal(client, server);
+    assert.equal(merged.workActs.some((a) => a.id === "act-old"), false);
+    assert.equal(merged.workActs.some((a) => a.id === "act-new"), true);
+    assert.equal(merged.payments.length, 0);
+  });
+
+  it("repairFinancialCoupling removes payments without work act", () => {
+    const state = createFreshPersistedState();
+    state.payments = [
+      {
+        id: "pay-1",
+        patientId: "p1",
+        workActId: "missing-act",
+        amount: 1000,
+        method: "cash",
+        status: "paid",
+        date: "2026-06-29",
+      },
+    ];
+    const repaired = repairFinancialCoupling(state);
+    assert.equal(repaired.payments.length, 0);
+  });
+
+  it("mergeClinicDataForSave keeps legal docs added on another device", () => {
+    const existing = createFreshPersistedState();
+    existing.legalDocuments = [
+      { id: "ld1", category: "Договоры", title: "A", date: "2026-01-01" },
+      { id: "ld2", category: "Договоры", title: "B", date: "2026-01-02" },
+      { id: "ld3", category: "Договоры", title: "C", date: "2026-01-03" },
+    ];
+
+    const incoming = {
+      ...existing,
+      legalDocuments: existing.legalDocuments.slice(0, 2),
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.legalDocuments.length, 3);
+    assert.ok(merged.legalDocuments.some((d) => d.id === "ld3"));
+  });
+
+  it("mergeClinicDataForSave respects explicit legal document deletion", () => {
+    const existing = createFreshPersistedState();
+    existing.legalDocuments = [
+      { id: "ld1", category: "Договоры", title: "A", date: "2026-01-01" },
+      { id: "ld2", category: "Договоры", title: "B", date: "2026-01-02" },
+    ];
+
+    const incoming = {
+      ...existing,
+      legalDocuments: [existing.legalDocuments[0]!],
+      deletedLegalDocumentIds: ["ld2"],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.legalDocuments.length, 1);
+    assert.equal(merged.legalDocuments[0]?.id, "ld1");
   });
 });

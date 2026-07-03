@@ -46,7 +46,25 @@ describe("appointment-act-payment", () => {
     assert.equal(synced[0]?.paymentStatus, "paid");
   });
 
-  it("isWorkActAlreadyPaid checks payments list", () => {
+  it("isWorkActAlreadyPaid when fully paid via payments", () => {
+    const payments: Payment[] = [
+      {
+        id: "pay1",
+        patientId: "p1",
+        workActId: "act1",
+        amount: 42000,
+        method: "cash",
+        status: "paid",
+        date: "2026-06-22",
+      },
+    ];
+    assert.equal(
+      isWorkActAlreadyPaid({ ...act("act1"), paymentStatus: "pending" }, payments),
+      true
+    );
+  });
+
+  it("isWorkActAlreadyPaid false for partial payment", () => {
     const payments: Payment[] = [
       {
         id: "pay1",
@@ -59,8 +77,8 @@ describe("appointment-act-payment", () => {
       },
     ];
     assert.equal(
-      isWorkActAlreadyPaid({ ...act("act1"), paymentStatus: "pending" }, payments),
-      true
+      isWorkActAlreadyPaid({ ...act("act1"), paymentStatus: "partial" }, payments),
+      false
     );
   });
 });

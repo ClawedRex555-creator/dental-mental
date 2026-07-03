@@ -31,6 +31,7 @@ export default function TreatmentPlansPage() {
     addInvoice,
     getNextActNumber,
     payWorkAct,
+    payments,
     currentUser,
     deleteTreatmentPlan,
   } = useClinicStore();
@@ -235,7 +236,15 @@ export default function TreatmentPlansPage() {
         })}
       </div>
 
-      <TreatmentPlanModal open={modalOpen} onOpenChange={setModalOpen} plan={editing} />
+      <TreatmentPlanModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        plan={editing}
+        onRequestPrepayment={(plan) => {
+          setPrepayPlan(plan);
+          setPrepayOpen(true);
+        }}
+      />
       <PrepaymentModal
         open={prepayOpen}
         onOpenChange={(open) => {
@@ -246,11 +255,12 @@ export default function TreatmentPlansPage() {
       />
       <PayActDialog
         act={payAct}
+        payments={payments}
         open={!!payAct}
         onOpenChange={(open) => !open && setPayAct(null)}
-        onConfirm={(actId, method: PaymentMethod) => {
-          if (payWorkAct(actId, method)) {
-            toast.success("План лечения оплачен полностью");
+        onConfirm={(actId, method: PaymentMethod, amount: number) => {
+          if (payWorkAct(actId, method, amount)) {
+            toast.success("План лечения оплачен");
             setPayAct(null);
           } else {
             toast.error("Не удалось провести оплату");

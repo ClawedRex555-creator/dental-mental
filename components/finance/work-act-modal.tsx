@@ -10,8 +10,18 @@ import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { normalizeServiceFields } from "@/lib/service-categories";
-import { calcWorkActAmounts } from "@/lib/work-act-utils";
+import {
+  buildWorkActMedicalRecommendations,
+  calcWorkActAmounts,
+  getWorkActCustomerName,
+  isWorkActLineFilled,
+} from "@/lib/work-act-utils";
+import { buildMedicalRecordFromWorkAct } from "@/lib/work-act-medical-record";
 import { printWorkAct } from "@/lib/work-act-print";
+import {
+  getWorkActPaidAmount,
+  isWorkActFullyPaid,
+} from "@/lib/work-act-payment";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
@@ -44,6 +54,9 @@ interface WorkActModalProps {
 const selectClass =
   "flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]";
 
+const compactNumberInputClass =
+  "min-w-[4rem] text-center px-2 text-sm text-[var(--foreground)] tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
 export function WorkActModal({
   open,
   onOpenChange,
@@ -63,10 +76,12 @@ export function WorkActModal({
     services,
     clinicSettings,
     workActs,
+    payments,
     addWorkAct,
     updateWorkAct,
     addInvoice,
     addMedicalRecord,
+    syncMedicalRecordForWorkAct,
     updateAppointment,
     getNextActNumber,
     deleteWorkAct,
@@ -79,6 +94,16 @@ export function WorkActModal({
     ? workActs.find((a) => a.id === existingActId)
     : undefined;
 
+  const existingActFullyPaid = useMemo(
+    () => (existingAct ? isWorkActFullyPaid(existingAct, payments) : false),
+    [existingAct, payments]
+  );
+  const existingActPaidAmount = existingAct
+    ? getWorkActPaidAmount(payments, existingAct.id)
+    : 0;
+  const existingActPartiallyPaid =
+    Boolean(existingAct) && !existingActFullyPaid && existingActPaidAmount > 0;
+
   const canDeleteAct = canDeleteWorkActs(currentUser.role) && Boolean(existingAct);
 
   const [patientId, setPatientId] = useState("");
@@ -90,7 +115,15 @@ export function WorkActModal({
   const [discountBearer, setDiscountBearer] = useState<DiscountBearer>("shared");
   const [notes, setNotes] = useState("");
   const [savedActId, setSavedActId] = useState<string | null>(null);
+  const savedActIdRef = useRef<string | null>(null);
   const initialized = useRef(false);
+
+  const rememberSavedActId = (actId: string) => {
+    savedActIdRef.current = actId;
+    setSavedActId(actId);
+  };
+
+  const visibleItems = useMemo(() => items.filter(isWorkActLineFilled), [items]);
 
   const { subtotalAmount, afterRowDiscounts, totalAmount, discountValue } = useMemo(
     () => calcWorkActAmounts(items, discountType, Number(discount) || 0),
@@ -141,12 +174,13 @@ export function WorkActModal({
     setDiscount(String(act.discount ?? 0));
     setDiscountBearer(act.discountBearer ?? "shared");
     setNotes(act.notes ?? "");
-    setSavedActId(act.id);
+    rememberSavedActId(act.id);
   };
 
   useEffect(() => {
     if (!open) {
       initialized.current = false;
+      savedActIdRef.current = null;
       setSavedActId(null);
       return;
     }
@@ -170,6 +204,7 @@ export function WorkActModal({
     setDiscountType("percent");
     setDiscount("0");
     setDiscountBearer("shared");
+    savedActIdRef.current = null;
     setSavedActId(null);
 
     const mapDefault = (it: {
@@ -191,18 +226,20 @@ export function WorkActModal({
       setItems(defaultItems.map(mapDefault));
     } else if (defaultAppointmentId) {
       const apt = appointments.find((a) => a.id === defaultAppointmentId);
-      const svc = apt ? services.find((s) => s.id === apt.serviceId) : undefined;
-      if (apt) {
-        const normalized = svc ? normalizeServiceFields(svc) : null;
+      const svc = apt?.serviceId
+        ? services.find((s) => s.id === apt.serviceId)
+        : undefined;
+      if (svc) {
+        const normalized = normalizeServiceFields(svc);
         setItems([
           {
             id: generateId("wai"),
-            serviceId: svc?.id,
-            serviceName: svc?.name ?? apt.reason ?? "Стоматологические услуги",
-            serviceCategory: normalized?.category,
+            serviceId: svc.id,
+            serviceName: svc.name,
+            serviceCategory: normalized.category,
             quantity: 1,
-            price: apt.price,
-            total: apt.price,
+            price: apt!.price > 0 ? apt!.price : svc.price,
+            total: apt!.price > 0 ? apt!.price : svc.price,
           },
         ]);
       } else {
@@ -226,7 +263,7 @@ export function WorkActModal({
 
   const persistAct = (submittedToAdmin?: boolean): WorkAct | null => {
     const filledItems = items
-      .filter((i) => i.serviceId && i.serviceName.trim())
+      .filter(isWorkActLineFilled)
       .map((i) => {
         const quantity = Math.max(1, i.quantity || 1);
         return {
@@ -236,21 +273,23 @@ export function WorkActModal({
         };
       });
     if (!patientId || !doctorId || filledItems.length === 0) {
-      toast.error("Укажите пациента, врача и услуги из прайса");
+      toast.error("Укажите пациента, врача и услуги");
       return null;
     }
 
-    const actId = savedActId ?? generateId("act");
-    const actNumber = savedActId
-      ? (workActs.find((a) => a.id === savedActId)?.actNumber ?? getNextActNumber())
+    const existingId = savedActIdRef.current ?? savedActId;
+    const actId = existingId ?? generateId("act");
+    const actNumber = existingId
+      ? (workActs.find((a) => a.id === existingId)?.actNumber ?? getNextActNumber())
       : getNextActNumber();
 
+    const previousAct = workActs.find((a) => a.id === actId);
     const act: WorkAct = {
       id: actId,
       actNumber,
       actDate,
       patientId,
-      appointmentId: defaultAppointmentId,
+      appointmentId: defaultAppointmentId ?? previousAct?.appointmentId,
       doctorId,
       items: filledItems,
       subtotalAmount,
@@ -258,37 +297,28 @@ export function WorkActModal({
       discount: Number(discount) || 0,
       discountBearer,
       totalAmount,
-      paymentStatus: "pending",
-      invoiceId: workActs.find((a) => a.id === actId)?.invoiceId,
-      createdAt: format(new Date(), "yyyy-MM-dd"),
+      paymentStatus: previousAct?.paymentStatus ?? "pending",
+      invoiceId: previousAct?.invoiceId,
+      createdAt: previousAct?.createdAt ?? format(new Date(), "yyyy-MM-dd"),
       notes: notes.trim() || undefined,
       submittedToAdmin: submittedToAdmin ?? workActs.find((a) => a.id === actId)?.submittedToAdmin,
     };
 
-    if (savedActId) {
+    if (existingId) {
       updateWorkAct(actId, act);
-      setSavedActId(actId);
+      syncMedicalRecordForWorkAct(act);
+      rememberSavedActId(actId);
       return act;
     } else {
       const invoiceId = generateId("inv");
       const actWithInvoice = { ...act, invoiceId };
       addWorkAct(actWithInvoice);
       addInvoice(createInvoiceFromWorkAct(actWithInvoice, invoiceId));
-      const servicesList = filledItems.map((i) => i.serviceName).join("; ");
-      addMedicalRecord({
-        id: generateId("mr"),
-        patientId,
-        doctorId,
-        appointmentId: defaultAppointmentId,
-        workActId: actId,
-        complaints: "По акту оказанных услуг",
-        diagnosis: "Оказаны стоматологические услуги",
-        treatment: servicesList,
-        recommendations: `Акт № ${actNumber} от ${actDate}. Итого: ${totalAmount} ₽`,
-        createdAt: actDate,
-        serviceName: servicesList,
-      });
-      setSavedActId(actId);
+      const appointment = defaultAppointmentId
+        ? appointments.find((a) => a.id === defaultAppointmentId)
+        : undefined;
+      addMedicalRecord(buildMedicalRecordFromWorkAct(actWithInvoice, appointment));
+      rememberSavedActId(actId);
     }
 
     if (defaultAppointmentId) {
@@ -327,7 +357,11 @@ export function WorkActModal({
   };
 
   const handleGoToPayment = () => {
-    const actId = savedActId ?? persistAct()?.id;
+    const existingId = savedActIdRef.current;
+    const act = existingId
+      ? (workActs.find((a) => a.id === existingId) ?? persistAct())
+      : persistAct();
+    const actId = act?.id ?? savedActIdRef.current;
     if (!actId) return;
     onOpenChange(false);
     router.push(`/finance?tab=acts&payAct=${actId}`);
@@ -337,7 +371,13 @@ export function WorkActModal({
     mode === "doctor"
       ? "Акт оказанных услуг — заполнение врачом"
       : mode === "admin_view"
-        ? `Акт № ${existingAct?.actNumber ?? ""} (готов к оплате)`
+        ? `Акт № ${existingAct?.actNumber ?? ""} (${
+            existingActFullyPaid
+              ? "оплачен"
+              : existingActPartiallyPaid
+                ? "частично оплачен"
+                : "готов к оплате"
+          })`
         : "Акт оказанных услуг (РФ)";
 
   return (
@@ -347,9 +387,14 @@ export function WorkActModal({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {mode === "admin_view" && (
+          {mode === "admin_view" && !existingActFullyPaid && (
             <p className="text-sm text-slate-600">
               Акт заполнен врачом. Проверьте услуги и перейдите к оплате.
+            </p>
+          )}
+          {mode === "admin_view" && existingActFullyPaid && (
+            <p className="text-sm text-emerald-700">
+              Акт оплачен. Можно распечатать или закрыть окно.
             </p>
           )}
           {mode === "doctor" && (
@@ -359,23 +404,66 @@ export function WorkActModal({
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label>Пациент</Label>
               {readOnly ? (
-                <p className="text-sm font-medium text-[var(--foreground)]">
-                  {(() => {
-                    const patient = patients.find((p) => p.id === patientId);
-                    return patient
-                      ? getFullName(patient.firstName, patient.lastName, patient.middleName)
-                      : "—";
-                  })()}
-                </p>
+                (() => {
+                  const p = patients.find((x) => x.id === patientId);
+                  if (!p) {
+                    return (
+                      <>
+                        <Label>Пациент</Label>
+                        <p className="text-sm font-medium text-[var(--foreground)]">—</p>
+                      </>
+                    );
+                  }
+                  if (p.isChild) {
+                    return (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label>Пациент (ребёнок)</Label>
+                          <p className="text-sm font-medium text-[var(--foreground)]">
+                            {getFullName(p.firstName, p.lastName, p.middleName)}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Заказчик</Label>
+                          <p className="text-sm font-medium text-[var(--foreground)]">
+                            {getWorkActCustomerName(p)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-1">
+                      <Label>Пациент</Label>
+                      <p className="text-sm font-medium text-[var(--foreground)]">
+                        {getFullName(p.firstName, p.lastName, p.middleName)}
+                      </p>
+                    </div>
+                  );
+                })()
               ) : (
-                <PatientSearchSelect
-                  patients={patients}
-                  selectedPatientId={patientId}
-                  placeholder="ФИО или телефон..."
-                  onSelect={(patient) => setPatientId(patient.id)}
-                />
+                <>
+                  <Label>Пациент</Label>
+                  <PatientSearchSelect
+                    patients={patients}
+                    selectedPatientId={patientId}
+                    placeholder="ФИО или телефон..."
+                    onSelect={(p) => setPatientId(p.id)}
+                  />
+                  {(() => {
+                    const p = patients.find((x) => x.id === patientId);
+                    if (!p?.isChild) return null;
+                    return (
+                      <p className="text-xs text-[var(--muted)]">
+                        В акте заказчиком будет указан представитель:{" "}
+                        <strong className="text-[var(--foreground)]">
+                          {getWorkActCustomerName(p)}
+                        </strong>
+                      </p>
+                    );
+                  })()}
+                </>
               )}
             </div>
             <div className="space-y-2">
@@ -437,34 +525,67 @@ export function WorkActModal({
               </div>
             )}
 
-            {items.some((i) => i.serviceId) && (
+            {visibleItems.length > 0 && (
               <div className="grid grid-cols-12 gap-2 px-1 text-xs font-medium text-[var(--muted)]">
-                <span className="col-span-4">Услуга</span>
+                <span className="col-span-3">Услуга</span>
+                <span className="col-span-2 text-center">Зуб №</span>
                 <span className="col-span-2 text-center">Кол-во</span>
                 <span className="col-span-2">Цена, ₽</span>
-                <span className="col-span-2">Скидка, %</span>
+                <span className="col-span-1 text-center">Скидка, %</span>
                 <span className="col-span-2" />
               </div>
             )}
-            {items
-              .filter((item) => item.serviceId)
-              .map((item) => (
+            {visibleItems.map((item) => (
               <div
                 key={item.id}
                 className="grid grid-cols-12 gap-2 items-center border-t border-[var(--border)] pt-3"
               >
-                <div className="col-span-4 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
+                <div className="col-span-3 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
                   {item.serviceName}
+                  {!item.serviceId && !readOnly && (
+                    <span className="mt-0.5 block text-xs font-normal text-amber-700">
+                      Не из прайса — замените услугу при необходимости
+                    </span>
+                  )}
                 </div>
                 <div className="col-span-2">
                   {readOnly ? (
-                    <span className="text-sm">{item.quantity}</span>
+                    <span className="block text-center text-sm">
+                      {item.toothNumber ?? "—"}
+                    </span>
                   ) : (
                     <Input
                       type="number"
-                      min={1}
-                      className="text-center"
-                      value={item.quantity > 0 ? item.quantity : ""}
+                      placeholder="№"
+                      className={compactNumberInputClass}
+                      value={item.toothNumber ?? ""}
+                      onChange={(e) =>
+                        setItems((prev) =>
+                          prev.map((it) =>
+                            it.id === item.id
+                              ? {
+                                  ...it,
+                                  toothNumber: e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined,
+                                }
+                              : it
+                          )
+                        )
+                      }
+                    />
+                  )}
+                </div>
+                <div className="col-span-2">
+                  {readOnly ? (
+                    <span className="block text-center text-sm">{item.quantity}</span>
+                  ) : (
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className={compactNumberInputClass}
+                      value={item.quantity > 0 ? String(item.quantity) : ""}
                       placeholder="1"
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -505,6 +626,7 @@ export function WorkActModal({
                     <Input
                       type="number"
                       min={0}
+                      className={compactNumberInputClass}
                       value={item.price || ""}
                       onChange={(e) =>
                         setItems((prev) =>
@@ -522,14 +644,15 @@ export function WorkActModal({
                     />
                   )}
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-1">
                   {readOnly ? (
-                    <span className="text-sm">{item.discountPercent ?? 0}%</span>
+                    <span className="block text-center text-sm">{item.discountPercent ?? 0}%</span>
                   ) : (
                     <Input
                       type="number"
                       min={0}
                       max={100}
+                      className={compactNumberInputClass}
                       value={item.discountPercent ?? ""}
                       placeholder="0"
                       onChange={(e) =>
@@ -563,7 +686,7 @@ export function WorkActModal({
                 )}
               </div>
             ))}
-            {!readOnly && !items.some((i) => i.serviceId) && (
+            {!readOnly && visibleItems.length === 0 && (
               <p className="text-sm text-slate-500">Добавьте услуги из прайса клиники</p>
             )}
           </div>
@@ -601,9 +724,9 @@ export function WorkActModal({
                 {formatCurrency(totalAmount)}
               </span>
             </div>
-            {!readOnly && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2 items-end">
+          {!readOnly && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
                     <Label className="text-xs">Доп. скидка</Label>
                     <select
@@ -655,12 +778,16 @@ export function WorkActModal({
             )}
           </div>
 
-          {!readOnly && (
-            <div className="space-y-2">
-              <Label>Примечание</Label>
+          <div className="space-y-2">
+            <Label>Примечание</Label>
+            {readOnly ? (
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] whitespace-pre-wrap">
+                {notes.trim() || "—"}
+              </p>
+            ) : (
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -677,15 +804,17 @@ export function WorkActModal({
                 >
                   Печать
                 </Button>
-                <Button onClick={() => router.push(`/finance?tab=acts&payAct=${existingAct.id}`)}>
-                  Перейти к оплате
-                </Button>
+                {!existingActFullyPaid && (
+                  <Button onClick={() => router.push(`/finance?tab=acts&payAct=${existingAct.id}`)}>
+                    Перейти к оплате
+                  </Button>
+                )}
                 {canDeleteAct && (
                   <Button
                     variant="outline"
                     className="border-red-200 text-red-700 hover:bg-red-50"
                     onClick={() => {
-                      const paid = existingAct.paymentStatus === "paid";
+                      const paid = existingActFullyPaid;
                       if (
                         !window.confirm(
                           paid
@@ -724,15 +853,7 @@ export function WorkActModal({
                 <Button variant="secondary" onClick={handleSaveAndPrint}>
                   Сохранить и печать
                 </Button>
-                <Button onClick={savedActId ? handleGoToPayment : () => {
-                  const act = persistAct();
-                  if (act) {
-                    toast.success(`Акт № ${act.actNumber} сохранён`);
-                    onOpenChange(false);
-                  }
-                }}>
-                  {savedActId ? "Перейти к оплате" : "Сохранить акт"}
-                </Button>
+                <Button onClick={handleGoToPayment}>Перейти к оплате</Button>
               </>
             )}
           </div>

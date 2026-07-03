@@ -34,6 +34,7 @@ import type {
   WorkAct,
 } from "@/lib/types";
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
 import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 
 /** Один flush после цепочки set() в том же тике (акт + счёт + медзапись) */
@@ -55,8 +56,10 @@ import {
   mergeByIdPreferLocal,
   mergeDoctorSchedules,
   mergeClinicPatients,
+  mergeLegalDocumentsState,
   pickPersistedState,
   pickPersistedStateForStorage,
+  repairFinancialCoupling,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
@@ -81,11 +84,23 @@ import {
   parseClinicModules,
   type ClinicModules,
 } from "@/lib/modules";
+import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
+import { ensureMedicalRecordForWorkAct } from "@/lib/work-act-medical-record";
+import { applyWorkActItemsToTeeth } from "@/lib/work-act-teeth";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
-  isWorkActAlreadyPaid,
   syncAppointmentsAfterActPaid,
 } from "@/lib/appointment-act-payment";
+import {
+  getWorkActPaidAmount,
+  getWorkActRemainingAmount,
+  isWorkActFullyPaid,
+  resolvePatientBalanceAfterActPayment,
+} from "@/lib/work-act-payment";
+import {
+  removeSyntheticVisitForWorkAct,
+  syncVisitForWorkAct,
+} from "@/lib/work-act-visit";
 import {
   mergeThemePreferences,
   persistThemePreferencesToStorage,
@@ -99,6 +114,17 @@ import {
 } from "@/lib/assistant-hours";
 
 const freshState = createFreshPersistedState();
+
+function withPatientVisitFields(
+  patients: Patient[],
+  appointments: Appointment[],
+  patientId: string
+): Patient[] {
+  const patient = patients.find((p) => p.id === patientId);
+  if (!patient) return patients;
+  const fields = derivePatientVisitFields(patient, appointments);
+  return patients.map((p) => (p.id === patientId ? { ...p, ...fields } : p));
+}
 
 interface ClinicState {
   currentUser: ClinicUser;
@@ -125,6 +151,7 @@ interface ClinicState {
   documentTemplates: ClinicDocumentTemplate[];
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
+  deletedLegalDocumentIds: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   /** Ручные часы ассистента по датам (yyyy-MM-dd), если смена не привязана к приёму */
@@ -197,9 +224,10 @@ interface ClinicState {
   addWorkAct: (act: WorkAct) => void;
   updateWorkAct: (id: string, data: Partial<WorkAct>) => void;
   linkWorkActToMedicalRecord: (actId: string, recordId: string) => void;
+  syncMedicalRecordForWorkAct: (act: WorkAct) => void;
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
-  payWorkAct: (actId: string, method?: PaymentMethod) => boolean;
+  payWorkAct: (actId: string, method?: PaymentMethod, amount?: number) => boolean;
   /** ready_for_payment → completed, если акт уже оплачен */
   repairPaidActAppointments: () => void;
   /** Удалить акт (ожидает оплаты или оплачен); false — не найден */
@@ -254,6 +282,7 @@ export const useClinicStore = create<ClinicState>()(
       documentTemplates: freshState.documentTemplates,
       clinicExpenses: freshState.clinicExpenses,
       legalDocuments: freshState.legalDocuments,
+      deletedLegalDocumentIds: [],
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
       assistantManualHours: freshState.assistantManualHours,
@@ -287,6 +316,7 @@ export const useClinicStore = create<ClinicState>()(
         set({ enabledModules: parseClinicModules(modules) }),
 
       clearSession: () => {
+        clearPendingClinicSnapshot();
         const userThemePreferences = mergeThemePreferences(
           get().userThemePreferences,
           readThemePreferencesFromStorage()
@@ -312,14 +342,16 @@ export const useClinicStore = create<ClinicState>()(
         });
       },
 
-      updateClinicSettings: (data) =>
+      updateClinicSettings: (data) => {
         set((s) => {
           const next = { ...s.clinicSettings, ...data };
           if (data.weeklySchedule) {
             next.workHours = formatWeeklyScheduleSummary(data.weeklySchedule);
           }
           return { clinicSettings: next };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       updateCurrentUser: (data) =>
         set((s) => ({
@@ -346,7 +378,7 @@ export const useClinicStore = create<ClinicState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
-      addDoctor: (doctor) =>
+      addDoctor: (doctor) => {
         set((s) => {
           const schedules = s.doctorSchedules ?? [];
           const mk = monthKey();
@@ -365,16 +397,20 @@ export const useClinicStore = create<ClinicState>()(
               ? [scheduleEntry, ...schedules]
               : schedules,
           };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       setDoctors: (doctors) => set({ doctors }),
 
-      updateDoctor: (id, data) =>
+      updateDoctor: (id, data) => {
         set((s) => ({
           doctors: s.doctors.map((d) => (d.id === id ? { ...d, ...data } : d)),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
-      removeDoctor: (id) =>
+      removeDoctor: (id) => {
         set((s) => {
           const schedules = s.doctorSchedules ?? [];
           return {
@@ -400,7 +436,9 @@ export const useClinicStore = create<ClinicState>()(
             act.doctorId === id ? { ...act, doctorId: undefined } : act
           ),
           };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       addCabinet: (cabinet) =>
         set((s) => ({ cabinets: [cabinet, ...s.cabinets] })),
@@ -455,26 +493,34 @@ export const useClinicStore = create<ClinicState>()(
         scheduleClinicDataFlush();
       },
 
-      addLegalDocument: (doc) =>
-        set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] })),
+      addLegalDocument: (doc) => {
+        set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] }));
+        scheduleClinicDataFlush();
+      },
 
-      updateLegalDocument: (id, data) =>
+      updateLegalDocument: (id, data) => {
         set((s) => ({
           legalDocuments: s.legalDocuments.map((d) =>
             d.id === id ? { ...d, ...data } : d
           ),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
-      removeLegalDocument: (id) =>
+      removeLegalDocument: (id) => {
         set((s) => ({
           legalDocuments: s.legalDocuments.filter((d) => d.id !== id),
-        })),
+          deletedLegalDocumentIds: [...new Set([...(s.deletedLegalDocumentIds ?? []), id])],
+        }));
+        scheduleClinicDataFlush();
+      },
 
       addService: (service) => {
         if (!canManageServices(get().currentRole)) return;
         set((s) => ({
           services: [normalizeServiceFields(service), ...s.services],
         }));
+        scheduleClinicDataFlush();
       },
 
       updateService: (id, data) => {
@@ -484,6 +530,7 @@ export const useClinicStore = create<ClinicState>()(
             svc.id === id ? normalizeServiceFields({ ...svc, ...data }) : svc
           ),
         }));
+        scheduleClinicDataFlush();
       },
 
       removeService: (id) => {
@@ -491,6 +538,7 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({
           services: s.services.filter((svc) => svc.id !== id),
         }));
+        scheduleClinicDataFlush();
       },
 
       addPatient: (patient) => {
@@ -612,15 +660,19 @@ export const useClinicStore = create<ClinicState>()(
         return true;
       },
 
-      addTreatmentPlan: (plan) =>
-        set((s) => ({ treatmentPlans: [plan, ...s.treatmentPlans] })),
+      addTreatmentPlan: (plan) => {
+        set((s) => ({ treatmentPlans: [plan, ...s.treatmentPlans] }));
+        scheduleClinicDataFlush();
+      },
 
-      updateTreatmentPlan: (id, data) =>
+      updateTreatmentPlan: (id, data) => {
         set((s) => ({
           treatmentPlans: s.treatmentPlans.map((p) =>
             p.id === id ? { ...p, ...data } : p
           ),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
       deleteTreatmentPlan: (id) => {
         if (!get().treatmentPlans.some((p) => p.id === id)) return false;
@@ -631,6 +683,7 @@ export const useClinicStore = create<ClinicState>()(
             (n) => n.sourceTreatmentPlanId !== id && n.id !== linkedNoteId
           ),
         }));
+        scheduleClinicDataFlush();
         return true;
       },
 
@@ -654,7 +707,14 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       addWorkAct: (act) => {
-        set((s) => ({ workActs: [act, ...s.workActs] }));
+        set((s) => {
+          const appointments = syncVisitForWorkAct(s.appointments, act, s.payments);
+          return {
+            workActs: [act, ...s.workActs],
+            appointments,
+            patients: withPatientVisitFields(s.patients, appointments, act.patientId),
+          };
+        });
         scheduleClinicDataFlush();
       },
 
@@ -664,11 +724,17 @@ export const useClinicStore = create<ClinicState>()(
           const act = workActs.find((a) => a.id === id);
           if (!act) return { workActs };
 
+          const appointments = syncVisitForWorkAct(s.appointments, act, s.payments);
           const linked = findInvoiceForAct(s.invoices, act);
-          if (!linked) return { workActs };
+          const base = {
+            workActs,
+            appointments,
+            patients: withPatientVisitFields(s.patients, appointments, act.patientId),
+          };
+          if (!linked) return base;
 
           return {
-            workActs,
+            ...base,
             invoices: s.invoices.map((inv) =>
               inv.id === linked.id ? patchInvoiceFromWorkAct(inv, act) : inv
             ),
@@ -691,20 +757,8 @@ export const useClinicStore = create<ClinicState>()(
       addPrepayment: (prepayment) => {
         set((s) => {
           const prepayments = s.prepayments ?? [];
-          const patient = s.patients.find((p) => p.id === prepayment.patientId);
-          const debt = prepayment.remainingAmount;
-          const newBalance = (patient?.balance ?? 0) - debt;
           return {
             prepayments: [prepayment, ...prepayments],
-            patients: s.patients.map((p) =>
-              p.id === prepayment.patientId
-                ? {
-                    ...p,
-                    balance: newBalance,
-                    status: newBalance < 0 ? ("debtor" as const) : p.status,
-                  }
-                : p
-            ),
           };
         });
         scheduleClinicDataFlush();
@@ -722,23 +776,96 @@ export const useClinicStore = create<ClinicState>()(
         scheduleClinicDataFlush();
       },
 
-      payWorkAct: (actId, method = "cash") => {
+      syncMedicalRecordForWorkAct: (act) => {
+        const recommendations = buildWorkActMedicalRecommendations(act);
+        set((s) => {
+          const linked = s.medicalRecords.some((r) => r.workActId === act.id);
+          if (!linked) return s;
+          return {
+            medicalRecords: s.medicalRecords.map((r) =>
+              r.workActId === act.id ? { ...r, recommendations } : r
+            ),
+          };
+        });
+        scheduleClinicDataFlush();
+      },
+
+      payWorkAct: (actId, method = "cash", amount?: number) => {
         const state = get();
         const act = state.workActs.find((a) => a.id === actId);
         if (!act) return false;
 
-        if (isWorkActAlreadyPaid(act, state.payments)) {
-          set((s) => ({
-            workActs: s.workActs.map((a) =>
-              a.id === actId && a.paymentStatus !== "paid"
-                ? { ...a, paymentStatus: "paid" as const }
-                : a
-            ),
-            appointments: syncAppointmentsAfterActPaid(s.appointments, act),
-          }));
+        const alreadyPaid = getWorkActPaidAmount(state.payments, actId);
+        const remaining = getWorkActRemainingAmount(act, state.payments);
+
+        const applyFullyPaidState = (
+          s: typeof state,
+          medicalSync: { records: MedicalRecord[]; actMedicalRecordId?: string }
+        ) => {
+          const workActs = s.workActs.map((a) => {
+            if (a.id !== actId) return a;
+            const next: WorkAct = { ...a, paymentStatus: "paid" as const };
+            if (medicalSync.actMedicalRecordId) {
+              next.medicalRecordId = medicalSync.actMedicalRecordId;
+            }
+            return next;
+          });
+          const paidAct = workActs.find((a) => a.id === actId)!;
+          const currentTeeth =
+            s.teethByPatient[paidAct.patientId] ?? generateDefaultTeeth();
+          const teethWithAct =
+            paidAct.actType === "prepayment"
+              ? currentTeeth
+              : applyWorkActItemsToTeeth(currentTeeth, paidAct.items, {
+                  actNumber: paidAct.actNumber,
+                  actDate: paidAct.actDate,
+                });
+          let appointments = syncVisitForWorkAct(s.appointments, paidAct, s.payments);
+          appointments = syncAppointmentsAfterActPaid(appointments, paidAct);
+          return {
+            workActs,
+            medicalRecords: medicalSync.records,
+            appointments,
+            patients: withPatientVisitFields(s.patients, appointments, paidAct.patientId),
+            ...(teethWithAct !== currentTeeth
+              ? {
+                  teethByPatient: {
+                    ...s.teethByPatient,
+                    [paidAct.patientId]: teethWithAct,
+                  },
+                }
+              : {}),
+          };
+        };
+
+        if (remaining <= 0) {
+          if (!isWorkActFullyPaid(act, state.payments)) return false;
+          const appointment = act.appointmentId
+            ? state.appointments.find((a) => a.id === act.appointmentId)
+            : undefined;
+          const medicalSync = ensureMedicalRecordForWorkAct(
+            act,
+            state.medicalRecords,
+            appointment
+          );
+          set((s) => applyFullyPaidState(s, medicalSync));
           scheduleClinicDataFlush();
           return true;
         }
+
+        const payAmount =
+          amount != null && amount > 0 ? Math.min(amount, remaining) : remaining;
+        if (payAmount <= 0) return false;
+
+        const newTotalPaid = alreadyPaid + payAmount;
+        const fullyPaid = newTotalPaid >= act.totalAmount;
+
+        const appointment = act.appointmentId
+          ? state.appointments.find((a) => a.id === act.appointmentId)
+          : undefined;
+        const medicalSync = fullyPaid
+          ? ensureMedicalRecordForWorkAct(act, state.medicalRecords, appointment)
+          : { records: state.medicalRecords, actMedicalRecordId: undefined };
 
         const invoice =
           (act.invoiceId
@@ -750,42 +877,91 @@ export const useClinicStore = create<ClinicState>()(
           id: generateId("pay"),
           patientId: act.patientId,
           workActId: actId,
-          amount: act.totalAmount,
+          amount: payAmount,
           method,
           status: "paid",
-          date: format(new Date(), "yyyy-MM-dd"),
-          comment: `Оплата по акту ${act.actNumber}`,
+          date: act.actDate,
+          comment: fullyPaid
+            ? `Оплата по акту ${act.actNumber}`
+            : `Предоплата по акту ${act.actNumber}`,
         };
 
-        set((s) => ({
-          workActs: s.workActs.map((a) =>
-            a.id === actId ? { ...a, paymentStatus: "paid" as const } : a
-          ),
-          invoices: s.invoices.map((inv) => {
-            const linked =
-              inv.id === invoice?.id ||
-              inv.workActId === actId ||
-              inv.description.includes(act.actNumber);
-            if (!linked) return inv;
-            return {
-              ...inv,
-              workActId: actId,
-              status: "paid" as const,
-              paid: act.totalAmount,
+        set((s) => {
+          const workActs = s.workActs.map((a) => {
+            if (a.id !== actId) return a;
+            const next: WorkAct = {
+              ...a,
+              paymentStatus: fullyPaid ? ("paid" as const) : ("partial" as const),
             };
-          }),
-          payments: [payment, ...s.payments],
-          patients: s.patients.map((p) =>
-            p.id === act.patientId
-              ? {
-                  ...p,
-                  totalSpent: p.totalSpent + act.totalAmount,
-                  balance: Math.max(0, p.balance - act.totalAmount),
-                }
-              : p
-          ),
-          appointments: syncAppointmentsAfterActPaid(s.appointments, act),
-        }));
+            if (fullyPaid && medicalSync.actMedicalRecordId) {
+              next.medicalRecordId = medicalSync.actMedicalRecordId;
+            }
+            return next;
+          });
+          const paidAct = workActs.find((a) => a.id === actId)!;
+          const paymentsNext = [payment, ...s.payments];
+
+          let appointments = syncVisitForWorkAct(s.appointments, paidAct, paymentsNext);
+          let teethPatch: Record<string, ToothRecord[]> | undefined;
+          let medicalRecords = medicalSync.records;
+
+          if (fullyPaid) {
+            const full = applyFullyPaidState(
+              { ...s, workActs, payments: paymentsNext },
+              ensureMedicalRecordForWorkAct(act, s.medicalRecords, appointment)
+            );
+            appointments = full.appointments;
+            medicalRecords = full.medicalRecords;
+            teethPatch = full.teethByPatient;
+          }
+
+          const patientBefore = s.patients.find((p) => p.id === act.patientId);
+          const newBalance = resolvePatientBalanceAfterActPayment(
+            patientBefore?.balance ?? 0,
+            act.totalAmount,
+            alreadyPaid,
+            payAmount
+          );
+
+          let patients = s.patients.map((p) => {
+            if (p.id !== act.patientId) return p;
+            const status =
+              newBalance < 0
+                ? ("debtor" as const)
+                : p.status === "debtor" && newBalance >= 0
+                  ? ("active" as const)
+                  : p.status;
+            return {
+              ...p,
+              totalSpent: p.totalSpent + payAmount,
+              balance: newBalance,
+              status,
+            };
+          });
+          patients = withPatientVisitFields(patients, appointments, act.patientId);
+
+          return {
+            workActs,
+            medicalRecords,
+            appointments,
+            ...(teethPatch ? { teethByPatient: teethPatch } : {}),
+            invoices: s.invoices.map((inv) => {
+              const linked =
+                inv.id === invoice?.id ||
+                inv.workActId === actId ||
+                inv.description.includes(act.actNumber);
+              if (!linked) return inv;
+              return {
+                ...inv,
+                workActId: actId,
+                status: fullyPaid ? ("paid" as const) : ("partial" as const),
+                paid: newTotalPaid,
+              };
+            }),
+            payments: paymentsNext,
+            patients,
+          };
+        });
         scheduleClinicDataFlush();
         return true;
       },
@@ -793,12 +969,21 @@ export const useClinicStore = create<ClinicState>()(
       repairPaidActAppointments: () => {
         const state = get();
         let appointments = state.appointments;
+        const patientIds = new Set<string>();
         for (const act of state.workActs) {
-          if (!isWorkActAlreadyPaid(act, state.payments)) continue;
-          appointments = syncAppointmentsAfterActPaid(appointments, act);
+          if (act.actType === "prepayment") continue;
+          appointments = syncVisitForWorkAct(appointments, act, state.payments);
+          patientIds.add(act.patientId);
+          if (isWorkActFullyPaid(act, state.payments)) {
+            appointments = syncAppointmentsAfterActPaid(appointments, act);
+          }
         }
         if (appointments === state.appointments) return;
-        set({ appointments });
+        let patients = state.patients;
+        for (const patientId of patientIds) {
+          patients = withPatientVisitFields(patients, appointments, patientId);
+        }
+        set({ appointments, patients });
         scheduleClinicDataFlush();
       },
 
@@ -807,48 +992,48 @@ export const useClinicStore = create<ClinicState>()(
         const act = state.workActs.find((a) => a.id === actId);
         if (!act) return false;
 
-        const paidViaPayments = state.payments
-          .filter((p) => p.workActId === actId && p.status === "paid")
-          .reduce((sum, p) => sum + p.amount, 0);
-        const reverseAmount =
-          paidViaPayments > 0
-            ? paidViaPayments
-            : act.paymentStatus === "paid"
-              ? act.totalAmount
-              : 0;
+        const reverseAmount = getWorkActPaidAmount(state.payments, actId);
 
-        set((s) => ({
-          workActs: s.workActs.filter((a) => a.id !== actId),
-          invoices: s.invoices.filter(
-            (inv) => inv.workActId !== actId && inv.id !== act.invoiceId
-          ),
-          payments: s.payments.filter((p) => p.workActId !== actId),
-          patients: s.patients.map((p) => {
+        set((s) => {
+          const appointments = removeSyntheticVisitForWorkAct(
+            s.appointments.map((a) => {
+              if (a.workActId !== actId) return a;
+              return {
+                ...a,
+                workActId: undefined,
+                paymentStatus: "pending" as const,
+                status: a.status === "ready_for_payment" ? ("completed" as const) : a.status,
+              };
+            }),
+            actId
+          );
+          let patients = s.patients.map((p) => {
             if (p.id !== act.patientId || reverseAmount <= 0) return p;
             return {
               ...p,
               totalSpent: Math.max(0, p.totalSpent - reverseAmount),
               balance: p.balance + reverseAmount,
             };
-          }),
-          medicalRecords: s.medicalRecords.map((r) =>
-            r.workActId === actId ? { ...r, workActId: undefined } : r
-          ),
-          appointments: s.appointments.map((a) => {
-            if (a.workActId !== actId) return a;
-            return {
-              ...a,
-              workActId: undefined,
-              paymentStatus: "pending" as const,
-              status: a.status === "ready_for_payment" ? ("completed" as const) : a.status,
-            };
-          }),
-          prepayments: (s.prepayments ?? []).map((p) =>
-            p.workActId === actId
-              ? { ...p, workActId: undefined, actNumber: undefined }
-              : p
-          ),
-        }));
+          });
+          patients = withPatientVisitFields(patients, appointments, act.patientId);
+          return {
+            workActs: s.workActs.filter((a) => a.id !== actId),
+            invoices: s.invoices.filter(
+              (inv) => inv.workActId !== actId && inv.id !== act.invoiceId
+            ),
+            payments: s.payments.filter((p) => p.workActId !== actId),
+            patients,
+            medicalRecords: s.medicalRecords.map((r) =>
+              r.workActId === actId ? { ...r, workActId: undefined } : r
+            ),
+            appointments,
+            prepayments: (s.prepayments ?? []).map((p) =>
+              p.workActId === actId
+                ? { ...p, workActId: undefined, actNumber: undefined }
+                : p
+            ),
+          };
+        });
         scheduleClinicDataFlush();
         return true;
       },
@@ -895,38 +1080,41 @@ export const useClinicStore = create<ClinicState>()(
           ),
         })),
 
-      replacePersistedState: (data) =>
+      replacePersistedState: (data) => {
+        const repaired = repairFinancialCoupling(data);
         set((s) => ({
-          doctors: data.doctors ?? [],
-          services: migrateServices(data.services ?? []),
-          cabinets: data.cabinets ?? [],
-          patients: data.patients ?? [],
-          appointments: data.appointments ?? [],
-          medicalRecords: data.medicalRecords ?? [],
-          treatmentPlans: data.treatmentPlans ?? [],
-          payments: data.payments ?? [],
-          invoices: data.invoices ?? [],
-          workActs: data.workActs ?? [],
-          actCounter: data.actCounter ?? 1,
-          warehouse: data.warehouse ?? [],
-          tasks: data.tasks ?? [],
-          onlineBookings: data.onlineBookings ?? [],
-          patientFiles: data.patientFiles ?? [],
-          patientNotes: data.patientNotes ?? [],
-          teethByPatient: data.teethByPatient ?? {},
-          clinicSettings: data.clinicSettings,
-          documentTemplates: data.documentTemplates ?? [],
-          clinicExpenses: data.clinicExpenses ?? [],
-          legalDocuments: data.legalDocuments ?? [],
-          doctorSchedules: data.doctorSchedules ?? [],
-          prepayments: data.prepayments ?? [],
-          assistantManualHours: normalizeAssistantManualHours(data.assistantManualHours),
+          doctors: repaired.doctors ?? [],
+          services: migrateServices(repaired.services ?? []),
+          cabinets: repaired.cabinets ?? [],
+          patients: repaired.patients ?? [],
+          appointments: repaired.appointments ?? [],
+          medicalRecords: repaired.medicalRecords ?? [],
+          treatmentPlans: repaired.treatmentPlans ?? [],
+          payments: repaired.payments ?? [],
+          invoices: repaired.invoices ?? [],
+          workActs: repaired.workActs ?? [],
+          actCounter: repaired.actCounter ?? 1,
+          warehouse: repaired.warehouse ?? [],
+          tasks: repaired.tasks ?? [],
+          onlineBookings: repaired.onlineBookings ?? [],
+          patientFiles: repaired.patientFiles ?? [],
+          patientNotes: repaired.patientNotes ?? [],
+          teethByPatient: repaired.teethByPatient ?? {},
+          clinicSettings: repaired.clinicSettings,
+          documentTemplates: repaired.documentTemplates ?? [],
+          clinicExpenses: repaired.clinicExpenses ?? [],
+          legalDocuments: repaired.legalDocuments ?? [],
+          deletedLegalDocumentIds: repaired.deletedLegalDocumentIds ?? [],
+          doctorSchedules: repaired.doctorSchedules ?? [],
+          prepayments: repaired.prepayments ?? [],
+          assistantManualHours: normalizeAssistantManualHours(repaired.assistantManualHours),
           userThemePreferences: mergeThemePreferences(
-            data.userThemePreferences,
+            repaired.userThemePreferences,
             readThemePreferencesFromStorage(),
             s.userThemePreferences
           ),
-        })),
+        }));
+      },
 
       hydratePersistedState: (data) =>
         set((s) => ({
@@ -953,7 +1141,12 @@ export const useClinicStore = create<ClinicState>()(
             s.documentTemplates
           ),
           clinicExpenses: mergeByIdPreferLocal(data.clinicExpenses ?? [], s.clinicExpenses),
-          legalDocuments: mergeByIdPreferLocal(data.legalDocuments ?? [], s.legalDocuments),
+          ...mergeLegalDocumentsState(
+            data.legalDocuments ?? [],
+            s.legalDocuments,
+            data.deletedLegalDocumentIds,
+            s.deletedLegalDocumentIds
+          ),
           doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
           prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
           assistantManualHours: mergeAssistantManualHours(

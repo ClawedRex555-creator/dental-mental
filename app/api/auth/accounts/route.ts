@@ -5,6 +5,7 @@ import {
   upsertAuthAccount,
 } from "@/lib/auth-accounts-server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
+import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { resolveClinicIdForSession } from "@/lib/clinic-session.server";
 import { getServerSession } from "@/lib/get-server-session";
 import { isDatabaseEnabled } from "@/lib/db";
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
 
   const clinicId = await resolveClinicId(request, session);
   if (isDatabaseEnabled() && !clinicId) {
@@ -123,6 +126,8 @@ export async function PATCH(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
 
   const clinicId = await resolveClinicId(request, session);
   if (isDatabaseEnabled() && !clinicId) {
@@ -208,6 +213,8 @@ export async function DELETE(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
+  const hostDenied = assertClinicHost(session, request);
+  if (hostDenied) return hostDenied;
 
   const clinicId = await resolveClinicId(request, session);
   if (isDatabaseEnabled() && !clinicId) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   endOfDay,
   endOfMonth,
@@ -16,8 +17,15 @@ import { WorkActModal } from "@/components/finance/work-act-modal";
 import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { PayActDialog } from "@/components/finance/pay-act-dialog";
 import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip";
-import type { PaymentMethod, WorkAct } from "@/lib/types";
-import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange } from "@/lib/finance-utils";
+import type { PaymentMethod, PaymentStatus, WorkAct } from "@/lib/types";
+import {
+  getWorkActPaidAmount,
+  getPaymentReportingDate,
+  filterPaymentsWithExistingWorkActs,
+  isWorkActFullyPaid,
+} from "@/lib/work-act-payment";
+import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange, EMPTY_STAFF_SALARIES } from "@/lib/finance-utils";
+import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { calcAssistantHoursInRange, normalizeAssistantManualHours } from "@/lib/assistant-hours";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
 import { printWorkAct } from "@/lib/work-act-print";
@@ -36,6 +44,15 @@ import { useClinicStore } from "@/store/useClinicStore";
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
 type Period = "day" | "week" | "month" | "custom";
 type SalaryPeriod = Period;
+
+const FINANCE_TABS: FinanceTab[] = [
+  "payments",
+  "invoices",
+  "acts",
+  "salaries",
+  "expenses",
+  "prepayments",
+];
 
 export default function FinancePage() {
   const {
@@ -59,13 +76,18 @@ export default function FinancePage() {
     setAssistantManualHours,
     repairPaidActAppointments,
   } = useClinicStore();
+  const salaryModuleEnabled = useIsModuleEnabled("my_salary");
+  const visibleTabs = useMemo(
+    () => FINANCE_TABS.filter((t) => t !== "salaries" || salaryModuleEnabled),
+    [salaryModuleEnabled]
+  );
   const canDeleteActs = canDeleteWorkActs(currentUser.role);
   const canDeleteExpenses = canDeleteClinicExpenses(currentUser.role);
   const [tab, setTab] = useState<FinanceTab>("payments");
   const [period, setPeriod] = useState<Period>("day");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [salaryPeriod, setSalaryPeriod] = useState<SalaryPeriod>("month");
+  const [salaryPeriod, setSalaryPeriod] = useState<SalaryPeriod>("day");
   const [salaryFrom, setSalaryFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [salaryTo, setSalaryTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expenseTitle, setExpenseTitle] = useState("");
@@ -79,20 +101,25 @@ export default function FinancePage() {
   const [actModalOpen, setActModalOpen] = useState(false);
   const [prepayModalOpen, setPrepayModalOpen] = useState(false);
   const [payAct, setPayAct] = useState<WorkAct | null>(null);
+  const searchParams = useSearchParams();
 
-  const getActPaymentStatus = (act: WorkAct) =>
-    act.paymentStatus ??
-    (invoices.some(
-      (inv) =>
-        inv.workActId === act.id &&
-        inv.status === "paid"
-    ) ||
-    invoices.some(
-      (inv) =>
-        inv.description.includes(act.actNumber) && inv.status === "paid"
-    )
-      ? "paid"
-      : "pending");
+  const getActPaymentStatus = (act: WorkAct): PaymentStatus => {
+    if (isWorkActFullyPaid(act, payments)) return "paid";
+    const paid = getWorkActPaidAmount(payments, act.id);
+    if (paid > 0 || act.paymentStatus === "partial") return "partial";
+    if (act.paymentStatus) return act.paymentStatus;
+    if (
+      invoices.some(
+        (inv) => inv.workActId === act.id && inv.status === "paid"
+      ) ||
+      invoices.some(
+        (inv) => inv.description.includes(act.actNumber) && inv.status === "paid"
+      )
+    ) {
+      return "paid";
+    }
+    return "pending";
+  };
 
   useEffect(() => {
     requestClinicDataPull({ force: true });
@@ -100,18 +127,16 @@ export default function FinancePage() {
   }, [repairPaidActAppointments]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get("tab");
+    const tabParam = searchParams.get("tab");
     if (
       tabParam === "acts" ||
-      tabParam === "salaries" ||
+      (tabParam === "salaries" && salaryModuleEnabled) ||
       tabParam === "payments" ||
       tabParam === "prepayments"
     ) {
       setTab(tabParam as FinanceTab);
     }
-    const payActId = params.get("payAct");
+    const payActId = searchParams.get("payAct");
     if (payActId) {
       const act = workActs.find((a) => a.id === payActId);
       if (act) {
@@ -121,7 +146,13 @@ export default function FinancePage() {
         }
       }
     }
-  }, [workActs, invoices]);
+  }, [searchParams, workActs, invoices, salaryModuleEnabled]);
+
+  useEffect(() => {
+    if (!salaryModuleEnabled && tab === "salaries") {
+      setTab("payments");
+    }
+  }, [salaryModuleEnabled, tab]);
 
   const totalPaid = useMemo(
     () => payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount, 0),
@@ -180,7 +211,14 @@ export default function FinancePage() {
     return d >= salaryRangeFrom && d <= salaryRangeTo;
   };
 
-  const periodPayments = payments.filter((p) => inPeriod(p.date));
+  const linkedPayments = useMemo(
+    () => filterPaymentsWithExistingWorkActs(payments, workActs),
+    [payments, workActs]
+  );
+
+  const periodPayments = linkedPayments.filter((p) =>
+    inPeriod(getPaymentReportingDate(p, workActs))
+  );
   const periodActs = workActs.filter((a) => inPeriod(a.actDate));
   const periodExpensesTotal = useMemo(
     () => sumClinicExpensesInRange(clinicExpenses, from, to),
@@ -206,16 +244,27 @@ export default function FinancePage() {
 
   const periodSalaries = useMemo(
     () =>
-      computeStaffSalariesForRange(
-        doctors,
-        serviceActs,
-        appointments,
-        from,
-        to,
-        normalizedAssistantManualHours,
-        services
-      ),
-    [doctors, serviceActs, appointments, from, to, normalizedAssistantManualHours, services]
+      salaryModuleEnabled
+        ? computeStaffSalariesForRange(
+            doctors,
+            serviceActs,
+            appointments,
+            from,
+            to,
+            normalizedAssistantManualHours,
+            services
+          )
+        : EMPTY_STAFF_SALARIES,
+    [
+      salaryModuleEnabled,
+      doctors,
+      serviceActs,
+      appointments,
+      from,
+      to,
+      normalizedAssistantManualHours,
+      services,
+    ]
   );
 
   const periodNetAfterSalaries = calcClinicNetAfterSalaries(
@@ -229,22 +278,35 @@ export default function FinancePage() {
   );
 
   const salaryPeriodRevenue = useMemo(
-    () => sumPaidPaymentsInRange(payments, salaryRangeFrom, salaryRangeTo),
-    [payments, salaryRangeFrom, salaryRangeTo]
+    () =>
+      linkedPayments
+        .filter(
+          (p) =>
+            p.status === "paid" &&
+            (() => {
+              const d = new Date(getPaymentReportingDate(p, workActs));
+              return d >= salaryRangeFrom && d <= salaryRangeTo;
+            })()
+        )
+        .reduce((s, p) => s + p.amount, 0),
+    [linkedPayments, workActs, salaryRangeFrom, salaryRangeTo]
   );
 
   const salaryPeriodSalaries = useMemo(
     () =>
-      computeStaffSalariesForRange(
-        doctors,
-        serviceActs,
-        appointments,
-        salaryRangeFrom,
-        salaryRangeTo,
-        normalizedAssistantManualHours,
-        services
-      ),
+      salaryModuleEnabled
+        ? computeStaffSalariesForRange(
+            doctors,
+            serviceActs,
+            appointments,
+            salaryRangeFrom,
+            salaryRangeTo,
+            normalizedAssistantManualHours,
+            services
+          )
+        : EMPTY_STAFF_SALARIES,
     [
+      salaryModuleEnabled,
       doctors,
       serviceActs,
       appointments,
@@ -544,6 +606,7 @@ export default function FinancePage() {
             staffReimbursements={periodStaffReimbursements}
             netAfterSalaries={periodNetAfterSalaries}
             netAfterAll={periodNetAfterAll}
+            showSalaries={salaryModuleEnabled}
             netLabel={
               period === "day"
                 ? "Клинике за день (итого)"
@@ -554,9 +617,7 @@ export default function FinancePage() {
       </Card>
 
       <div className="flex gap-2">
-        {(
-          ["payments", "invoices", "acts", "salaries", "expenses", "prepayments"] as FinanceTab[]
-        ).map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t}
             type="button"
@@ -584,7 +645,7 @@ export default function FinancePage() {
 
       <Card>
         <div className="overflow-x-auto">
-          {tab === "salaries" ? (
+          {tab === "salaries" && salaryModuleEnabled ? (
             <div className="space-y-6 p-4">
               <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 space-y-4">
                 <p className="text-sm font-semibold text-[var(--foreground)]">Период зарплат</p>
@@ -1176,8 +1237,15 @@ export default function FinancePage() {
                       <ul className="text-sm text-slate-700">
                         {pre.items.map((it, i) => (
                           <li key={i} className="flex justify-between gap-2">
-                            <span>{it.serviceName}</span>
-                            <span>{formatCurrency(it.price)}</span>
+                            <span>
+                              {it.serviceName}
+                              {(it.quantity ?? 1) > 1 ? ` × ${it.quantity}` : ""}
+                            </span>
+                            <span>
+                              {formatCurrency(
+                                it.price * Math.max(1, it.quantity ?? 1)
+                              )}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -1230,6 +1298,7 @@ export default function FinancePage() {
                     const patient = patients.find((p) => p.id === act.patientId);
                     const status = getActPaymentStatus(act);
                     const isPaid = status === "paid";
+                    const paidSoFar = getWorkActPaidAmount(payments, act.id);
                     const isPrepay = act.actType === "prepayment";
                     const prep = isPrepay
                       ? prepayments.find((p) => p.id === act.prepaymentId)
@@ -1257,6 +1326,11 @@ export default function FinancePage() {
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {formatCurrency(act.totalAmount)}
+                          {status === "partial" && paidSoFar > 0 && (
+                            <span className="block text-xs font-normal text-slate-500">
+                              внесено {formatCurrency(paidSoFar)}
+                            </span>
+                          )}
                           {isPrepay && act.plannedTotalAmount != null && (
                             <span className="block text-xs font-normal text-slate-500">
                               план {formatCurrency(act.plannedTotalAmount)}
@@ -1346,7 +1420,7 @@ export default function FinancePage() {
                       const patient = patients.find((p) => p.id === pay.patientId);
                       return (
                         <tr key={pay.id} className="border-b border-slate-50">
-                          <td className="px-4 py-3">{formatDate(pay.date)}</td>
+                          <td className="px-4 py-3">{formatDate(getPaymentReportingDate(pay, workActs))}</td>
                           <td className="px-4 py-3">
                             {patient
                               ? getFullName(
@@ -1434,19 +1508,28 @@ export default function FinancePage() {
 
       <PayActDialog
         act={payAct}
+        payments={payments}
         open={!!payAct}
         onOpenChange={(open) => !open && setPayAct(null)}
-        onConfirm={(actId, method: PaymentMethod) => {
+        onConfirm={(actId, method: PaymentMethod, amount: number) => {
           const act = workActs.find((a) => a.id === actId);
           if (act && getActPaymentStatus(act) === "paid") {
-            if (payWorkAct(actId, method)) {
+            if (payWorkAct(actId, method, amount)) {
               toast.info("Акт уже был оплачен — статус приёма в расписании обновлён");
             }
             setPayAct(null);
             return;
           }
-          if (payWorkAct(actId, method)) {
-            toast.success("Акт отмечен как оплаченный");
+          if (payWorkAct(actId, method, amount)) {
+            const actRow = workActs.find((a) => a.id === actId);
+            const dueBefore = actRow
+              ? actRow.totalAmount - getWorkActPaidAmount(payments, actId)
+              : 0;
+            toast.success(
+              amount > 0 && amount < dueBefore
+                ? "Предоплата по акту внесена"
+                : "Акт отмечен как оплаченный"
+            );
             setPayAct(null);
           } else {
             toast.error("Не удалось провести оплату");

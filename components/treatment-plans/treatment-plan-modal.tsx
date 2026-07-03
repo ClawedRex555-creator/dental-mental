@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { DiscountType, TreatmentPlan, TreatmentPlanItem, TreatmentPlanStatus } from "@/lib/types";
 import { TREATMENT_PLAN_STATUS_LABELS, UI } from "@/lib/constants";
@@ -17,6 +17,7 @@ import { logAuditClient } from "@/lib/audit-client";
 import { canDeleteTreatmentPlans } from "@/lib/rbac";
 import { syncTreatmentPlanCommentToPatientNotes } from "@/lib/treatment-plan-patient-note";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
+import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { useClinicStore } from "@/store/useClinicStore";
 import { formatCurrency, generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ interface TreatmentPlanModalProps {
   plan?: TreatmentPlan | null;
   defaultPatientId?: string;
   defaultMedicalRecordId?: string;
+  onRequestPrepayment?: (plan: TreatmentPlan) => void;
 }
 
 const selectClass =
@@ -46,6 +48,7 @@ export function TreatmentPlanModal({
   plan,
   defaultPatientId,
   defaultMedicalRecordId,
+  onRequestPrepayment,
 }: TreatmentPlanModalProps) {
   const {
     patients,
@@ -106,7 +109,7 @@ export function TreatmentPlanModal({
       setDiscount(String(plan.discount ?? 0));
       setComment(plan.comment ?? "");
     } else {
-      setPatientId(defaultPatientId ?? patients[0]?.id ?? "");
+      setPatientId(defaultPatientId ?? "");
       setDoctorId(activeDoctors[0]?.id ?? "");
       setMedicalRecordId(defaultMedicalRecordId ?? "");
       setTitle("План лечения");
@@ -168,17 +171,16 @@ export function TreatmentPlanModal({
     setItems((prev) => prev.filter((it) => it.id !== id));
   };
 
-  const handleSave = () => {
+  const buildPlanPayload = (): TreatmentPlan | null => {
     if (!patientId || !doctorId || !title.trim()) {
       toast.error("Укажите пациента, врача и название плана");
-      return;
+      return null;
     }
     if (items.length === 0 || items.some((i) => !i.serviceId || !i.serviceName.trim())) {
       toast.error("Выберите услуги из прайса клиники");
-      return;
+      return null;
     }
-
-    const payload: TreatmentPlan = {
+    return {
       id: plan?.id ?? generateId("tp"),
       patientId,
       doctorId,
@@ -197,9 +199,10 @@ export function TreatmentPlanModal({
       createdAt: plan?.createdAt ?? format(new Date(), "yyyy-MM-dd"),
       comment: comment.trim() || undefined,
     };
+  };
 
+  const persistPlan = (payload: TreatmentPlan) => {
     const doctorName = doctors.find((d) => d.id === doctorId)?.name ?? "";
-
     syncTreatmentPlanCommentToPatientNotes({
       plan: payload,
       comment,
@@ -210,24 +213,37 @@ export function TreatmentPlanModal({
       updatePatientNote,
       deletePatientNote,
     });
-
-    const savedWithComment = Boolean(comment.trim());
     if (plan) {
       updateTreatmentPlan(plan.id, payload);
-      toast.success(
-        savedWithComment
-          ? "План сохранён, комментарий — в заметках пациента"
-          : "План лечения обновлён"
-      );
     } else {
       addTreatmentPlan(payload);
-      toast.success(
-        savedWithComment
+    }
+  };
+
+  const handleSave = () => {
+    const payload = buildPlanPayload();
+    if (!payload) return;
+
+    const savedWithComment = Boolean(comment.trim());
+    persistPlan(payload);
+    toast.success(
+      plan
+        ? savedWithComment
+          ? "План сохранён, комментарий — в заметках пациента"
+          : "План лечения обновлён"
+        : savedWithComment
           ? "План создан, комментарий — в заметках пациента"
           : "План лечения создан"
-      );
-    }
+    );
+    onOpenChange(false);
+  };
 
+  const handlePrepayment = () => {
+    const payload = buildPlanPayload();
+    if (!payload) return;
+    persistPlan(payload);
+    toast.success(plan ? "План сохранён" : "План создан");
+    onRequestPrepayment?.(payload);
     onOpenChange(false);
   };
 
@@ -241,20 +257,14 @@ export function TreatmentPlanModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>{UI.patient}</Label>
-              <select
-                className={selectClass}
-                value={patientId}
-                onChange={(e) => {
-                  setPatientId(e.target.value);
+              <PatientSearchSelect
+                patients={patients}
+                selectedPatientId={patientId}
+                onSelect={(p) => {
+                  setPatientId(p.id);
                   setMedicalRecordId("");
                 }}
-              >
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.lastName} {p.firstName}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div className="space-y-2">
               <Label>{UI.doctor}</Label>
@@ -484,6 +494,17 @@ export function TreatmentPlanModal({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {UI.cancel}
             </Button>
+            {onRequestPrepayment && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={items.length === 0}
+                onClick={handlePrepayment}
+              >
+                <Wallet className="h-4 w-4" />
+                Предоплата
+              </Button>
+            )}
             <Button
               variant="secondary"
               type="button"

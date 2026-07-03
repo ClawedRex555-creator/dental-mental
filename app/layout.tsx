@@ -1,12 +1,23 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
+const inter = localFont({
+  src: [
+    {
+      path: "../public/fonts/inter/inter-latin-wght-normal.woff2",
+      style: "normal",
+      weight: "100 900",
+    },
+    {
+      path: "../public/fonts/inter/inter-cyrillic-wght-normal.woff2",
+      style: "normal",
+      weight: "100 900",
+    },
+  ],
   display: "swap",
   variable: "--font-inter",
 });

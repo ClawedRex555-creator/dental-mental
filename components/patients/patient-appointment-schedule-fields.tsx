@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options";
 import {
   calcEndTime,
@@ -56,9 +57,16 @@ export function PatientAppointmentScheduleSection({
     onChange({
       ...fields,
       doctorId: nextDoctorId,
-      cabinetId: suggested ?? fields.cabinetId,
+      cabinetId: suggested ?? "",
     });
   };
+
+  useEffect(() => {
+    if (!fields.enabled || !fields.doctorId || fields.cabinetId) return;
+    const suggested = resolveCabinetIdForDoctor(fields.doctorId, doctors, cabinets);
+    if (!suggested) return;
+    onChange({ ...fields, cabinetId: suggested });
+  }, [fields, doctors, cabinets, onChange]);
 
   const endTime = calcEndTime(fields.startTime, fields.durationMinutes);
   const conflicts =

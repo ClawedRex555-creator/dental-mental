@@ -86,21 +86,74 @@ function appointmentsDiffer(remote: Appointment[], local: Appointment[]): boolea
   });
 }
 
+function entitiesContentDiffer<T extends { id: string }>(remote: T[], baseline: T[]): boolean {
+  const remoteById = new Map(remote.map((x) => [x.id, x]));
+  for (const b of baseline) {
+    const r = remoteById.get(b.id);
+    if (!r) continue;
+    if (JSON.stringify(r) !== JSON.stringify(b)) return true;
+  }
+  return false;
+}
+
+function serverEntityListChanged<T extends { id: string }>(
+  remote: T[],
+  baseline: T[]
+): boolean {
+  return (
+    hasEntityIdsNotInIncoming(remote, baseline) ||
+    hasEntityIdsNotInIncoming(baseline, remote) ||
+    entitiesContentDiffer(remote, baseline)
+  );
+}
+
+function objectKeysChanged(
+  remote: Record<string, unknown>,
+  baseline: Record<string, unknown>
+): boolean {
+  const remoteKeys = Object.keys(remote);
+  const baselineKeys = Object.keys(baseline);
+  if (remoteKeys.length !== baselineKeys.length) return true;
+  return remoteKeys.some((key) => !(key in baseline));
+}
+
 /** Есть ли на сервере изменения относительно последнего известного снимка (не текущих правок вкладки) */
 export function serverSnapshotHasIncomingUpdates(
   remote: ClinicPersistedState,
   baseline: ClinicPersistedState
 ): boolean {
-  if (hasEntityIdsNotInIncoming(remote.patients, baseline.patients)) return true;
-  if (hasEntityIdsNotInIncoming(remote.appointments, baseline.appointments)) return true;
-  if (hasEntityIdsNotInIncoming(remote.workActs, baseline.workActs)) return true;
-  if (hasEntityIdsNotInIncoming(remote.payments, baseline.payments)) return true;
-  if (hasEntityIdsNotInIncoming(remote.invoices, baseline.invoices)) return true;
-  if (hasEntityIdsNotInIncoming(remote.medicalRecords, baseline.medicalRecords)) return true;
-  if (hasEntityIdsNotInIncoming(remote.treatmentPlans, baseline.treatmentPlans)) return true;
+  if (serverEntityListChanged(remote.patients, baseline.patients)) return true;
+  if (serverEntityListChanged(remote.appointments, baseline.appointments)) return true;
+  if (serverEntityListChanged(remote.workActs, baseline.workActs)) return true;
+  if (serverEntityListChanged(remote.payments, baseline.payments)) return true;
+  if (serverEntityListChanged(remote.invoices, baseline.invoices)) return true;
+  if (serverEntityListChanged(remote.medicalRecords, baseline.medicalRecords)) return true;
+  if (serverEntityListChanged(remote.treatmentPlans, baseline.treatmentPlans)) return true;
+  if (serverEntityListChanged(remote.onlineBookings, baseline.onlineBookings)) return true;
+  if (serverEntityListChanged(remote.prepayments, baseline.prepayments)) return true;
+  if (serverEntityListChanged(remote.patientNotes, baseline.patientNotes)) return true;
   if (appointmentsDiffer(remote.appointments, baseline.appointments)) return true;
   if (clinicExpensesDiffer(remote.clinicExpenses, baseline.clinicExpenses)) return true;
   if (doctorSchedulesDiffer(remote.doctorSchedules, baseline.doctorSchedules)) return true;
+  if (serverEntityListChanged(remote.doctors, baseline.doctors)) return true;
+  if (serverEntityListChanged(remote.services, baseline.services)) return true;
+  if (serverEntityListChanged(remote.patientFiles, baseline.patientFiles)) return true;
+  if (serverEntityListChanged(remote.tasks, baseline.tasks)) return true;
+  if (serverEntityListChanged(remote.warehouse, baseline.warehouse)) return true;
+  if (serverEntityListChanged(remote.legalDocuments, baseline.legalDocuments)) return true;
+  if (serverEntityListChanged(remote.documentTemplates, baseline.documentTemplates)) return true;
+  if (
+    JSON.stringify(remote.assistantManualHours) !==
+    JSON.stringify(baseline.assistantManualHours)
+  ) {
+    return true;
+  }
+  if (objectKeysChanged(remote.teethByPatient, baseline.teethByPatient)) return true;
+  if (
+    JSON.stringify(remote.clinicSettings) !== JSON.stringify(baseline.clinicSettings)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -135,6 +188,8 @@ export function shouldPushSnapshotAfterServerFetch(
   if (hasNewIds(remote.appointments, hydrated.appointments)) return true;
   if (appointmentsDiffer(remote.appointments, hydrated.appointments)) return true;
   if (hasNewIds(remote.workActs, hydrated.workActs)) return true;
+  if (hasNewIds(remote.legalDocuments, hydrated.legalDocuments)) return true;
+  if (hasNewIds(hydrated.legalDocuments, remote.legalDocuments)) return true;
   if (hasNewIds(remote.invoices, hydrated.invoices)) return true;
   if (hasNewIds(remote.payments, hydrated.payments)) return true;
   if (clinicExpensesDiffer(remote.clinicExpenses, hydrated.clinicExpenses)) return true;

@@ -97,6 +97,7 @@ function emptyPatientFields() {
     birthCertificateSeries: "",
     birthCertificateNumber: "",
     representativeFullName: "",
+    representativeBirthDate: "",
     representativePassportSeries: "",
     representativePassportNumber: "",
     diagnosis: "",
@@ -160,6 +161,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         birthCertificateSeries: patient.birthCertificateSeries ?? "",
         birthCertificateNumber: patient.birthCertificateNumber ?? "",
         representativeFullName: patient.representativeFullName ?? "",
+        representativeBirthDate: patient.representativeBirthDate ?? "",
         representativePassportSeries: patient.representativePassportSeries ?? "",
         representativePassportNumber: patient.representativePassportNumber ?? "",
         diagnosis: patient.diagnosis ?? "",
@@ -307,6 +309,10 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         withoutDocuments || !fields.isChild
           ? undefined
           : fields.representativeFullName.trim() || undefined,
+      representativeBirthDate:
+        withoutDocuments || !fields.isChild || !fields.representativeBirthDate
+          ? undefined
+          : fields.representativeBirthDate,
       representativePassportSeries:
         withoutDocuments || !fields.isChild
           ? undefined
@@ -471,6 +477,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                         birthCertificateSeries: "",
                         birthCertificateNumber: "",
                         representativeFullName: "",
+                        representativeBirthDate: "",
                         representativePassportSeries: "",
                         representativePassportNumber: "",
                       }));
@@ -682,6 +689,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                     birthCertificateSeries: "",
                     birthCertificateNumber: "",
                     representativeFullName: "",
+                    representativeBirthDate: "",
                     representativePassportSeries: "",
                     representativePassportNumber: "",
                   }));
@@ -737,6 +745,15 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                   value={fields.representativeFullName}
                   onChange={(e) => set("representativeFullName", e.target.value)}
                   placeholder="Фамилия Имя Отчество родителя"
+                  disabled={withoutDocuments}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Дата рождения представителя</Label>
+                <Input
+                  type="date"
+                  value={fields.representativeBirthDate}
+                  onChange={(e) => set("representativeBirthDate", e.target.value)}
                   disabled={withoutDocuments}
                 />
               </div>

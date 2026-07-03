@@ -150,12 +150,17 @@ export async function PUT(request: Request) {
     if (existing?.data.medicalRecords) {
       const modules = await getClinicModules(session.clinicId);
       if (isModuleEnabled(modules, "egisz")) {
-        const { maybeAutoQueueMedicalRecords } = await import("@/lib/egisz/queue.server");
+        const { maybeAutoQueueMedicalRecords, maybeAutoQueuePaidWorkActs } =
+          await import("@/lib/egisz/queue.server");
         await maybeAutoQueueMedicalRecords(
           session.clinicId,
           existing.data.medicalRecords,
-          toPersist.medicalRecords
+          toPersist.medicalRecords,
+          toPersist
         ).catch(() => undefined);
+        await maybeAutoQueuePaidWorkActs(session.clinicId, existing.data, toPersist).catch(
+          () => undefined
+        );
       }
     }
 

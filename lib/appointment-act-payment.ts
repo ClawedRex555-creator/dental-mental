@@ -1,8 +1,8 @@
 import type { Appointment, Payment, WorkAct } from "@/lib/types";
+import { isWorkActFullyPaid } from "@/lib/work-act-payment";
 
 export function isWorkActAlreadyPaid(act: WorkAct, payments: Payment[]): boolean {
-  if (act.paymentStatus === "paid") return true;
-  return payments.some((p) => p.workActId === act.id && p.status === "paid");
+  return isWorkActFullyPaid(act, payments);
 }
 
 /** После оплаты акта — закрыть приём в расписании (ready_for_payment → completed) */

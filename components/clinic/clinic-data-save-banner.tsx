@@ -1,6 +1,11 @@
 "use client";
 
-import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
+import { useState } from "react";
+import {
+  requestClinicDataPull,
+  requestDiscardLocalEditsAndPull,
+  requestSaveThenPullClinicData,
+} from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +14,17 @@ export function ClinicDataSaveBanner() {
   const unsaved = useClinicStore((s) => s.clinicDataUnsaved);
   const serverNewer = useClinicStore((s) => s.clinicServerNewerAvailable);
   const saveError = useClinicStore((s) => s.clinicDataSaveError);
+  const [syncActionLoading, setSyncActionLoading] = useState(false);
+
+  const runSyncAction = async (action: () => Promise<void>) => {
+    if (syncActionLoading) return;
+    setSyncActionLoading(true);
+    try {
+      await action();
+    } finally {
+      setSyncActionLoading(false);
+    }
+  };
 
   if (phase === "loading") {
     return (
@@ -52,17 +68,47 @@ export function ClinicDataSaveBanner() {
         <span>
           Информация могла устареть — на сервере более новые данные.
           {unsaved
-            ? " Дождитесь сохранения или перезагрузите страницу."
+            ? " Сохраните локальные правки или отмените их перед обновлением."
             : " Обновите, чтобы увидеть актуальное расписание и записи."}
         </span>
         <span className="flex flex-wrap items-center justify-center gap-2">
-          {!unsaved && (
+          {unsaved ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={syncActionLoading}
+                className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
+                onClick={() => void runSyncAction(requestSaveThenPullClinicData)}
+              >
+                Сохранить и обновить
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={syncActionLoading}
+                className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
+                onClick={() =>
+                  void runSyncAction(() =>
+                    requestDiscardLocalEditsAndPull({ force: true })
+                  )
+                }
+              >
+                Отменить мои правки
+              </Button>
+            </>
+          ) : (
             <Button
               type="button"
               size="sm"
               variant="outline"
+              disabled={syncActionLoading}
               className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
-              onClick={() => requestClinicDataPull({ force: true })}
+              onClick={() =>
+                requestClinicDataPull({ force: true, allowApplyDespitePending: true })
+              }
             >
               Обновить данные
             </Button>
@@ -70,6 +116,7 @@ export function ClinicDataSaveBanner() {
           <Button
             type="button"
             size="sm"
+            disabled={syncActionLoading}
             className="h-8 bg-amber-700 text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-500"
             onClick={() => window.location.reload()}
           >

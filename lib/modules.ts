@@ -45,13 +45,13 @@ export const MODULE_LABELS: Record<SystemModuleId, string> = {
   medical_records: "Медкарты",
   treatment_plans: "Планы лечения",
   finance: "Финансы",
-  analytics: "Аналитика",
-  reports: "Отчёты",
+  analytics: "Аналитика (сегодня)",
+  reports: "Отчёты (период)",
   warehouse: "Услуги / склад",
   staff: "Сотрудники",
   legal: "Юр. отдел",
   online_booking: "Онлайн-запись",
-  my_salary: "Моя зарплата",
+  my_salary: "Моя зарплата / учёт в финансах",
   settings: "Настройки",
   egisz: "ЕГИСЗ",
 };
@@ -122,6 +122,7 @@ export function parseClinicModules(raw: unknown): ClinicModules {
  * Возможности без отдельного URL (модалки, вкладки настроек):
  * — печать договоров при «Пациент пришёл» → `legal`
  * — блок ЕГИСЗ в настройках, API `/api/egisz/*` → `egisz`
+ * — вкладка «Зарплаты» и сводка зарплат в финансах, /my-salary → `my_salary`
  */
 
 export function resolvePathModule(pathname: string): SystemModuleId | null {

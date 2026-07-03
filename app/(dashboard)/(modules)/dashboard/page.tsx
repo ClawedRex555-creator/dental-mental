@@ -29,25 +29,28 @@ import { useClinicStore } from "@/store/useClinicStore";
 const today = format(new Date(), "yyyy-MM-dd");
 
 export default function DashboardPage() {
-  const { appointments, patients, tasks, payments, doctors, services } =
+  const { appointments, patients, tasks, payments, doctors, services, workActs } =
     useClinicStore();
 
   const dashboardKPI = useMemo(
-    () => computeDashboardKPI(payments, appointments, patients),
-    [payments, appointments, patients]
+    () => computeDashboardKPI(payments, appointments, patients, workActs, doctors),
+    [payments, appointments, patients, workActs, doctors]
   );
-  const revenueChartData = useMemo(() => computeRevenueChart(payments), [payments]);
+  const revenueChartData = useMemo(
+    () => computeRevenueChart(payments, workActs),
+    [payments, workActs]
+  );
   const appointmentsChartData = useMemo(
     () => computeAppointmentsChart(appointments),
     [appointments]
   );
   const topDoctorsRevenue = useMemo(
-    () => computeTopDoctors(doctors, appointments),
-    [doctors, appointments]
+    () => computeTopDoctors(doctors, workActs, appointments),
+    [doctors, workActs, appointments]
   );
   const popularServices = useMemo(
-    () => computePopularServices(services, appointments),
-    [services, appointments]
+    () => computePopularServices(services, workActs),
+    [services, workActs]
   );
 
   const todayAppointments = appointments
@@ -81,7 +84,7 @@ export default function DashboardPage() {
       color: "text-sky-600 bg-sky-50",
     },
     {
-      label: "Новые пациенты",
+      label: "Новые за месяц",
       value: String(dashboardKPI.newPatients),
       icon: UserPlus,
       color: "text-emerald-600 bg-emerald-50",
@@ -97,6 +100,7 @@ export default function DashboardPage() {
       value: formatCurrency(dashboardKPI.averageCheck),
       icon: Users,
       color: "text-amber-600 bg-amber-50",
+      subtitle: `завершение приёмов: ${dashboardKPI.primaryConversion}%`,
     },
   ];
 
@@ -104,7 +108,9 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Аналитика</h1>
-        <p className="text-sm text-slate-500">Обзор клиники на сегодня</p>
+        <p className="text-sm text-slate-500">
+          Оперативный обзор клиники на сегодня и текущий месяц
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -117,6 +123,9 @@ export default function DashboardPage() {
               <div>
                 <p className="text-xs text-slate-500">{kpi.label}</p>
                 <p className="text-lg font-bold">{kpi.value}</p>
+                {"subtitle" in kpi && kpi.subtitle ? (
+                  <p className="text-[11px] text-slate-500">{kpi.subtitle}</p>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -231,11 +240,13 @@ export default function DashboardPage() {
             {topDoctorsRevenue.length === 0 ? (
               <p className="text-sm text-slate-500">Пока нет данных по врачам</p>
             ) : (
-              topDoctorsRevenue.map(({ doctor, revenue, appointments: count }) => (
+              topDoctorsRevenue.map(({ doctor, revenue, appointments: count, acts }) => (
                 <div key={doctor.id} className="flex items-center justify-between text-sm">
                   <div>
                     <p className="font-medium">{doctor.name}</p>
-                    <p className="text-slate-500">{count} приёмов</p>
+                    <p className="text-slate-500">
+                      {count} приёмов · {acts} актов
+                    </p>
                   </div>
                   <span className="font-semibold text-teal-700">{formatCurrency(revenue)}</span>
                 </div>
@@ -250,10 +261,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {popularServices.length === 0 ? (
-              <p className="text-sm text-slate-500">Пока нет данных по услугам</p>
+              <p className="text-sm text-slate-500">Пока нет данных по оплаченным актам</p>
             ) : (
               <div className="space-y-3">
-                {popularServices.map(({ service, count, revenue }) => (
+                {popularServices.map((service) => (
                   <div key={service.id} className="flex items-center gap-4 text-sm">
                     <div className="flex-1">
                       <p className="font-medium">{service.name}</p>
@@ -261,14 +272,14 @@ export default function DashboardPage() {
                         <div
                           className="h-full rounded-full bg-teal-500"
                           style={{
-                            width: `${popularServices[0]?.count ? (count / popularServices[0].count) * 100 : 0}%`,
+                            width: `${popularServices[0]?.count ? (service.count / popularServices[0].count) * 100 : 0}%`,
                           }}
                         />
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">{count}</p>
-                      <p className="text-xs text-slate-500">{formatCurrency(revenue)}</p>
+                      <p className="font-semibold">{service.count}</p>
+                      <p className="text-xs text-slate-500">{formatCurrency(service.revenue)}</p>
                     </div>
                   </div>
                 ))}
