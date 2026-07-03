@@ -222,15 +222,8 @@ export function EgiszSettingsPanel() {
           }}
         >
           <p className="font-medium" style={{ color: "var(--callout-info-title)" }}>
-            Настройки только этой клиники
-          </p>
-          <p className="mt-1" style={{ color: "var(--callout-info-text)" }}>
-            {clinic.name || "—"}
-            {clinic.inn ? ` · ИНН ${clinic.inn}` : " · укажите ИНН в общих настройках клиники"}
-          </p>
-          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-            У каждого юр. лица — свой OID, регистрация в N3 и учётные данные. Другие клиники на
-            платформе Emkaro используют отдельные credentials.
+            {clinic.name || "Клиника"}
+            {clinic.inn ? ` · ИНН ${clinic.inn}` : " · укажите ИНН в общих настройках"}
           </p>
         </div>
 
@@ -340,24 +333,8 @@ export function EgiszSettingsPanel() {
           </div>
         </div>
 
-        <div
-          className="rounded-lg border px-3 py-2 text-xs"
-          style={{
-            borderColor: "var(--callout-warn-border)",
-            backgroundColor: "var(--callout-warn-bg)",
-            color: "var(--callout-warn-text)",
-          }}
-        >
-          Тестовый контур N3 (demo): перед live-отправкой подключите OpenVPN из ЛК N3 (файл
-          .ovpn). Без VPN SOAP к b2b-demo часто недоступен.
-        </div>
-
         <div className="rounded-lg border border-[var(--border)] p-3 space-y-3">
-          <p className="text-sm font-medium">Учётные данные N3 этой клиники (ЛК n3health.ru)</p>
-          <p className="text-xs text-[var(--muted)]">
-            GUID, idLPU, login и password — из личного кабинета N3. ID информационной системы
-            (МИС) N3 определяет на своей стороне автоматически — вводить в Emkaro не нужно.
-          </p>
+          <p className="text-sm font-medium">Учётные данные N3 этой клиники</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>GUID МО</Label>
@@ -386,10 +363,6 @@ export function EgiszSettingsPanel() {
 
         <div className="rounded-lg border border-[var(--border)] p-3 space-y-3">
           <p className="text-sm font-medium">Подпись CDA (КЭП организации)</p>
-          <p className="text-xs text-[var(--muted)]">
-            Личная КЭП каждого врача указывается в карточке сотрудника (Сотрудники → врач →
-            ЕГИСЗ / N3). Здесь — только КЭП юр. лица клиники.
-          </p>
           <div className="space-y-2">
             <Label>Режим</Label>
             <select
@@ -413,13 +386,6 @@ export function EgiszSettingsPanel() {
             />
           </div>
         </div>
-
-        {config.connectionMode === "live" && (
-          <p className="text-xs text-[var(--muted)]">
-            В режиме live SEMD отправляется только если при визите (статус «Пришёл») пациент
-            выбрал «Да, отправить» в окне документов.
-          </p>
-        )}
 
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -472,9 +438,7 @@ export function EgiszSettingsPanel() {
           </div>
         ) : (
           <p className="border-t border-[var(--border)] pt-4 text-xs text-[var(--muted)]">
-            Отправок пока нет. Сохраните медкарту с диагнозом при включённой интеграции ЕГИСЗ
-            (галочка «Автоматически ставить СЭМД в очередь») — запись появится здесь со статусом
-            «В очереди».
+            Отправок пока нет.
           </p>
         )}
       </CardContent>

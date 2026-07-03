@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LegalTemplateGuide } from "@/components/platform/legal-template-guide";
+import { EgiszIntegrationGuide } from "@/components/platform/egisz-integration-guide";
 import { ClinicWipePanel } from "@/components/platform/clinic-wipe-panel";
 import { toast } from "sonner";
 
@@ -146,14 +147,6 @@ export default function PlatformAdminPage() {
               <CardTitle className="text-base">ЕГИСЗ / N3 — платформа Emkaro</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-slate-600">
-              <p>
-                N3 привязывает Emkaro как МИС автоматически по учётным данным клиники.
-                Отдельный System ID в настройках не требуется.
-              </p>
-              <p>
-                У каждой клиники — отдельное юр. лицо, OID и credentials N3. Админ клиники
-                заполняет их в своём поддомене → Настройки → N3 / ЕГИСЗ.
-              </p>
               {egiszClinics.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="min-w-full text-xs">
@@ -271,6 +264,16 @@ export default function PlatformAdminPage() {
             );
           })
         )}
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Справочник N3 / ЕГИСЗ / НСИ</h2>
+            <p className="text-sm text-slate-500">
+              Подсказки по настройке интеграции, справочникам и VPN — только для супер-админа
+            </p>
+          </div>
+          <EgiszIntegrationGuide />
+        </section>
 
         <section className="space-y-3">
           <div>

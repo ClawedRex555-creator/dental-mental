@@ -1,21 +1,12 @@
-/** OID и коды NSI для CDA (упрощённый набор для N3 тестирования) */
+/** OID и коды NSI для CDA (N3 / ЕГИСЗ) */
 
-/** Стоматологический осмотр / протокол консультации */
-export const CDA_TEMPLATE_OID = "1.2.643.5.1.13.13.14.1.9.1.181";
-
-/**
- * IdMedDocumentType в справочнике 1.2.643.2.69.1.1.1.195 для AddMedRecord.
- * Для СЭМД «Протокол консультации (CDA) Редакция 4»: IdMedDocumentType=198, remd_code=119.
- * Не путать remd_code/semd_code (119) с кодом записи справочника 195 (198).
- */
-export const N3_MED_DOCUMENT_TYPE_BY_OID: Record<string, string> = {
-  [CDA_TEMPLATE_OID]: "198",
-};
-
-export function resolveN3MedDocumentType(documentOid?: string): string {
-  const oid = documentOid?.trim() || CDA_TEMPLATE_OID;
-  return N3_MED_DOCUMENT_TYPE_BY_OID[oid] ?? "198";
-}
+export {
+  CDA_CONSULTATION_TEMPLATE_OID as CDA_TEMPLATE_OID,
+  CDA_CONSULTATION_REV4_NSI,
+  NSI_OID_MED_DOCUMENT_TYPES,
+  N3_TEMPLATE_OID_TO_MED_DOCUMENT_TYPE,
+  resolveN3MedDocumentType,
+} from "@/lib/egisz/nsi/document-type-hints";
 
 export const CDA_TYPE_ID_ROOT = "2.16.840.1.113883.1.3";
 export const CDA_TYPE_ID_EXTENSION = "POCD_HD000040";

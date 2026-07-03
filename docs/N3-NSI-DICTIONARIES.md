@@ -71,11 +71,30 @@ ssh root@201.51.0.171 "bash /opt/emkaro/scripts/n3-vpn.sh status && bash /opt/em
 
 ## Локальная копия в проекте
 
-Минимальный набор кодов, подтверждённый поддержкой:
+Полный справочник (367 записей) из выгрузки НСИ:
 
-- `data/nsi/1.2.643.2.69.1.1.1.195.json`
+- `data/nsi/1.2.643.2.69.1.1.1.195.json` (версия **374**)
 
-Код в `lib/egisz/cda/constants.ts` использует `IdMedDocumentType = 198` для нашего шаблона CDA.
+Повторный импорт из xlsx:
+
+```bash
+python3 scripts/import-nsi-195-from-xlsx.py ~/Downloads/1.2.643.2.69.1.1.1.195_374.xlsx
+```
+
+### Настройки Emkaro для стоматологического СЭМД
+
+| Поле | Значение |
+|------|----------|
+| OID шаблона CDA (`documentOid`) | `1.2.643.5.1.13.13.14.1.9.1.181` |
+| **IdMedDocumentType** в `AddMedRecord` | **198** |
+| Наименование (справочник 195) | Протокол консультации (CDA) Редакция 4 |
+| `remd_code` | **119** (не подставлять в IdMedDocumentType) |
+| `mime_type_remd` | CDA |
+| `FhirCode` | 11488-4 |
+
+Код: `lib/egisz/nsi/document-type-hints.ts`, каталог и проверка — `lib/egisz/nsi/med-document-types-195.ts` (серверный re-export: `.server.ts`).
+
+Другие редакции протокола консультации в том же справочнике: ред.5 → **316** (remd 227), ред.7 → **372** (remd 290). Для нашего OID шаблона `.181` используется **198**.
 
 ---
 
