@@ -260,6 +260,8 @@ export interface LegalDocument {
   title: string;
   date: string;
   fileDataUrl?: string;
+  /** Статический шаблон из public/ (не раздувает снимок клиники) */
+  templateUrl?: string;
   fileName?: string;
   notes?: string;
 }

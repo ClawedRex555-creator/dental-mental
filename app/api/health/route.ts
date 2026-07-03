@@ -39,6 +39,7 @@ export async function GET() {
     await pool.query("SELECT 1");
     return NextResponse.json({ ok: true, database: true, version, features });
   } catch {
-    return NextResponse.json({ ok: false, version, features }, { status: 503 });
+    // Liveness: приложение отвечает даже при временной недоступности БД (деплой / restart postgres).
+    return NextResponse.json({ ok: false, database: false, version, features });
   }
 }

@@ -18,7 +18,7 @@ export function getWorkActRemainingAmount(
 }
 
 export function isWorkActFullyPaid(act: WorkAct, payments: Payment[]): boolean {
-  if (act.paymentStatus === "paid") return true;
+  if (act.totalAmount <= 0) return act.paymentStatus === "paid";
   return getWorkActPaidAmount(payments, act.id) >= act.totalAmount;
 }
 

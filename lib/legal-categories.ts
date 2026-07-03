@@ -27,6 +27,7 @@ export interface ArrivalPrintDocument {
   name: string;
   kind: "contract" | "consent" | "egisz_refusal";
   fileDataUrl?: string;
+  templateUrl?: string;
   fileName?: string;
   notes?: string;
 }
@@ -43,6 +44,7 @@ export function legalDocumentToArrival(doc: LegalDocument): ArrivalPrintDocument
     name: doc.title,
     kind,
     fileDataUrl: doc.fileDataUrl,
+    templateUrl: doc.templateUrl,
     fileName: doc.fileName,
     notes: doc.notes,
   };

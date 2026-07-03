@@ -63,6 +63,7 @@ export interface ClinicPersistedState {
   documentTemplates: ClinicDocumentTemplate[];
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
+  deletedLegalDocumentIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -127,6 +128,7 @@ type PersistPickSource = {
   documentTemplates: ClinicDocumentTemplate[];
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
+  deletedLegalDocumentIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -209,6 +211,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     documentTemplates: state.documentTemplates ?? [],
     clinicExpenses: sanitizeClinicExpenses(state.clinicExpenses ?? []),
     legalDocuments: sanitizeLegalDocuments(state.legalDocuments ?? []),
+    deletedLegalDocumentIds: state.deletedLegalDocumentIds ?? [],
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
@@ -308,6 +311,27 @@ export function hasEntityListDeletion<T extends { id: string }>(
   return (
     isDeletionOnlySubset(existing, incoming) && incoming.length < existing.length
   );
+}
+
+/**
+ * Юр. документы: union server + client, без потери записей с другого устройства.
+ * Tombstones — явные удаления с этой вкладки.
+ */
+export function mergeLegalDocumentsState(
+  existing: LegalDocument[],
+  incoming: LegalDocument[],
+  existingTombstones: string[] = [],
+  incomingTombstones: string[] = []
+): { legalDocuments: LegalDocument[]; deletedLegalDocumentIds: string[] } {
+  const incomingIds = new Set(incoming.map((d) => d.id));
+  const deletedLegalDocumentIds = [
+    ...new Set([...existingTombstones, ...incomingTombstones]),
+  ].filter((id) => !incomingIds.has(id));
+  const tombstoneSet = new Set(deletedLegalDocumentIds);
+  const legalDocuments = mergeByIdPreferLocal(existing, incoming).filter(
+    (d) => !tombstoneSet.has(d.id)
+  );
+  return { legalDocuments, deletedLegalDocumentIds };
 }
 
 /** mergeByIdPreferLocal с учётом удалений в local (после reload / до автосохранения) */
@@ -418,6 +442,7 @@ export function hasSnapshotRecoveryFromMerge(
     | "workActs"
     | "patientNotes"
     | "patientFiles"
+    | "legalDocuments"
   >> = [
     "appointments",
     "medicalRecords",
@@ -426,6 +451,7 @@ export function hasSnapshotRecoveryFromMerge(
     "workActs",
     "patientNotes",
     "patientFiles",
+    "legalDocuments",
   ];
 
   for (const key of arrays) {
@@ -575,10 +601,18 @@ export function mergeClinicSnapshotWithLocal(
       remote.clinicExpenses,
       local.clinicExpenses
     ),
-    legalDocuments: mergeByIdPreferLocalRespectingDeletions(
-      remote.legalDocuments,
-      local.legalDocuments
-    ),
+    ...(() => {
+      const legal = mergeLegalDocumentsState(
+        remote.legalDocuments,
+        local.legalDocuments,
+        remote.deletedLegalDocumentIds,
+        local.deletedLegalDocumentIds
+      );
+      return {
+        legalDocuments: legal.legalDocuments,
+        deletedLegalDocumentIds: legal.deletedLegalDocumentIds,
+      };
+    })(),
     doctorSchedules: mergeDoctorSchedules(remote.doctorSchedules, local.doctorSchedules),
     prepayments: mergeByIdPreferLocalRespectingDeletions(
       remote.prepayments,
@@ -679,11 +713,18 @@ export function mergeClinicDataForSave(
     ),
     documentTemplates: mergeArr(existing.documentTemplates, incoming.documentTemplates, protect),
     clinicExpenses: mergeArr(existing.clinicExpenses, incoming.clinicExpenses, protect),
-    legalDocuments: mergeArr(
-      existing.legalDocuments,
-      incoming.legalDocuments,
-      hasLegalDocumentDeletion ? undefined : protect
-    ),
+    ...(() => {
+      const legal = mergeLegalDocumentsState(
+        existing.legalDocuments,
+        incoming.legalDocuments,
+        existing.deletedLegalDocumentIds,
+        incoming.deletedLegalDocumentIds
+      );
+      return {
+        legalDocuments: legal.legalDocuments,
+        deletedLegalDocumentIds: legal.deletedLegalDocumentIds,
+      };
+    })(),
     doctorSchedules: mergeDoctorSchedules(existing.doctorSchedules, incoming.doctorSchedules),
     prepayments: mergeArr(
       existing.prepayments,
@@ -766,7 +807,18 @@ export function mergeClinicDataOnWriteConflict(
     patientNotes: preferServer(existing.patientNotes, incoming.patientNotes),
     documentTemplates: preferServer(existing.documentTemplates, incoming.documentTemplates),
     clinicExpenses: preferServer(existing.clinicExpenses, incoming.clinicExpenses),
-    legalDocuments: preferServer(existing.legalDocuments, incoming.legalDocuments),
+    ...(() => {
+      const legal = mergeLegalDocumentsState(
+        existing.legalDocuments,
+        incoming.legalDocuments,
+        existing.deletedLegalDocumentIds,
+        incoming.deletedLegalDocumentIds
+      );
+      return {
+        legalDocuments: legal.legalDocuments,
+        deletedLegalDocumentIds: legal.deletedLegalDocumentIds,
+      };
+    })(),
     prepayments: preferServer(existing.prepayments, incoming.prepayments),
     doctorSchedules: mergeDoctorSchedules(existing.doctorSchedules, incoming.doctorSchedules),
     teethByPatient: { ...existing.teethByPatient, ...incoming.teethByPatient },
@@ -916,6 +968,9 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     documentTemplates: (d.documentTemplates as ClinicDocumentTemplate[]) ?? [],
     clinicExpenses: sanitizeClinicExpenses((d.clinicExpenses as ClinicExpense[]) ?? []),
     legalDocuments: sanitizeLegalDocuments((d.legalDocuments as LegalDocument[]) ?? []),
+    deletedLegalDocumentIds: Array.isArray(d.deletedLegalDocumentIds)
+      ? (d.deletedLegalDocumentIds as string[])
+      : [],
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],
     userThemePreferences: (d.userThemePreferences as Record<string, ThemeMode>) ?? {},

@@ -1,12 +1,13 @@
 export const ALLOWED_DATA_URL_PREFIXES = [
   "data:application/pdf;base64,",
   "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,",
+  "data:application/msword;base64,",
   "data:image/png;base64,",
   "data:image/jpeg;base64,",
   "data:image/webp;base64,",
 ] as const;
 
-export type AllowedDataUrlKind = "pdf" | "docx" | "png" | "jpeg" | "webp";
+export type AllowedDataUrlKind = "pdf" | "docx" | "doc" | "png" | "jpeg" | "webp";
 
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -21,6 +22,8 @@ function prefixToKind(prefix: string): AllowedDataUrlKind | null {
       return "pdf";
     case "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,":
       return "docx";
+    case "data:application/msword;base64,":
+      return "doc";
     case "data:image/png;base64,":
       return "png";
     case "data:image/jpeg;base64,":
@@ -32,11 +35,14 @@ function prefixToKind(prefix: string): AllowedDataUrlKind | null {
   }
 }
 
+/** ~22 МБ исходного файла в base64 */
+const MAX_DATA_URL_LENGTH = 30_000_000;
+
 /** Strict allowlist for embedded file previews (no SVG/HTML/script types). */
 export function parseAllowedDataUrl(value: string): ParsedAllowedDataUrl | null {
   if (!value || typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (trimmed.length > 12_000_000) return null;
+  if (trimmed.length > MAX_DATA_URL_LENGTH) return null;
 
   const prefix = ALLOWED_DATA_URL_PREFIXES.find((p) => trimmed.startsWith(p));
   if (!prefix) return null;

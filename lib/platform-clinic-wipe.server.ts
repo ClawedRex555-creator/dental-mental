@@ -7,9 +7,11 @@ import {
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import type { ClinicSettings } from "@/lib/types";
-import { getClinicDataDb, saveClinicDataDb } from "@/lib/clinic-data-db.server";
+import { getClinicDataDb } from "@/lib/clinic-data-db.server";
+import { CLINIC_DATA_SCHEMA_VERSION } from "@/lib/clinic-persisted-state";
 import { withDb } from "@/lib/db";
 import { parseClinicModules } from "@/lib/modules";
+import { encryptClinicSnapshotPhi } from "@/lib/phi-crypto.server";
 
 export interface ClinicWipeBackupMeta {
   exportedAt: string;
@@ -138,7 +140,10 @@ async function writeClinicBackupFile(
   return { backupPath, backupFileName };
 }
 
-async function deleteClinicOperationalData(clinicId: string): Promise<void> {
+async function wipeClinicOperationalDataAtomic(
+  clinicId: string,
+  wipedSnapshot: ClinicPersistedState
+): Promise<void> {
   await withDb(async (client) => {
     await client.query("BEGIN");
     try {
@@ -146,6 +151,20 @@ async function deleteClinicOperationalData(clinicId: string): Promise<void> {
       await client.query(`DELETE FROM patient_consents WHERE clinic_id = $1`, [clinicId]);
       await client.query(`DELETE FROM egisz_submissions WHERE clinic_id = $1`, [clinicId]);
       await client.query(`DELETE FROM mobile_patient_accounts WHERE clinic_id = $1`, [clinicId]);
+
+      const encrypted = encryptClinicSnapshotPhi(wipedSnapshot);
+      const payload = {
+        ...encrypted,
+        _schemaVersion: CLINIC_DATA_SCHEMA_VERSION,
+      };
+      await client.query(
+        `INSERT INTO clinic_snapshots (clinic_id, data, version, updated_at)
+         VALUES ($1, $2::jsonb, $3, NOW())
+         ON CONFLICT (clinic_id) DO UPDATE
+         SET data = EXCLUDED.data, version = EXCLUDED.version, updated_at = NOW()`,
+        [clinicId, JSON.stringify(payload), CLINIC_DATA_SCHEMA_VERSION]
+      );
+
       await client.query("COMMIT");
     } catch (e) {
       await client.query("ROLLBACK");
@@ -167,8 +186,7 @@ export async function wipeClinicDataWithBackup(clinicId: string): Promise<{
   );
 
   const wipedSnapshot = buildWipedClinicSnapshot(backup.snapshot);
-  await deleteClinicOperationalData(clinicId);
-  await saveClinicDataDb(clinicId, wipedSnapshot, { allowEmptyResult: true });
+  await wipeClinicOperationalDataAtomic(clinicId, wipedSnapshot);
 
   return {
     backupPath,

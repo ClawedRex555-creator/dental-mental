@@ -12,7 +12,11 @@ import { escapeHtml } from "@/lib/escape-html";
 const DOCX_MIME =
   "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,";
 
-const PLACEHOLDER_RE = /\{([a-z][a-z0-9_]{0,39})\}/gi;
+import {
+  collectPlaceholdersFromDocxXml,
+  DOCX_TEMPLATE_PARTS_RE,
+  normalizeDocxPlaceholderXml,
+} from "@/lib/legal-docx-xml";
 
 function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   const base64 = dataUrl.split(",")[1] ?? "";
@@ -35,14 +39,36 @@ export function buildDocxTemplateData(ctx: ArrivalDocumentContext): Record<strin
     data[field.wordName] = value && value !== "—" ? value : "";
   }
 
+  // Частые опечатки в Word-шаблонах
+  if (data.doctor_specialty) {
+    data.doctor_speciality = data.doctor_specialty;
+  }
+
   return data;
 }
 
-function collectPlaceholdersFromDocxXml(xml: string): string[] {
+function listDocxTemplatePartPaths(zip: PizZip): string[] {
+  return Object.keys(zip.files).filter((name) => DOCX_TEMPLATE_PARTS_RE.test(name));
+}
+
+function prepareDocxZipForTemplating(zip: PizZip): void {
+  for (const path of listDocxTemplatePartPaths(zip)) {
+    const file = zip.file(path);
+    if (!file) continue;
+    const xml = file.asText();
+    if (!xml) continue;
+    zip.file(path, normalizeDocxPlaceholderXml(xml));
+  }
+}
+
+function collectPlaceholdersFromDocxZip(zip: PizZip): string[] {
   const found = new Set<string>();
-  for (const match of xml.matchAll(PLACEHOLDER_RE)) {
-    const name = match[1]?.toLowerCase();
-    if (name) found.add(name);
+  for (const path of listDocxTemplatePartPaths(zip)) {
+    const xml = zip.file(path)?.asText();
+    if (!xml) continue;
+    for (const name of collectPlaceholdersFromDocxXml(xml)) {
+      found.add(name);
+    }
   }
   return [...found];
 }
@@ -58,9 +84,7 @@ export async function inspectLegalDocx(dataUrl: string): Promise<InspectLegalDoc
 
   try {
     const zip = new PizZip(dataUrlToArrayBuffer(dataUrl));
-    const xml = zip.file("word/document.xml")?.asText();
-    if (!xml) return { ok: false, error: "Повреждённый DOCX" };
-    const placeholders = collectPlaceholdersFromDocxXml(xml);
+    const placeholders = collectPlaceholdersFromDocxZip(zip);
     return {
       ok: true,
       placeholderCount: placeholders.length,
@@ -127,6 +151,7 @@ export async function fillLegalDocxToPrintHtml(
     }
 
     const zip = new PizZip(dataUrlToArrayBuffer(dataUrl));
+    prepareDocxZipForTemplating(zip);
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,

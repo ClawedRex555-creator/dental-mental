@@ -1,5 +1,6 @@
 import {
   hasClinicData,
+  mergeClinicSnapshotWithLocal,
   parseClinicPersistedState,
   pickPersistedState,
   type ClinicPersistedState,
@@ -59,13 +60,17 @@ export function clearPendingClinicSnapshot(): void {
 const PENDING_BUFFER_ERROR =
   "Не удалось записать буфер вкладки (переполнение sessionStorage). Не закрывайте вкладку — дождитесь сохранения на сервер.";
 
-/** Сбросить устаревший pending, если на сервере уже есть записи с другого устройства */
+/**
+ * Если на сервере появились данные с другого устройства — слить их с pending,
+ * а не сбрасывать локальные правки (иначе теряются несохранённые изменения).
+ */
 export function discardStalePendingClinicSnapshot(remote: ClinicPersistedState): boolean {
   const pending = readPendingClinicSnapshot();
   if (!pending) return false;
 
   if (serverSnapshotHasIncomingUpdates(remote, pending)) {
-    clearPendingClinicSnapshot();
+    const merged = mergeClinicSnapshotWithLocal(remote, pending);
+    writePendingClinicSnapshot(merged);
     return true;
   }
   return false;

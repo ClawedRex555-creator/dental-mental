@@ -63,7 +63,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"require('http').get('http://127.0.0.1:3000/api/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\"",
+          "node -e \"require('http').get('http://127.0.0.1:3000/api/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.exit(d.includes('patientAppointmentSearch')?0:1))}).on('error',()=>process.exit(1))\"",
         ]
       interval: 30s
       timeout: 5s

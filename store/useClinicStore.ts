@@ -56,6 +56,7 @@ import {
   mergeByIdPreferLocal,
   mergeDoctorSchedules,
   mergeClinicPatients,
+  mergeLegalDocumentsState,
   pickPersistedState,
   pickPersistedStateForStorage,
   repairFinancialCoupling,
@@ -150,6 +151,7 @@ interface ClinicState {
   documentTemplates: ClinicDocumentTemplate[];
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
+  deletedLegalDocumentIds: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   /** Ручные часы ассистента по датам (yyyy-MM-dd), если смена не привязана к приёму */
@@ -280,6 +282,7 @@ export const useClinicStore = create<ClinicState>()(
       documentTemplates: freshState.documentTemplates,
       clinicExpenses: freshState.clinicExpenses,
       legalDocuments: freshState.legalDocuments,
+      deletedLegalDocumentIds: [],
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
       assistantManualHours: freshState.assistantManualHours,
@@ -490,20 +493,27 @@ export const useClinicStore = create<ClinicState>()(
         scheduleClinicDataFlush();
       },
 
-      addLegalDocument: (doc) =>
-        set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] })),
+      addLegalDocument: (doc) => {
+        set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] }));
+        scheduleClinicDataFlush();
+      },
 
-      updateLegalDocument: (id, data) =>
+      updateLegalDocument: (id, data) => {
         set((s) => ({
           legalDocuments: s.legalDocuments.map((d) =>
             d.id === id ? { ...d, ...data } : d
           ),
-        })),
+        }));
+        scheduleClinicDataFlush();
+      },
 
-      removeLegalDocument: (id) =>
+      removeLegalDocument: (id) => {
         set((s) => ({
           legalDocuments: s.legalDocuments.filter((d) => d.id !== id),
-        })),
+          deletedLegalDocumentIds: [...new Set([...(s.deletedLegalDocumentIds ?? []), id])],
+        }));
+        scheduleClinicDataFlush();
+      },
 
       addService: (service) => {
         if (!canManageServices(get().currentRole)) return;
@@ -982,15 +992,7 @@ export const useClinicStore = create<ClinicState>()(
         const act = state.workActs.find((a) => a.id === actId);
         if (!act) return false;
 
-        const paidViaPayments = state.payments
-          .filter((p) => p.workActId === actId && p.status === "paid")
-          .reduce((sum, p) => sum + p.amount, 0);
-        const reverseAmount =
-          paidViaPayments > 0
-            ? paidViaPayments
-            : act.paymentStatus === "paid"
-              ? act.totalAmount
-              : 0;
+        const reverseAmount = getWorkActPaidAmount(state.payments, actId);
 
         set((s) => {
           const appointments = removeSyntheticVisitForWorkAct(
@@ -1102,6 +1104,7 @@ export const useClinicStore = create<ClinicState>()(
           documentTemplates: repaired.documentTemplates ?? [],
           clinicExpenses: repaired.clinicExpenses ?? [],
           legalDocuments: repaired.legalDocuments ?? [],
+          deletedLegalDocumentIds: repaired.deletedLegalDocumentIds ?? [],
           doctorSchedules: repaired.doctorSchedules ?? [],
           prepayments: repaired.prepayments ?? [],
           assistantManualHours: normalizeAssistantManualHours(repaired.assistantManualHours),
@@ -1138,7 +1141,12 @@ export const useClinicStore = create<ClinicState>()(
             s.documentTemplates
           ),
           clinicExpenses: mergeByIdPreferLocal(data.clinicExpenses ?? [], s.clinicExpenses),
-          legalDocuments: mergeByIdPreferLocal(data.legalDocuments ?? [], s.legalDocuments),
+          ...mergeLegalDocumentsState(
+            data.legalDocuments ?? [],
+            s.legalDocuments,
+            data.deletedLegalDocumentIds,
+            s.deletedLegalDocumentIds
+          ),
           doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
           prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
           assistantManualHours: mergeAssistantManualHours(

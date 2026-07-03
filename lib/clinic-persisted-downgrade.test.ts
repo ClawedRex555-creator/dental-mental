@@ -441,4 +441,40 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     const repaired = repairFinancialCoupling(state);
     assert.equal(repaired.payments.length, 0);
   });
+
+  it("mergeClinicDataForSave keeps legal docs added on another device", () => {
+    const existing = createFreshPersistedState();
+    existing.legalDocuments = [
+      { id: "ld1", category: "Договоры", title: "A", date: "2026-01-01" },
+      { id: "ld2", category: "Договоры", title: "B", date: "2026-01-02" },
+      { id: "ld3", category: "Договоры", title: "C", date: "2026-01-03" },
+    ];
+
+    const incoming = {
+      ...existing,
+      legalDocuments: existing.legalDocuments.slice(0, 2),
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.legalDocuments.length, 3);
+    assert.ok(merged.legalDocuments.some((d) => d.id === "ld3"));
+  });
+
+  it("mergeClinicDataForSave respects explicit legal document deletion", () => {
+    const existing = createFreshPersistedState();
+    existing.legalDocuments = [
+      { id: "ld1", category: "Договоры", title: "A", date: "2026-01-01" },
+      { id: "ld2", category: "Договоры", title: "B", date: "2026-01-02" },
+    ];
+
+    const incoming = {
+      ...existing,
+      legalDocuments: [existing.legalDocuments[0]!],
+      deletedLegalDocumentIds: ["ld2"],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.legalDocuments.length, 1);
+    assert.equal(merged.legalDocuments[0]?.id, "ld1");
+  });
 });

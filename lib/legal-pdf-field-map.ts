@@ -120,6 +120,7 @@ export const PDF_FIELD_TOKEN_ALIASES: Record<string, string[]> = {
   "doctor.name": ["doctorname", "doctor", "врач", "врачфио", "doctor_fio"],
   "doctor.specialization": [
     "doctor_specialty",
+    "doctor_speciality",
     "doctor_specialization",
     "doctorspecialization",
     "specialization",

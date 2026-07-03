@@ -65,6 +65,11 @@ describe("work-act-payment", () => {
     assert.equal(filterPaymentsWithExistingWorkActs(payments, [act]).length, 0);
   });
 
+  it("does not trust paymentStatus without matching payments", () => {
+    const paidStatusAct: WorkAct = { ...act, paymentStatus: "paid" };
+    assert.equal(isWorkActFullyPaid(paidStatusAct, []), false);
+  });
+
   it("uses act date for reporting when payment date differs", () => {
     const payments: Payment[] = [
       {

@@ -188,6 +188,8 @@ export function shouldPushSnapshotAfterServerFetch(
   if (hasNewIds(remote.appointments, hydrated.appointments)) return true;
   if (appointmentsDiffer(remote.appointments, hydrated.appointments)) return true;
   if (hasNewIds(remote.workActs, hydrated.workActs)) return true;
+  if (hasNewIds(remote.legalDocuments, hydrated.legalDocuments)) return true;
+  if (hasNewIds(hydrated.legalDocuments, remote.legalDocuments)) return true;
   if (hasNewIds(remote.invoices, hydrated.invoices)) return true;
   if (hasNewIds(remote.payments, hydrated.payments)) return true;
   if (clinicExpensesDiffer(remote.clinicExpenses, hydrated.clinicExpenses)) return true;

@@ -83,7 +83,14 @@ if [ ! -f "$ROOT/.next/standalone/node_modules/next/package.json" ]; then
 fi
 
 echo ">>> Docker image из .next/standalone (~1 мин)..."
-bash scripts/server-docker-prebuilt-image.sh
+bash scripts/server-docker-prebuilt-image.sh --build-only
+
+echo ">>> Миграции БД (до перезапуска app)..."
+docker compose up -d postgres
+bash scripts/apply-migrations.sh
+
+echo ">>> Перезапуск app..."
+docker compose up -d --force-recreate --no-build app caddy
 
 if [ -f "$ROOT/.deploy-version" ]; then
   _tag="$(awk '{print $2}' "$ROOT/.deploy-version" | tr -cd 'a-zA-Z0-9_.-')"
@@ -95,12 +102,19 @@ fi
 echo ">>> Статус:"
 docker compose ps
 
+echo ">>> Пауза перед проверкой /api/health..."
+sleep 5
+
 fetch_app_health() {
   docker compose exec -T app node -e "
-    fetch('http://127.0.0.1:3000/api/health')
-      .then((r) => r.text())
-      .then((t) => process.stdout.write(t))
-      .catch(() => process.exit(1));
+    const http = require('http');
+    const req = http.get('http://127.0.0.1:3000/api/health', (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => process.stdout.write(data));
+    });
+    req.on('error', () => process.exit(1));
+    req.setTimeout(8000, () => { req.destroy(); process.exit(1); });
   " 2>/dev/null || echo '{}'
 }
 
@@ -118,13 +132,13 @@ fi
 
 health="{}"
 health_ok=0
-for _ in $(seq 1 30); do
-  health="$(fetch_app_health)"
-  if echo "$health" | grep -q 'patientAppointmentSearch'; then
-    health_ok=1
+for _ in $(seq 1 45); do
+  if docker compose ps app 2>/dev/null | grep -qE 'Restarting|Exit'; then
     break
   fi
-  if docker compose ps app 2>/dev/null | grep -qE 'Restarting|Exit'; then
+  health="$(fetch_app_health)"
+  if echo "$health" | grep -q '"database":true' && echo "$health" | grep -q 'patientAppointmentSearch'; then
+    health_ok=1
     break
   fi
   sleep 2

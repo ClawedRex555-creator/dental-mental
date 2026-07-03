@@ -283,12 +283,13 @@ export function WorkActModal({
       ? (workActs.find((a) => a.id === existingId)?.actNumber ?? getNextActNumber())
       : getNextActNumber();
 
+    const previousAct = workActs.find((a) => a.id === actId);
     const act: WorkAct = {
       id: actId,
       actNumber,
       actDate,
       patientId,
-      appointmentId: defaultAppointmentId,
+      appointmentId: defaultAppointmentId ?? previousAct?.appointmentId,
       doctorId,
       items: filledItems,
       subtotalAmount,
@@ -296,9 +297,9 @@ export function WorkActModal({
       discount: Number(discount) || 0,
       discountBearer,
       totalAmount,
-      paymentStatus: "pending",
-      invoiceId: workActs.find((a) => a.id === actId)?.invoiceId,
-      createdAt: format(new Date(), "yyyy-MM-dd"),
+      paymentStatus: previousAct?.paymentStatus ?? "pending",
+      invoiceId: previousAct?.invoiceId,
+      createdAt: previousAct?.createdAt ?? format(new Date(), "yyyy-MM-dd"),
       notes: notes.trim() || undefined,
       submittedToAdmin: submittedToAdmin ?? workActs.find((a) => a.id === actId)?.submittedToAdmin,
     };

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Plus, Upload } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import {
   LEGAL_CATEGORY_CONSENTS,
   LEGAL_CATEGORY_CONTRACTS,
@@ -28,6 +28,7 @@ import {
   reserveBrowserTab,
   showTabLoading,
 } from "@/lib/open-stored-file";
+import { resolveArrivalDocumentDataUrl } from "@/lib/resolve-legal-document-source";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
@@ -50,27 +51,60 @@ interface AppointmentDocumentsModalProps {
   appointmentDate?: string;
 }
 
+function arrivalDocMatchesQuery(doc: ArrivalPrintDocument, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    doc.name.toLowerCase().includes(q) ||
+    (doc.fileName?.toLowerCase().includes(q) ?? false) ||
+    (doc.notes?.toLowerCase().includes(q) ?? false)
+  );
+}
+
+function filterArrivalDocuments(
+  items: ArrivalPrintDocument[],
+  query: string
+): ArrivalPrintDocument[] {
+  const q = query.trim();
+  if (!q) return items;
+  return items.filter((doc) => arrivalDocMatchesQuery(doc, q));
+}
+
 function DocList({
   title,
   items,
+  totalCount,
   selected,
   onToggle,
   emptyHint,
+  noSearchResultsHint,
   onAttachFile,
 }: {
   title: string;
   items: ArrivalPrintDocument[];
+  totalCount?: number;
   selected: string[];
   onToggle: (id: string) => void;
   emptyHint: string;
+  noSearchResultsHint?: string;
   onAttachFile: (docId: string, file: File) => void;
 }) {
+  const countLabel =
+    totalCount !== undefined && totalCount !== items.length
+      ? `${items.length} из ${totalCount}`
+      : String(items.length);
+
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-[var(--foreground)]">{title}</h3>
+      <h3 className="text-sm font-semibold text-[var(--foreground)]">
+        {title}
+        <span className="ml-1.5 font-normal text-[var(--muted)]">({countLabel})</span>
+      </h3>
       <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
         {items.length === 0 ? (
-          <p className="p-2 text-xs text-[var(--muted)]">{emptyHint}</p>
+          <p className="p-2 text-xs text-[var(--muted)]">
+            {noSearchResultsHint ?? emptyHint}
+          </p>
         ) : (
           items.map((doc) => (
             <div
@@ -150,15 +184,9 @@ function AppointmentDocumentsModalBody({
     [legalDocuments]
   );
 
-  const [selectedContracts, setSelectedContracts] = useState<string[]>(() =>
-    contracts.map((c) => c.id)
-  );
-  const [selectedConsents, setSelectedConsents] = useState<string[]>(() =>
-    consents.map((c) => c.id)
-  );
-  const [selectedEgiszRefusals, setSelectedEgiszRefusals] = useState<string[]>(() =>
-    egiszRefusals.map((c) => c.id)
-  );
+  const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
+  const [selectedConsents, setSelectedConsents] = useState<string[]>([]);
+  const [selectedEgiszRefusals, setSelectedEgiszRefusals] = useState<string[]>([]);
   const [sendToEgisz, setSendToEgisz] = useState<"yes" | "no">("yes");
   const [newDocName, setNewDocName] = useState("");
   const [newDocCategory, setNewDocCategory] = useState<
@@ -167,6 +195,22 @@ function AppointmentDocumentsModalBody({
   const [pendingFile, setPendingFile] = useState<{ dataUrl: string; name: string } | null>(
     null
   );
+  const [docSearch, setDocSearch] = useState("");
+
+  const filteredContracts = useMemo(
+    () => filterArrivalDocuments(contracts, docSearch),
+    [contracts, docSearch]
+  );
+  const filteredConsents = useMemo(
+    () => filterArrivalDocuments(consents, docSearch),
+    [consents, docSearch]
+  );
+  const filteredEgiszRefusals = useMemo(
+    () => filterArrivalDocuments(egiszRefusals, docSearch),
+    [egiszRefusals, docSearch]
+  );
+
+  const searchActive = docSearch.trim().length > 0;
 
   const toggle = (id: string, list: string[], setList: (v: string[]) => void) => {
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -314,13 +358,14 @@ function AppointmentDocumentsModalBody({
         for (let i = 0; i < pdfDocs.length; i++) {
           const doc = pdfDocs[i];
           const tab = pdfTabs[i] ?? null;
-          if (!doc.fileDataUrl) {
+          const dataUrl = await resolveArrivalDocumentDataUrl(doc);
+          if (!dataUrl) {
             closeBrowserTab(tab);
             toast.warning(`${doc.name}: файл не прикреплён`);
             continue;
           }
 
-          const result = await fillLegalPdf(doc.fileDataUrl, ctx);
+          const result = await fillLegalPdf(dataUrl, ctx);
           if (result.ok) {
             if (
               printPdfBytesInTab(tab, result.bytes, doc.fileName ?? `${doc.name}.pdf`)
@@ -357,14 +402,15 @@ function AppointmentDocumentsModalBody({
         for (let i = 0; i < docxDocs.length; i++) {
           const doc = docxDocs[i];
           const tab = docxTabs[i] ?? null;
-          if (!doc.fileDataUrl) {
+          const dataUrl = await resolveArrivalDocumentDataUrl(doc);
+          if (!dataUrl) {
             closeBrowserTab(tab);
             toast.warning(`${doc.name}: файл не прикреплён`);
             continue;
           }
 
           const result = await fillLegalDocxToPrintHtml(
-            doc.fileDataUrl,
+            dataUrl,
             ctx,
             doc.fileName ?? doc.name
           );
@@ -476,21 +522,40 @@ function AppointmentDocumentsModalBody({
         При отказе от ЕГИСЗ — стандартная форма или документы из «{LEGAL_CATEGORY_EGISZ_REFUSAL}».
       </p>
 
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+        <Input
+          value={docSearch}
+          onChange={(e) => setDocSearch(e.target.value)}
+          placeholder="Поиск по названию документа…"
+          className="pl-9"
+          autoComplete="off"
+        />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <DocList
           title={`Договоры (${LEGAL_CATEGORY_CONTRACTS})`}
-          items={contracts}
+          items={filteredContracts}
+          totalCount={contracts.length}
           selected={selectedContracts}
           onToggle={(id) => toggle(id, selectedContracts, setSelectedContracts)}
           emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONTRACTS}»`}
+          noSearchResultsHint={
+            searchActive ? "Нет договоров по этому запросу" : undefined
+          }
           onAttachFile={attachFileToDoc}
         />
         <DocList
           title={`Согласия (${LEGAL_CATEGORY_CONSENTS})`}
-          items={consents}
+          items={filteredConsents}
+          totalCount={consents.length}
           selected={selectedConsents}
           onToggle={(id) => toggle(id, selectedConsents, setSelectedConsents)}
           emptyHint={`Добавьте документы в юр. отдел → «${LEGAL_CATEGORY_CONSENTS}»`}
+          noSearchResultsHint={
+            searchActive ? "Нет согласий по этому запросу" : undefined
+          }
           onAttachFile={attachFileToDoc}
         />
       </div>
@@ -520,10 +585,14 @@ function AppointmentDocumentsModalBody({
           <div className="mt-2 border-t border-[var(--border)] pt-3">
             <DocList
               title={`${LEGAL_CATEGORY_EGISZ_REFUSAL} (необязательно)`}
-              items={egiszRefusals}
+              items={filteredEgiszRefusals}
+              totalCount={egiszRefusals.length}
               selected={selectedEgiszRefusals}
               onToggle={(id) => toggle(id, selectedEgiszRefusals, setSelectedEgiszRefusals)}
               emptyHint=""
+              noSearchResultsHint={
+                searchActive ? "Нет форм отказа по этому запросу" : undefined
+              }
               onAttachFile={attachFileToDoc}
             />
             <p className="mt-1 text-xs text-[var(--muted)]">

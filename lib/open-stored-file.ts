@@ -403,6 +403,15 @@ export function readFileAsDataUrl(file: File): Promise<string> {
     reader.onload = () => {
       const result = reader.result as string;
       if (!parseAllowedDataUrl(result)) {
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        if (ext === "doc") {
+          reject(new Error("unsupported-doc"));
+          return;
+        }
+        if (file.size > 30_000_000 * 0.75) {
+          reject(new Error("too-large"));
+          return;
+        }
         reject(new Error("unsupported type"));
         return;
       }
@@ -413,12 +422,26 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** localStorage ~5MB — предупреждаем о больших файлах */
-export function warnIfFileTooLarge(file: File): boolean {
-  const maxMb = 4;
+export function legalFileUploadErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.message === "unsupported-doc") {
+      return "Старый формат .doc не поддерживается — в Word: «Файл → Сохранить как → .docx»";
+    }
+    if (err.message === "too-large") {
+      return "Файл слишком большой (макс. ~20 МБ). Сожмите PDF или разбейте документ";
+    }
+    if (err.message === "unsupported type") {
+      return "Поддерживаются PDF, DOCX, PNG, JPEG, WebP";
+    }
+  }
+  return "Не удалось прочитать файл";
+}
+
+/** Предупреждение о больших файлах (не блокирует загрузку) */
+export function warnIfFileTooLarge(file: File, maxMb = 20): boolean {
   if (file.size > maxMb * 1024 * 1024) {
     toast.warning(
-      `Файл больше ${maxMb} МБ — может не сохраниться после перезагрузки. Сожмите PDF или используйте файл меньше.`
+      `Файл больше ${maxMb} МБ — при большом числе документов общий объём клиники может не сохраниться на сервер.`
     );
     return true;
   }

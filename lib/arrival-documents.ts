@@ -7,6 +7,7 @@ import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 import type { ClinicSettings, Doctor, Patient } from "@/lib/types";
 import { formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { tokenKeyToWordFieldName } from "@/lib/legal-pdf-fields";
+import { isDocxLegalSource, isPdfLegalSource } from "@/lib/resolve-legal-document-source";
 import { getContractNumber, getPatientActName, getWorkActCustomerName, getWorkActCustomerPassport, getPatientOrRepresentativeFullName, getPatientOrRepresentativePassport, getPatientOrRepresentativeBirthDate, getLegalRepresentativeFullName, getLegalRepresentativePassport, getLegalRepresentativeBirthDate } from "@/lib/work-act-utils";
 
 export interface ArrivalDocumentContext {
@@ -301,15 +302,11 @@ export function renderArrivalDocumentSectionHtml(
 }
 
 export function isPdfArrivalDocument(doc: ArrivalPrintDocument): boolean {
-  return Boolean(doc.fileDataUrl?.startsWith("data:application/pdf;base64,"));
+  return isPdfLegalSource(doc);
 }
 
 export function isDocxArrivalDocument(doc: ArrivalPrintDocument): boolean {
-  return Boolean(
-    doc.fileDataUrl?.startsWith(
-      "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,"
-    )
-  );
+  return isDocxLegalSource(doc);
 }
 
 export function buildArrivalDocumentsPrintHtml(options: {

@@ -1,4 +1,5 @@
-import { addMonths, format, parseISO, startOfMonth } from "date-fns";
+import { addMonths, format, parse, parseISO, startOfDay, startOfMonth } from "date-fns";
+import { ru } from "date-fns/locale";
 import type {
   ClinicWeeklySchedule,
   DayWorkHours,
@@ -104,6 +105,19 @@ export function nextMonthKey(from = new Date()): string {
   return format(addMonths(startOfMonth(from), 1), "yyyy-MM");
 }
 
+/** С какого числа месяца напоминать о графике на следующий */
+export const SCHEDULE_REMINDER_FROM_DAY = 21;
+
+export function shouldPromptForNextMonthSchedule(from = new Date()): boolean {
+  return startOfDay(from).getDate() >= SCHEDULE_REMINDER_FROM_DAY;
+}
+
+export function formatScheduleMonthLabel(monthKey: string): string {
+  const date = parse(`${monthKey}-01`, "yyyy-MM-dd", new Date());
+  const label = format(date, "LLLL yyyy", { locale: ru });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 const DEFAULT_SHIFT_START = "10:00";
 const DEFAULT_SHIFT_END = "19:00";
 
@@ -163,9 +177,13 @@ export function getDoctorHoursForDate(
 
 export function needsScheduleReminder(
   schedules: DoctorMonthSchedule[],
-  doctorIds: string[]
+  doctorIds: string[],
+  from = new Date()
 ): { month: string; missingDoctorIds: string[] } | null {
-  const target = nextMonthKey();
+  if (doctorIds.length === 0) return null;
+  if (!shouldPromptForNextMonthSchedule(from)) return null;
+
+  const target = nextMonthKey(from);
   const missing = doctorIds.filter(
     (id) => !schedules.some((s) => s.doctorId === id && s.month === target)
   );

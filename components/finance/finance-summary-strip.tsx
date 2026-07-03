@@ -12,6 +12,7 @@ interface FinanceSummaryStripProps {
   netAfterSalaries: number;
   netAfterAll: number;
   netLabel?: string;
+  showSalaries?: boolean;
   className?: string;
 }
 
@@ -70,18 +71,24 @@ export function FinanceSummaryStrip({
   netAfterSalaries,
   netAfterAll,
   netLabel = "Клинике после зарплат",
+  showSalaries = true,
   className,
 }: FinanceSummaryStripProps) {
   return (
     <div
       className={cn(
-        "grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6",
+        "grid gap-3 grid-cols-2 md:grid-cols-3",
+        showSalaries ? "xl:grid-cols-6" : "xl:grid-cols-4",
         className
       )}
     >
       <MetricCard label="Выручка за период" value={revenue} />
-      <MetricCard label="Зарплаты врачам" value={salaries.doctorSalary} />
-      <MetricCard label="Зарплаты ассистентам" value={salaries.assistantSalary} />
+      {showSalaries && (
+        <>
+          <MetricCard label="Зарплаты врачам" value={salaries.doctorSalary} />
+          <MetricCard label="Зарплаты ассистентам" value={salaries.assistantSalary} />
+        </>
+      )}
       <MetricCard label="Расходы клиники" value={expensesTotal} negative />
       <MetricCard
         label="К возмещению сотрудникам"
@@ -89,7 +96,14 @@ export function FinanceSummaryStrip({
         negative
         subtitle="оплачено из личных средств"
       />
-      <MetricCard label={netLabel} value={netAfterAll} highlight subtitle={`после зарплат: ${formatCurrency(netAfterSalaries)}`} />
+      <MetricCard
+        label={showSalaries ? netLabel : "Клинике за период (итого)"}
+        value={netAfterAll}
+        highlight
+        subtitle={
+          showSalaries ? `после зарплат: ${formatCurrency(netAfterSalaries)}` : undefined
+        }
+      />
     </div>
   );
 }

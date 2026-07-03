@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT="${DEPLOY_ROOT:-/opt/emkaro}"
 cd "$ROOT"
 
+BUILD_ONLY=0
+if [ "${1:-}" = "--build-only" ]; then
+  BUILD_ONLY=1
+fi
+
 if [ ! -f "Dockerfile.prebuilt" ]; then
   echo "ОШИБКА: нет Dockerfile.prebuilt"
   exit 1
@@ -76,6 +81,11 @@ if ! grep -qE 'Ready|Next\.js' "$smoke_log"; then
 fi
 echo "Smoke OK"
 rm -f "$smoke_log"
+
+if [ "$BUILD_ONLY" = "1" ]; then
+  echo "PREBUILT_IMAGE_OK (build-only)"
+  exit 0
+fi
 
 echo ">>> docker compose up (image: emkaro-app:${EMKARO_IMAGE_TAG})"
 # Rollback: EMKARO_IMAGE_TAG="<commit>" docker compose up -d --force-recreate --no-build app caddy

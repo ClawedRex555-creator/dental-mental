@@ -24,7 +24,8 @@ import {
   filterPaymentsWithExistingWorkActs,
   isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
-import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange } from "@/lib/finance-utils";
+import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange, EMPTY_STAFF_SALARIES } from "@/lib/finance-utils";
+import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { calcAssistantHoursInRange, normalizeAssistantManualHours } from "@/lib/assistant-hours";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
 import { printWorkAct } from "@/lib/work-act-print";
@@ -43,6 +44,15 @@ import { useClinicStore } from "@/store/useClinicStore";
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
 type Period = "day" | "week" | "month" | "custom";
 type SalaryPeriod = Period;
+
+const FINANCE_TABS: FinanceTab[] = [
+  "payments",
+  "invoices",
+  "acts",
+  "salaries",
+  "expenses",
+  "prepayments",
+];
 
 export default function FinancePage() {
   const {
@@ -66,6 +76,11 @@ export default function FinancePage() {
     setAssistantManualHours,
     repairPaidActAppointments,
   } = useClinicStore();
+  const salaryModuleEnabled = useIsModuleEnabled("my_salary");
+  const visibleTabs = useMemo(
+    () => FINANCE_TABS.filter((t) => t !== "salaries" || salaryModuleEnabled),
+    [salaryModuleEnabled]
+  );
   const canDeleteActs = canDeleteWorkActs(currentUser.role);
   const canDeleteExpenses = canDeleteClinicExpenses(currentUser.role);
   const [tab, setTab] = useState<FinanceTab>("payments");
@@ -115,7 +130,7 @@ export default function FinancePage() {
     const tabParam = searchParams.get("tab");
     if (
       tabParam === "acts" ||
-      tabParam === "salaries" ||
+      (tabParam === "salaries" && salaryModuleEnabled) ||
       tabParam === "payments" ||
       tabParam === "prepayments"
     ) {
@@ -131,7 +146,13 @@ export default function FinancePage() {
         }
       }
     }
-  }, [searchParams, workActs, invoices]);
+  }, [searchParams, workActs, invoices, salaryModuleEnabled]);
+
+  useEffect(() => {
+    if (!salaryModuleEnabled && tab === "salaries") {
+      setTab("payments");
+    }
+  }, [salaryModuleEnabled, tab]);
 
   const totalPaid = useMemo(
     () => payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount, 0),
@@ -223,16 +244,27 @@ export default function FinancePage() {
 
   const periodSalaries = useMemo(
     () =>
-      computeStaffSalariesForRange(
-        doctors,
-        serviceActs,
-        appointments,
-        from,
-        to,
-        normalizedAssistantManualHours,
-        services
-      ),
-    [doctors, serviceActs, appointments, from, to, normalizedAssistantManualHours, services]
+      salaryModuleEnabled
+        ? computeStaffSalariesForRange(
+            doctors,
+            serviceActs,
+            appointments,
+            from,
+            to,
+            normalizedAssistantManualHours,
+            services
+          )
+        : EMPTY_STAFF_SALARIES,
+    [
+      salaryModuleEnabled,
+      doctors,
+      serviceActs,
+      appointments,
+      from,
+      to,
+      normalizedAssistantManualHours,
+      services,
+    ]
   );
 
   const periodNetAfterSalaries = calcClinicNetAfterSalaries(
@@ -262,16 +294,19 @@ export default function FinancePage() {
 
   const salaryPeriodSalaries = useMemo(
     () =>
-      computeStaffSalariesForRange(
-        doctors,
-        serviceActs,
-        appointments,
-        salaryRangeFrom,
-        salaryRangeTo,
-        normalizedAssistantManualHours,
-        services
-      ),
+      salaryModuleEnabled
+        ? computeStaffSalariesForRange(
+            doctors,
+            serviceActs,
+            appointments,
+            salaryRangeFrom,
+            salaryRangeTo,
+            normalizedAssistantManualHours,
+            services
+          )
+        : EMPTY_STAFF_SALARIES,
     [
+      salaryModuleEnabled,
       doctors,
       serviceActs,
       appointments,
@@ -571,6 +606,7 @@ export default function FinancePage() {
             staffReimbursements={periodStaffReimbursements}
             netAfterSalaries={periodNetAfterSalaries}
             netAfterAll={periodNetAfterAll}
+            showSalaries={salaryModuleEnabled}
             netLabel={
               period === "day"
                 ? "Клинике за день (итого)"
@@ -581,9 +617,7 @@ export default function FinancePage() {
       </Card>
 
       <div className="flex gap-2">
-        {(
-          ["payments", "invoices", "acts", "salaries", "expenses", "prepayments"] as FinanceTab[]
-        ).map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t}
             type="button"
@@ -611,7 +645,7 @@ export default function FinancePage() {
 
       <Card>
         <div className="overflow-x-auto">
-          {tab === "salaries" ? (
+          {tab === "salaries" && salaryModuleEnabled ? (
             <div className="space-y-6 p-4">
               <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 space-y-4">
                 <p className="text-sm font-semibold text-[var(--foreground)]">Период зарплат</p>

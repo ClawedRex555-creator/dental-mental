@@ -32,7 +32,7 @@ import {
   resolveAssistantRecord,
 } from "@/lib/assistant-utils";
 import { getDoctorsInCabinet } from "@/lib/cabinet-utils";
-import { isDoctorWorkingOnDate, needsScheduleReminder } from "@/lib/clinic-schedule";
+import { isDoctorWorkingOnDate, needsScheduleReminder, formatScheduleMonthLabel } from "@/lib/clinic-schedule";
 import {
   isAppointmentActive,
   isAppointmentInDateRange,
@@ -279,7 +279,8 @@ export default function AppointmentsPage() {
       {scheduleReminder && !isAssistant && (
         <Card className="border-amber-300 bg-amber-50">
           <CardContent className="py-3 text-sm text-amber-900">
-            Составьте график смен на <strong>{scheduleReminder.month}</strong> в разделе{" "}
+            Составьте график смен на{" "}
+            <strong>{formatScheduleMonthLabel(scheduleReminder.month)}</strong> в разделе{" "}
             <strong>«Сотрудники»</strong> ({scheduleReminder.missingDoctorIds.length}{" "}
             врач(ей) без графика). Если график не обновить — в расписании останется прошлый
             месяц.
