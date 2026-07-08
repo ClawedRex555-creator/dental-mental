@@ -117,6 +117,24 @@ export interface Patient {
   hadPreviousVisits?: boolean;
   previousVisitsNote?: string;
   disability: DisabilityGroup;
+  /** Согласие и каналы для сервисных уведомлений о записи (не мед. данные) */
+  notificationPrefs?: PatientNotificationPrefs;
+}
+
+export interface PatientNotificationPrefs {
+  consentForNotifications: boolean;
+  consentDate?: string;
+  notificationsEnabled: boolean;
+  preferredChannels?: (
+    | "mock"
+    | "telegram"
+    | "whatsapp"
+    | "sms"
+    | "email"
+    | "vk"
+    | "max"
+  )[];
+  telegramChatId?: string;
 }
 
 export type WeekdayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
@@ -274,11 +292,21 @@ export interface MedicalRecord {
   workActId?: string;
   complaints: string;
   anamnesis?: string;
+  /** Анамнез жизни (СЭМД 119) */
+  lifeAnamnesis?: string;
   objective?: string;
   diagnosis: string;
+  /** Код МКБ-10 (например K02.1) */
+  diagnosisCode?: string;
   treatment: string;
   recommendations?: string;
   prescriptions?: string;
+  /** Код услуги НМУ (1070), напр. A16.07.002 */
+  serviceCode?: string;
+  /** Куда направлен пациент (СЭМД-направление) */
+  referralTarget?: string;
+  /** Сумма оплаты для налоговой справки */
+  paymentAmount?: number;
   files?: string[];
   createdAt: string;
   serviceName?: string;

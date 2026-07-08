@@ -25,6 +25,7 @@ interface ScheduleGridProps {
   appointments: Appointment[];
   patients: Patient[];
   workActs?: WorkAct[];
+  deletedWorkActIds?: string[];
   payments?: Payment[];
   doctorSchedules?: DoctorMonthSchedule[];
   onSlotClick: (date: string, time: string, doctorId: string) => void;
@@ -38,6 +39,7 @@ export function ScheduleGrid({
   appointments,
   patients,
   workActs = [],
+  deletedWorkActIds = [],
   payments = [],
   doctorSchedules = [],
   onSlotClick,
@@ -183,7 +185,7 @@ export function ScheduleGrid({
                           patient.middleName
                         )
                       : "Карточка не найдена";
-                    const linkedAct = resolveAppointmentWorkAct(apt, workActs);
+                    const linkedAct = resolveAppointmentWorkAct(apt, workActs, deletedWorkActIds);
                     const statusLabel = getScheduleAppointmentStatusLabel(
                       apt,
                       linkedAct,

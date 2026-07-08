@@ -1,11 +1,44 @@
 import { NextResponse } from "next/server";
-import { createMobileOnlineBooking } from "@/lib/mobile-booking.server";
+import {
+  createMobileOnlineBooking,
+  listMobilePatientBookings,
+} from "@/lib/mobile-booking.server";
 import {
   isMobileModuleEnabled,
   resolveMobileClinicFromRequest,
 } from "@/lib/mobile-clinic-context.server";
 import { requireMobileSession } from "@/lib/mobile-auth-request.server";
 import { findMobilePatientByLogin } from "@/lib/mobile-patient-db.server";
+
+export async function GET(request: Request) {
+  const clinicOrError = await resolveMobileClinicFromRequest(request);
+  if ("error" in clinicOrError) {
+    return NextResponse.json({ error: clinicOrError.error }, { status: clinicOrError.status });
+  }
+  const clinic = clinicOrError;
+
+  const session = requireMobileSession(request);
+  if (!session) {
+    return NextResponse.json({ error: "Требуется авторизация" }, { status: 401 });
+  }
+  if (session.clinicId !== clinic.clinicId) {
+    return NextResponse.json({ error: "Сессия другой клиники" }, { status: 403 });
+  }
+  if (session.kind !== "patient") {
+    return NextResponse.json(
+      { error: "Список заявок доступен только пациентам" },
+      { status: 403 }
+    );
+  }
+
+  const patientAccount = await findMobilePatientByLogin(clinic.clinicId, session.email);
+  if (!patientAccount) {
+    return NextResponse.json({ bookings: [] });
+  }
+
+  const bookings = await listMobilePatientBookings(clinic.clinicId, patientAccount.phone);
+  return NextResponse.json({ bookings });
+}
 
 export async function POST(request: Request) {
   const clinicOrError = await resolveMobileClinicFromRequest(request);

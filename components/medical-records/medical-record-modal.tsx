@@ -12,6 +12,7 @@ import {
   DENTAL_RECOMMENDATIONS,
 } from "@/lib/catalogs";
 import { UI } from "@/lib/constants";
+import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { PatientModal } from "@/components/patients/patient-modal";
@@ -84,12 +85,17 @@ export function MedicalRecordModal({
       return;
     }
 
+    const diagnosisParsed = extractDiagnosisCode(diagnosis.trim());
     const record: MedicalRecord = {
       id: generateId("mr"),
       patientId,
       doctorId,
       complaints: complaints.trim(),
-      diagnosis: diagnosis.trim(),
+      anamnesis: complaints.trim(),
+      lifeAnamnesis: "Не отягощён",
+      objective: treatment.trim(),
+      diagnosis: diagnosisParsed.displayName,
+      diagnosisCode: diagnosisParsed.code,
       treatment: treatment.trim(),
       recommendations: recommendations.trim() || undefined,
       createdAt: format(new Date(), "yyyy-MM-dd"),

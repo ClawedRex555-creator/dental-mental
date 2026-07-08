@@ -13,7 +13,8 @@ export type SystemModuleId =
   | "online_booking"
   | "my_salary"
   | "settings"
-  | "egisz";
+  | "egisz"
+  | "notifications";
 
 export type ClinicModules = Record<SystemModuleId, boolean>;
 
@@ -32,6 +33,7 @@ export const SYSTEM_MODULE_IDS: SystemModuleId[] = [
   "my_salary",
   "settings",
   "egisz",
+  "notifications",
 ];
 
 /** Модули, которые супер-админ может отключать. «Настройки» всегда доступны (профиль, клиника, тема). */
@@ -54,6 +56,7 @@ export const MODULE_LABELS: Record<SystemModuleId, string> = {
   my_salary: "Моя зарплата / учёт в финансах",
   settings: "Настройки",
   egisz: "ЕГИСЗ",
+  notifications: "Уведомления",
 };
 
 /** Маршрут → модуль */
@@ -70,6 +73,7 @@ export const PATH_TO_MODULE: Record<string, SystemModuleId> = {
   "/legal": "legal",
   "/online-booking": "online_booking",
   "/my-salary": "my_salary",
+  "/notifications": "notifications",
 };
 
 export const NAV_HREF_TO_MODULE: Record<string, SystemModuleId> = {
@@ -85,6 +89,7 @@ export const NAV_HREF_TO_MODULE: Record<string, SystemModuleId> = {
   "/legal": "legal",
   "/online-booking": "online_booking",
   "/my-salary": "my_salary",
+  "/notifications": "notifications",
 };
 
 export function defaultClinicModules(): ClinicModules {
@@ -103,6 +108,7 @@ export function defaultClinicModules(): ClinicModules {
     my_salary: true,
     settings: true,
     egisz: false,
+    notifications: false,
   };
 }
 

@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 import { buildCdaDocument } from "@/lib/egisz/cda/builder";
+import { resolveCdaTemplate } from "@/lib/egisz/cda/resolve-template";
 import {
   getEgiszConfig,
   getEgiszSubmissionById,
@@ -181,15 +182,24 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
 
   if (!patient || !record || !doctor) return;
 
+  const template = resolveCdaTemplate({
+    documentType: submission.documentType,
+    record,
+  });
+  payload.cdaTemplateKey = template.key;
+  payload.cdaTemplateOid = template.templateOid;
+
   const documentUuid = payload.egiszDocumentUuid?.trim() || randomUUID();
   payload.egiszDocumentUuid = documentUuid;
+
+  const cdaConfig = { ...config, documentOid: template.templateOid };
 
   const cdaXml = buildCdaDocument({
     patient,
     doctor,
     record,
     clinic: snapshot.data.clinicSettings,
-    config,
+    config: cdaConfig,
     documentUuid,
   });
   payload.cdaXml = cdaXml;
@@ -226,7 +236,7 @@ export async function processEgiszSubmissionWorker(submissionId: string): Promis
 
   const medDoc = mapMedDocumentToN3({
     record,
-    config,
+    templateOid: template.templateOid,
     signed,
     doctor,
     documentUuid,

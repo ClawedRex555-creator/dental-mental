@@ -39,6 +39,15 @@ export interface MobileStaffEarnings {
     doctorAmount: number;
     actsCount: number;
     patientsTotal: number;
+    doctorPercent: number;
+    lines: Array<{
+      actId: string;
+      actDate: string;
+      actNumber: string;
+      patientName: string;
+      total: number;
+      doctorAmount: number;
+    }>;
   };
 }
 
@@ -230,6 +239,15 @@ export async function getMobileStaffEarnings(
       doctorAmount: summary.doctorAmount,
       actsCount: summary.actsCount,
       patientsTotal: summary.patientsTotal,
+      doctorPercent: summary.doctorPercent,
+      lines: summary.lines.map((line) => ({
+        actId: line.act.id,
+        actDate: line.act.actDate,
+        actNumber: line.act.actNumber,
+        patientName: line.patientName,
+        total: line.total,
+        doctorAmount: line.doctorAmount,
+      })),
     };
   }
 

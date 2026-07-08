@@ -5,14 +5,20 @@ import { isWorkActFullyPaid } from "@/lib/work-act-payment";
 /** Акт, привязанный к приёму в расписании (не предоплата). */
 export function resolveAppointmentWorkAct(
   apt: Appointment,
-  workActs: WorkAct[]
+  workActs: WorkAct[],
+  deletedWorkActIds: string[] = []
 ): WorkAct | undefined {
+  const tombstones = new Set(deletedWorkActIds);
   if (apt.workActId) {
+    if (tombstones.has(apt.workActId)) return undefined;
     const byId = workActs.find((a) => a.id === apt.workActId && a.actType !== "prepayment");
     if (byId) return byId;
   }
   return workActs.find(
-    (a) => a.appointmentId === apt.id && a.actType !== "prepayment"
+    (a) =>
+      a.appointmentId === apt.id &&
+      a.actType !== "prepayment" &&
+      !tombstones.has(a.id)
   );
 }
 

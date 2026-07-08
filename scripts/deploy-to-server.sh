@@ -85,4 +85,6 @@ fi
 
 echo ""
 bash "$ROOT/scripts/check-server-version.sh" "https://demo.emkaro.ru" "$COMMIT" || true
+echo ""
+echo "Бэкап перед деплоем: на сервере cat /opt/emkaro/backups/.last-pre-deploy-backup"
 echo "Готово."

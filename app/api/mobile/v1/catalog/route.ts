@@ -13,19 +13,29 @@ export async function GET(request: Request) {
   }
   const clinic = clinicOrError;
 
-  const catalog = await getMobileCatalog(clinic.clinicId);
+  const catalog = await getMobileCatalog(clinic.clinicId, {
+    slug: clinic.slug,
+    name: clinic.name,
+  });
   const onlineBookingEnabled = await isMobileModuleEnabled(
     clinic.clinicId,
     clinic.slug,
     "online_booking"
   );
 
+  const info = catalog.clinicInfo;
   return NextResponse.json({
     clinic: {
       slug: clinic.slug,
-      name: clinic.name,
+      name: info?.name ?? clinic.name,
+      phone: info?.phone,
+      address: info?.address,
+      description: info?.description,
+      workHours: info?.workHours,
+      logoUrl: info?.logoUrl,
     },
     onlineBookingEnabled,
-    ...catalog,
+    doctors: catalog.doctors,
+    services: catalog.services,
   });
 }

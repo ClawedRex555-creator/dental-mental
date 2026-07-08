@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FileText,
   Globe,
+  Bell,
   LayoutDashboard,
   Menu,
   Package,
@@ -41,6 +42,7 @@ const ICON_MAP = {
   BarChart3,
   UserCog,
   Globe,
+  Bell,
   Settings,
 } as const;
 

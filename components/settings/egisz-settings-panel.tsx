@@ -47,7 +47,6 @@ export function EgiszSettingsPanel() {
     connectionMode: "stub",
     environment: "test",
     autoSubmitSemd: false,
-    documentOid: "1.2.643.5.1.13.13.14.1.9.1.181",
     signing: { mode: "stub" },
     n3: {},
   });
@@ -317,11 +316,12 @@ export function EgiszSettingsPanel() {
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label>OID типа CDA-документа</Label>
-            <Input
-              value={config.documentOid ?? ""}
-              onChange={(e) => setConfig((c) => ({ ...c, documentOid: e.target.value }))}
-            />
+            <Label>Тип СЭМД (CDA)</Label>
+            <p className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/10 px-3 py-2 text-sm text-[var(--muted)]">
+              Определяется автоматически при отправке: протокол консультации после оплаты акта;
+              направление — если в медкарте указано «куда направлен»; протокол инструментального
+              исследования — для рентгенологических услуг (код A06.*).
+            </p>
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>URL SOAP N3</Label>

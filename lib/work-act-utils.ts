@@ -20,6 +20,10 @@ export function isWorkActLineFilled(item: WorkActItem): boolean {
   return Boolean(item.serviceName?.trim()) && ((item.price ?? 0) > 0 || (item.quantity ?? 0) > 0);
 }
 
+export function workActHasFilledItems(act: WorkAct): boolean {
+  return act.items.some(isWorkActLineFilled);
+}
+
 export function calcWorkActAmounts(
   items: WorkActItem[],
   discountType: DiscountType = "rubles",

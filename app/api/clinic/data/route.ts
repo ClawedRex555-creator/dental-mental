@@ -90,11 +90,11 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   if (!verifySameOrigin(request)) {
-    return NextResponse.json({ error: "Запрос отклонён" }, { status: 403 });
+    return NextResponse.json({ ok: false, error: "Запрос отклонён" }, { status: 403 });
   }
 
   if (!isDatabaseEnabled()) {
-    return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
+    return NextResponse.json({ ok: false, error: "База данных не настроена" }, { status: 503 });
   }
 
   const sessionOrDenied = await requireClinicSession(request);
@@ -105,26 +105,26 @@ export async function PUT(request: Request) {
   const role = authUser?.role ?? session.role;
   if (!canWriteClinicDataSync(role)) {
     return NextResponse.json(
-      { error: "Сохранение данных доступно владельцу, администратору, врачу и ассистенту" },
+      { ok: false, error: "Сохранение данных доступно владельцу, администратору, врачу и ассистенту" },
       { status: 403 }
     );
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_PAYLOAD_BYTES) {
-    return NextResponse.json({ error: "Слишком большой объём данных" }, { status: 413 });
+    return NextResponse.json({ ok: false, error: "Слишком большой объём данных" }, { status: 413 });
   }
 
   let body: { data?: unknown; expectedUpdatedAt?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Неверный запрос" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Неверный запрос" }, { status: 400 });
   }
 
   const parsed = parseClinicPersistedState(body.data);
   if (!parsed) {
-    return NextResponse.json({ error: "Некорректные данные клиники" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Некорректные данные клиники" }, { status: 400 });
   }
 
   try {
@@ -147,7 +147,7 @@ export async function PUT(request: Request) {
 
     const saved = await saveClinicDataDb(session.clinicId, toPersist);
 
-    if (existing?.data.medicalRecords) {
+    if (existing?.data) {
       const modules = await getClinicModules(session.clinicId);
       if (isModuleEnabled(modules, "egisz")) {
         const { maybeAutoQueueMedicalRecords, maybeAutoQueuePaidWorkActs } =
@@ -162,6 +162,16 @@ export async function PUT(request: Request) {
           () => undefined
         );
       }
+      if (isModuleEnabled(modules, "notifications")) {
+        const { maybeSyncAppointmentNotifications } = await import(
+          "@/lib/notifications/worker.server"
+        );
+        await maybeSyncAppointmentNotifications(
+          session.clinicId,
+          existing.data.appointments,
+          toPersist.appointments
+        ).catch(() => undefined);
+      }
     }
 
     return NextResponse.json({
@@ -172,6 +182,6 @@ export async function PUT(request: Request) {
     });
   } catch (e) {
     console.error("[clinic/data] save failed", e);
-    return NextResponse.json({ error: "Не удалось сохранить данные" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Не удалось сохранить данные" }, { status: 500 });
   }
 }

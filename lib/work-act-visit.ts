@@ -94,3 +94,34 @@ export function removeSyntheticVisitForWorkAct(
 ): Appointment[] {
   return appointments.filter((a) => a.id !== workActVisitId(actId));
 }
+
+/** Снять с приёма привязку к акту (после удаления акта). */
+export function detachAppointmentFromWorkAct(appointment: Appointment): Appointment {
+  const next: Appointment = { ...appointment, workActId: undefined };
+  if (appointment.paymentStatus === "paid") {
+    next.paymentStatus = "pending";
+  }
+  if (appointment.status === "ready_for_payment") {
+    next.status = "completed";
+  }
+  return next;
+}
+
+/** Убрать синтетические визиты и workActId по tombstone удалённых актов. */
+export function detachDeletedWorkActsFromAppointments(
+  appointments: Appointment[],
+  deletedWorkActIds: string[] = []
+): Appointment[] {
+  if (!deletedWorkActIds.length) return appointments;
+  const tombstones = new Set(deletedWorkActIds);
+  return appointments
+    .filter((a) => {
+      if (!isWorkActSyntheticVisit(a)) return true;
+      const actId = a.id.slice("apt-act-".length);
+      return !tombstones.has(actId);
+    })
+    .map((a) => {
+      if (!a.workActId || !tombstones.has(a.workActId)) return a;
+      return detachAppointmentFromWorkAct(a);
+    });
+}

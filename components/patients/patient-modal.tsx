@@ -61,7 +61,9 @@ interface PatientModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   patient?: Patient | null;
-  onCreated?: (patient: Patient) => void;
+  /** Prefill schedule when creating a patient from the appointments grid. */
+  initialAppointmentSchedule?: Partial<PatientAppointmentScheduleFields>;
+  onCreated?: (patient: Patient, meta?: { appointmentCreated?: boolean }) => void;
 }
 
 const selectClass = "select-field";
@@ -104,10 +106,18 @@ function emptyPatientFields() {
     hadPreviousVisits: false,
     previousVisitsNote: "",
     disability: "not_specified" as DisabilityGroup,
+    notifyConsent: false,
+    telegramChatId: "",
   };
 }
 
-export function PatientModal({ open, onOpenChange, patient, onCreated }: PatientModalProps) {
+export function PatientModal({
+  open,
+  onOpenChange,
+  patient,
+  initialAppointmentSchedule,
+  onCreated,
+}: PatientModalProps) {
   const router = useRouter();
   const {
     addPatient,
@@ -168,6 +178,8 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
         hadPreviousVisits: patient.hadPreviousVisits ?? false,
         previousVisitsNote: patient.previousVisitsNote ?? "",
         disability: patient.disability ?? "not_specified",
+        notifyConsent: patient.notificationPrefs?.consentForNotifications ?? false,
+        telegramChatId: patient.notificationPrefs?.telegramChatId ?? "",
       });
       const debt = getPatientDebtAmount(patient.balance);
       setDebtAmount(debt > 0 ? String(debt) : "");
@@ -175,16 +187,25 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       setWithoutDocuments(false);
       setDebtAmount("");
       setFields(emptyPatientFields());
-      const initialDoctorId = doctors.find((d) => d.role === "doctor")?.id ?? "";
+      const schedule = initialAppointmentSchedule;
+      const initialDoctorId =
+        schedule?.doctorId ||
+        doctors.find((d) => d.role === "doctor")?.id ||
+        "";
+      const initialCabinetId =
+        schedule?.cabinetId ||
+        resolveCabinetIdForDoctor(initialDoctorId, doctors, cabinets) ||
+        cabinets[0]?.id ||
+        "";
       setAppointmentFields({
         ...emptyAppointmentFields(),
         doctorId: initialDoctorId,
-        cabinetId:
-          resolveCabinetIdForDoctor(initialDoctorId, doctors, cabinets) ??
-          cabinets[0]?.id ??
-          "",
+        cabinetId: initialCabinetId,
+        ...schedule,
       });
     }
+    // initialAppointmentSchedule is captured only when the modal opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid resetting form while open
   }, [open, patient, doctors, cabinets]);
 
   const set = <K extends keyof typeof fields>(key: K, value: (typeof fields)[K]) => {
@@ -334,6 +355,18 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
       chronicDiseases: patient?.chronicDiseases ?? [],
       lastVisitDate: patient?.lastVisitDate,
       nextVisitDate: patient?.nextVisitDate,
+      notificationPrefs: fields.notifyConsent
+        ? {
+            consentForNotifications: true,
+            notificationsEnabled: true,
+            consentDate:
+              patient?.notificationPrefs?.consentDate ?? format(new Date(), "yyyy-MM-dd"),
+            telegramChatId: fields.telegramChatId.trim() || undefined,
+          }
+        : {
+            consentForNotifications: false,
+            notificationsEnabled: false,
+          },
     };
 
     const saveAppointmentFor = (targetPatientId: string) => {
@@ -402,7 +435,7 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
           ? "Пациент добавлен и записан на приём"
           : "Пациент добавлен"
       );
-      onCreated?.(payload);
+      onCreated?.(payload, { appointmentCreated: appointmentFields.enabled });
     }
     onOpenChange(false);
   };
@@ -634,6 +667,28 @@ export function PatientModal({ open, onOpenChange, patient, onCreated }: Patient
                 type="email"
                 value={fields.email}
                 onChange={(e) => set("email", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+                  checked={fields.notifyConsent}
+                  onChange={(e) => set("notifyConsent", e.target.checked)}
+                />
+                <span>
+                  Согласие на сервисные SMS/e-mail/Telegram о записи (без мед. данных, 152-ФЗ)
+                </span>
+              </label>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Telegram chat ID (если пациент привязал бота)</Label>
+              <Input
+                value={fields.telegramChatId}
+                onChange={(e) => set("telegramChatId", e.target.value)}
+                placeholder="123456789"
+                className="font-mono text-xs"
               />
             </div>
           </div>

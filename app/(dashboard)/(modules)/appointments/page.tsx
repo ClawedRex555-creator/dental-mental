@@ -56,7 +56,7 @@ import type { Appointment } from "@/lib/types";
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
-  const { appointments, patients, doctors, cabinets, doctorSchedules, workActs, payments, currentUser, repairPaidActAppointments } =
+  const { appointments, patients, doctors, cabinets, doctorSchedules, workActs, deletedWorkActIds, payments, currentUser, repairPaidActAppointments } =
     useClinicStore();
   const isAssistant = currentUser.role === "assistant";
   const assistantProfile = useMemo(
@@ -418,7 +418,7 @@ export default function AppointmentsPage() {
                         const doctor = apt.doctorId
                           ? doctors.find((d) => d.id === apt.doctorId)
                           : undefined;
-                        const linkedAct = resolveAppointmentWorkAct(apt, workActs);
+                        const linkedAct = resolveAppointmentWorkAct(apt, workActs, deletedWorkActIds);
                         const statusLabel = getScheduleAppointmentStatusLabel(
                           apt,
                           linkedAct,
@@ -481,6 +481,7 @@ export default function AppointmentsPage() {
               appointments={rangeAppointments}
               patients={patients}
               workActs={workActs}
+              deletedWorkActIds={deletedWorkActIds}
               payments={payments}
               doctorSchedules={doctorSchedules}
               onSlotClick={(date, time, doctorId) => openNew(date, time, doctorId)}

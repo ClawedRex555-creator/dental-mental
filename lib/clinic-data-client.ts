@@ -2,6 +2,7 @@ import {
   parseClinicPersistedState,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import { parseClinicSaveServerResponse } from "@/lib/clinic-save-feedback";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 export interface ClinicDataFetchResult {
@@ -84,18 +85,20 @@ export async function saveClinicDataToServer(
       expectedUpdatedAt: options?.expectedUpdatedAt ?? undefined,
     }),
     },
-    options?.keepalive ? 120_000 : 60_000
+    options?.keepalive ? 120_000 : 90_000
   );
   const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
     error?: string;
     updatedAt?: string;
     merged?: boolean;
   };
-  if (res.status === 403) {
-    return { ok: false, forbidden: true, error: json.error ?? "Доступ запрещён" };
+  const parsed = parseClinicSaveServerResponse(res, json);
+  if (parsed.forbidden) {
+    return { ok: false, forbidden: true, error: parsed.error ?? "Доступ запрещён" };
   }
-  if (!res.ok) {
-    return { ok: false, error: json.error ?? "Не удалось сохранить данные" };
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error ?? "Не удалось сохранить данные" };
   }
-  return { ok: true, updatedAt: json.updatedAt, merged: json.merged === true };
+  return { ok: true, updatedAt: parsed.updatedAt, merged: parsed.merged };
 }

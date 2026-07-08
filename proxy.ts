@@ -40,7 +40,8 @@ function isPublicApi(pathname: string): boolean {
     pathname.startsWith("/api/clinic/context") ||
     pathname.startsWith("/api/platform/auth/login") ||
     pathname.startsWith("/api/health") ||
-    pathname.startsWith("/api/internal/tls-ask")
+    pathname.startsWith("/api/internal/tls-ask") ||
+    pathname.startsWith("/api/notifications/action")
   );
 }
 
@@ -49,6 +50,7 @@ function isServiceApi(pathname: string): boolean {
   return (
     pathname.startsWith("/api/egisz/webhook") ||
     pathname.startsWith("/api/egisz/process") ||
+    pathname.startsWith("/api/notifications/process") ||
     pathname.startsWith("/api/mobile/")
   );
 }

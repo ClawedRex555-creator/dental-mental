@@ -9,7 +9,7 @@ export {
 } from "@/lib/egisz/nsi/document-type-hints";
 
 export const CDA_TYPE_ID_ROOT = "2.16.840.1.113883.1.3";
-export const CDA_TYPE_ID_EXTENSION = "POCD_HD000040";
+export const CDA_TYPE_ID_EXTENSION = "POCD_MT000040";
 
 export const HL7_NS = "urn:hl7-org:v3";
 export const XSI_NS = "http://www.w3.org/2001/XMLSchema-instance";

@@ -155,12 +155,68 @@ npm run dev
 
 ## 9. Бэкапы
 
-```bash
-# PostgreSQL
-docker compose exec postgres pg_dump -U mis dentalcloud > backup-$(date +%F).sql
+### Перед каждым деплоем (автоматически)
 
-# или скрипт
+Скрипт `scripts/server-update.sh` **всегда** делает дамп PostgreSQL **до** распаковки нового кода:
+
+```bash
+bash scripts/backup-db.sh /opt/emkaro pre-deploy
+# → backups/dentalcloud-pre-deploy-20260706-195528.sql
+```
+
+Путь к последнему бэкапу деплоя:
+
+```bash
+cat /opt/emkaro/backups/.last-pre-deploy-backup
+```
+
+Деплой с Mac (`bash scripts/deploy-to-server.sh`) вызывает `server-update.sh` на сервере — бэкап создаётся автоматически.
+
+**Не используйте** `docker compose up -d --build` без `server-update.sh` на production — бэкап не создастся.
+
+### Ручной бэкап
+
+```bash
+cd /opt/emkaro
 bash scripts/backup-db.sh
+```
+
+### Ежедневный бэкап (systemd, 03:00)
+
+```bash
+cd /opt/emkaro && sudo bash scripts/install-backup-timer.sh
+systemctl status emkaro-backup.timer
+```
+
+### Восстановление из бэкапа
+
+```bash
+cd /opt/emkaro
+ls -lt backups/dentalcloud-*.sql | head
+bash scripts/restore-db-from-backup.sh backups/dentalcloud-pre-deploy-20260706-195528.sql
+```
+
+Скрипт восстановления сначала сделает страховочный дамп текущей БД, затем пересоздаст `dentalcloud` из выбранного файла.
+
+Проверка после восстановления:
+
+```bash
+docker compose exec -T postgres psql -U mis -d dentalcloud -c \
+  "SELECT c.slug,
+          COALESCE(jsonb_array_length(cs.data->'appointments'), 0) AS appointments,
+          cs.updated_at
+   FROM clinic_snapshots cs JOIN clinics c ON c.id = cs.clinic_id;"
+```
+
+### Ротация
+
+`backup-db.sh` хранит **20** последних файлов (`BACKUP_KEEP_COUNT=30` при необходимости).
+Старые удаляются автоматически. Очистка диска: `bash scripts/server-clean.sh --apply`.
+
+### Старый способ (вручную)
+
+```bash
+docker compose exec postgres pg_dump -U mis dentalcloud > backup-$(date +%F).sql
 ```
 
 ---
@@ -190,9 +246,11 @@ bash scripts/server-update.sh
 ```
 
 Скрипт:
-1. Делает дамп БД в `backups/`
+1. Делает дамп БД в `backups/dentalcloud-pre-deploy-*.sql` (метка `pre-deploy`)
 2. Распаковывает код (`.env` сохраняется)
 3. Пересобирает контейнер `app`
+
+При ошибке health-check в логе будет команда отката к бэкапу перед деплоем.
 
 **Важно:** не меняйте `POSTGRES_PASSWORD` в `.env` после первого запуска — иначе приложение не подключится к уже существующей базе (данные останутся в volume, но будут «недоступны»).
 

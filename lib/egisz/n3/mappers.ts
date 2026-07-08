@@ -1,5 +1,6 @@
 import "server-only";
 
+import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
 import {
   mapGenderToEgisz,
   resolveN3MedDocumentType,
@@ -76,12 +77,12 @@ function formatN3CreationDate(record: MedicalRecord): string {
 
 export function mapMedDocumentToN3(input: {
   record: MedicalRecord;
-  config: EgiszClinicConfig;
+  templateOid: string;
   signed: SignedDocument;
   doctor: Doctor;
   documentUuid: string;
 }): N3MedDocumentDto {
-  const docOid = input.config.documentOid ?? "1.2.643.5.1.13.13.14.1.9.1.181";
+  const docOid = input.templateOid.trim();
   return {
     idDocumentMis: input.documentUuid.trim(),
     idMedDocumentType: resolveN3MedDocumentType(docOid),
@@ -113,8 +114,19 @@ export function validateDoctorForEgisz(
 export function validateMedicalRecordForEgisz(record: MedicalRecord): string[] {
   const errors: string[] = [];
   if (!record.diagnosis?.trim()) errors.push("Диагноз в медкарте");
+  const mkb = extractDiagnosisCode(
+    record.diagnosisCode
+      ? `${record.diagnosisCode} ${record.diagnosis}`
+      : record.diagnosis
+  );
+  if (!record.diagnosisCode?.trim() && mkb.code === "Z01.2" && !record.diagnosis.match(/^[A-Z]\d{2}/i)) {
+    errors.push("Код МКБ-10 в диагнозе (например K02.1)");
+  }
   if (!record.complaints?.trim() && !record.objective?.trim()) {
     errors.push("Жалобы или объективный статус");
+  }
+  if (!record.anamnesis?.trim() && !record.complaints?.trim()) {
+    errors.push("Анамнез заболевания или жалобы");
   }
   return errors;
 }

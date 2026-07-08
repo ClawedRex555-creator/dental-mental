@@ -10,6 +10,7 @@ import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options
 import { calcEndTime, SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/appointment-utils";
 import { resolveCabinetIdForDoctor } from "@/lib/cabinet-utils";
 import { validateAppointmentSave } from "@/lib/validate-appointment-save";
+import { workActHasFilledItems } from "@/lib/work-act-utils";
 import {
   WorkActModal,
   type WorkActModalMode,
@@ -157,8 +158,7 @@ export function AppointmentModal({
 
       if (appointment.status === "ready_for_payment" && isAdmin && linkedActId) {
         setExistingActId(linkedActId);
-        setActMode("admin_view");
-        setActModalOpen(true);
+        setActMode(linkedAct && !workActHasFilledItems(linkedAct) ? "standard" : "admin_view");
       }
     } else {
       const initialDoctorId = defaultDoctorId ?? activeDoctors[0]?.id ?? "";
@@ -190,6 +190,7 @@ export function AppointmentModal({
     doctors,
     isAdmin,
     linkedActId,
+    linkedAct,
   ]);
 
   const handleStatusChange = (next: AppointmentStatus) => {
@@ -284,8 +285,7 @@ export function AppointmentModal({
     onOpenChange(false);
   };
 
-  const showAppointmentForm =
-    open && !(appointment?.status === "ready_for_payment" && isAdmin && linkedActId);
+  const showAppointmentForm = open;
 
   return (
     <>
@@ -300,7 +300,7 @@ export function AppointmentModal({
             {formLocked && (
               <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 {appointment?.status === "ready_for_payment"
-                  ? "Запись готова к оплате — откройте акт для приёма оплаты."
+                  ? "Запись готова к оплате. Администратор может изменить статус или открыть акт."
                   : "Редактирование доступно администратору или врачу на приёме (статус «На приёме»)."}
               </p>
             )}
@@ -309,11 +309,15 @@ export function AppointmentModal({
                 className="w-full"
                 onClick={() => {
                   setExistingActId(linkedActId);
-                  setActMode("admin_view");
+                  setActMode(linkedAct && !workActHasFilledItems(linkedAct) ? "standard" : "admin_view");
                   setActModalOpen(true);
                 }}
               >
-                Открыть акт оказанных услуг
+                {linkedAct
+                  ? workActHasFilledItems(linkedAct)
+                    ? `Акт № ${linkedAct.actNumber || "—"} · готов к оплате`
+                    : "Заполнить акт (услуги не указаны)"
+                  : "Открыть или восстановить акт"}
               </Button>
             )}
             {linkedActId && linkedActPaid && (
@@ -564,7 +568,23 @@ export function AppointmentModal({
       <PatientModal
         open={patientModalOpen}
         onOpenChange={setPatientModalOpen}
-        onCreated={(p) => setPatientId(p.id)}
+        initialAppointmentSchedule={
+          patientModalOpen
+            ? {
+                enabled: true,
+                date,
+                startTime,
+                durationMinutes,
+                doctorId,
+                cabinetId,
+                complaints,
+              }
+            : undefined
+        }
+        onCreated={(p, meta) => {
+          setPatientId(p.id);
+          if (meta?.appointmentCreated) onOpenChange(false);
+        }}
       />
 
       {legalEnabled && (
@@ -580,10 +600,7 @@ export function AppointmentModal({
 
       <WorkActModal
         open={actModalOpen}
-        onOpenChange={(v) => {
-          setActModalOpen(v);
-          if (!v && appointment?.status === "ready_for_payment") onOpenChange(false);
-        }}
+        onOpenChange={setActModalOpen}
         mode={actMode}
         existingActId={existingActId}
         defaultPatientId={patientId}

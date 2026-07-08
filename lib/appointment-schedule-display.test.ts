@@ -46,6 +46,14 @@ describe("appointment-schedule-display", () => {
     assert.equal(resolveAppointmentWorkAct(apt(), [act()])?.actNumber, "0015-06/2026");
   });
 
+  it("ignores tombstoned deleted acts", () => {
+    assert.equal(
+      resolveAppointmentWorkAct(apt({ workActId: "act1" }), [act()], ["act1"]),
+      undefined
+    );
+    assert.equal(resolveAppointmentWorkAct(apt(), [act()], ["act1"]), undefined);
+  });
+
   it("shows Оплачен when appointment or act is paid", () => {
     const linked = act();
     assert.equal(

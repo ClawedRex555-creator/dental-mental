@@ -1,5 +1,6 @@
 import {
   doctorScheduleKey,
+  applyDeletedWorkActTombstones,
   hasClinicData,
   hasEntityIdsNotInIncoming,
   mergeClinicSnapshotWithLocal,
@@ -107,17 +108,27 @@ function serverEntityListChanged<T extends { id: string }>(
   );
 }
 
-function objectKeysChanged(
-  remote: Record<string, unknown>,
-  baseline: Record<string, unknown>
-): boolean {
-  const remoteKeys = Object.keys(remote);
-  const baselineKeys = Object.keys(baseline);
-  if (remoteKeys.length !== baselineKeys.length) return true;
-  return remoteKeys.some((key) => !(key in baseline));
+/** Снимок после pull: без локальных правок побеждает сервер */
+export function mergeRemoteSnapshotForPull(
+  remote: ClinicPersistedState,
+  local: ClinicPersistedState,
+  hasUnsavedUserEdits: boolean
+): ClinicPersistedState {
+  const deletedWorkActIds = [
+    ...new Set([
+      ...(remote.deletedWorkActIds ?? []),
+      ...(local.deletedWorkActIds ?? []),
+    ]),
+  ];
+  const base = !hasUnsavedUserEdits
+    ? remote
+    : mergeClinicSnapshotWithLocal(remote, local);
+  return repairIfOrphans(
+    applyDeletedWorkActTombstones({ ...base, deletedWorkActIds }, deletedWorkActIds)
+  );
 }
 
-/** Есть ли на сервере изменения относительно последнего известного снимка (не текущих правок вкладки) */
+/** Есть ли на сервере изменения относительно baseline (обычно текущий экран) */
 export function serverSnapshotHasIncomingUpdates(
   remote: ClinicPersistedState,
   baseline: ClinicPersistedState
@@ -137,6 +148,7 @@ export function serverSnapshotHasIncomingUpdates(
   if (doctorSchedulesDiffer(remote.doctorSchedules, baseline.doctorSchedules)) return true;
   if (serverEntityListChanged(remote.doctors, baseline.doctors)) return true;
   if (serverEntityListChanged(remote.services, baseline.services)) return true;
+  if (serverEntityListChanged(remote.cabinets, baseline.cabinets)) return true;
   if (serverEntityListChanged(remote.patientFiles, baseline.patientFiles)) return true;
   if (serverEntityListChanged(remote.tasks, baseline.tasks)) return true;
   if (serverEntityListChanged(remote.warehouse, baseline.warehouse)) return true;
@@ -148,7 +160,11 @@ export function serverSnapshotHasIncomingUpdates(
   ) {
     return true;
   }
-  if (objectKeysChanged(remote.teethByPatient, baseline.teethByPatient)) return true;
+  if (
+    JSON.stringify(remote.teethByPatient) !== JSON.stringify(baseline.teethByPatient)
+  ) {
+    return true;
+  }
   if (
     JSON.stringify(remote.clinicSettings) !== JSON.stringify(baseline.clinicSettings)
   ) {
@@ -193,6 +209,9 @@ export function shouldPushSnapshotAfterServerFetch(
   if (hasNewIds(remote.invoices, hydrated.invoices)) return true;
   if (hasNewIds(remote.payments, hydrated.payments)) return true;
   if (clinicExpensesDiffer(remote.clinicExpenses, hydrated.clinicExpenses)) return true;
+  if (hasNewIds(remote.doctors, hydrated.doctors)) return true;
+  if (hasNewIds(remote.services, hydrated.services)) return true;
+  if (hasNewIds(remote.cabinets, hydrated.cabinets)) return true;
   if (doctorSchedulesDiffer(remote.doctorSchedules, hydrated.doctorSchedules)) return true;
 
   return findOrphanPatientIds(remote).length > 0 && hydrated.patients.length > remote.patients.length;

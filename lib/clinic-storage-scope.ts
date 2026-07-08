@@ -1,3 +1,5 @@
+import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
+
 const CLINIC_DATA_CACHE_KEY = "dentalcloud-mis-storage-v4";
 const LEGACY_CLINIC_DATA_CACHE_KEYS = [
   "dentalcloud-mis-storage-v3",
@@ -5,7 +7,7 @@ const LEGACY_CLINIC_DATA_CACHE_KEYS = [
   "dentalcloud-mis-storage",
 ] as const;
 
-function clearScopedClinicCache(): void {
+function clearScopedClinicCache(previousSlug?: string | null): void {
   const storage = browserStorage();
   if (!storage) return;
   for (const key of LEGACY_CLINIC_DATA_CACHE_KEYS) {
@@ -20,6 +22,7 @@ function clearScopedClinicCache(): void {
   } catch {
     /* ignore */
   }
+  if (previousSlug) clearPendingClinicSnapshot(previousSlug);
 }
 
 /** Привязка localStorage к поддомену — иначе данные клиники A попадут в клинику B */
@@ -67,7 +70,7 @@ export function ensureClinicStorageScope(slug: string | null | undefined): boole
   }
   if (prev === next) return true;
 
-  clearScopedClinicCache();
+  clearScopedClinicCache(prev);
   writeClinicStorageScope(next);
   return false;
 }

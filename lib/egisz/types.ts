@@ -56,7 +56,10 @@ export interface EgiszClinicConfig {
   systemId?: string;
   /** URL SOAP-шлюза N3 (перекрывает EGISZ_GATEWAY_URL) */
   gatewayUrl?: string;
-  /** OID типа документа CDA (СЭМД) */
+  /**
+   * @deprecated Тип CDA определяется автоматически при отправке (resolveCdaTemplate).
+   * Поле сохраняется только для обратной совместимости старых настроек.
+   */
   documentOid?: string;
   environment: "test" | "production";
   autoSubmitSemd: boolean;
@@ -97,7 +100,12 @@ export interface EgiszSubmissionPayload {
   webhook?: Record<string, unknown>;
   /** UUID документа: один и тот же в CDA и в IdDocumentMis (требование N3 с 05/2026) */
   egiszDocumentUuid?: string;
+  /** Автоматически выбранный шаблон CDA */
+  cdaTemplateKey?: string;
+  cdaTemplateOid?: string;
 }
+
+import { DEFAULT_DENTAL_TEMPLATE_OID } from "@/lib/egisz/cda/templates/catalog";
 
 export function defaultEgiszConfig(): EgiszClinicConfig {
   return {
@@ -105,7 +113,7 @@ export function defaultEgiszConfig(): EgiszClinicConfig {
     connectionMode: "stub",
     environment: "test",
     autoSubmitSemd: false,
-    documentOid: "1.2.643.5.1.13.13.14.1.9.1.181",
+    documentOid: DEFAULT_DENTAL_TEMPLATE_OID,
     signing: { mode: "stub" },
     n3: {},
   };

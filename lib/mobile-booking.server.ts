@@ -60,3 +60,26 @@ export async function createMobileOnlineBooking(
 
   return booking;
 }
+
+/** Заявки пациента из onlineBookings (по телефону). */
+export async function listMobilePatientBookings(
+  clinicId: string,
+  patientPhone: string
+): Promise<OnlineBookingRequest[]> {
+  const normalized = patientPhone.replace(/\D/g, "");
+  if (!normalized) return [];
+
+  const record = await getClinicDataDbWithLegacyStaff(clinicId);
+  const bookings = record?.data?.onlineBookings ?? [];
+
+  return bookings
+    .filter((b) => {
+      const phone = b.phone.replace(/\D/g, "");
+      return phone === normalized || phone.endsWith(normalized) || normalized.endsWith(phone);
+    })
+    .sort((a, b) => {
+      const at = `${a.date}T${a.time}`;
+      const bt = `${b.date}T${b.time}`;
+      return bt.localeCompare(at);
+    });
+}

@@ -15,6 +15,7 @@ import {
   calcWorkActAmounts,
   getWorkActCustomerName,
   isWorkActLineFilled,
+  workActHasFilledItems,
 } from "@/lib/work-act-utils";
 import { buildMedicalRecordFromWorkAct } from "@/lib/work-act-medical-record";
 import { printWorkAct } from "@/lib/work-act-print";
@@ -88,11 +89,21 @@ export function WorkActModal({
     currentUser,
   } = useClinicStore();
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
-  const readOnly = mode === "admin_view";
+  const isAdminOrOwner = currentUser.role === "admin" || currentUser.role === "owner";
 
   const existingAct = existingActId
     ? workActs.find((a) => a.id === existingActId)
     : undefined;
+
+  const actMissing = Boolean(existingActId && !existingAct);
+  const actNeedsFix = actMissing || (existingAct ? !workActHasFilledItems(existingAct) : false);
+
+  const linkedAppointmentId =
+    defaultAppointmentId ??
+    existingAct?.appointmentId ??
+    (existingActId
+      ? appointments.find((a) => a.workActId === existingActId)?.id
+      : undefined);
 
   const existingActFullyPaid = useMemo(
     () => (existingAct ? isWorkActFullyPaid(existingAct, payments) : false),
@@ -105,6 +116,10 @@ export function WorkActModal({
     Boolean(existingAct) && !existingActFullyPaid && existingActPaidAmount > 0;
 
   const canDeleteAct = canDeleteWorkActs(currentUser.role) && Boolean(existingAct);
+
+  const effectiveReadOnly =
+    mode === "admin_view" &&
+    !(isAdminOrOwner && actNeedsFix && !existingActFullyPaid);
 
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -193,13 +208,18 @@ export function WorkActModal({
     }
 
     setPatientId(defaultPatientId ?? "");
+    const aptForDefaults =
+      appointments.find((a) => a.id === defaultAppointmentId) ??
+      (existingActId
+        ? appointments.find((a) => a.workActId === existingActId)
+        : undefined);
     setDoctorId(
       defaultDoctorId ??
-        appointments.find((a) => a.id === defaultAppointmentId)?.doctorId ??
+        aptForDefaults?.doctorId ??
         activeDoctors[0]?.id ??
         ""
     );
-    setActDate(format(new Date(), "yyyy-MM-dd"));
+    setActDate(aptForDefaults?.date ?? format(new Date(), "yyyy-MM-dd"));
     setNotes("");
     setDiscountType("percent");
     setDiscount("0");
@@ -224,10 +244,9 @@ export function WorkActModal({
 
     if (defaultItems?.length) {
       setItems(defaultItems.map(mapDefault));
-    } else if (defaultAppointmentId) {
-      const apt = appointments.find((a) => a.id === defaultAppointmentId);
-      const svc = apt?.serviceId
-        ? services.find((s) => s.id === apt.serviceId)
+    } else if (aptForDefaults) {
+      const svc = aptForDefaults.serviceId
+        ? services.find((s) => s.id === aptForDefaults.serviceId)
         : undefined;
       if (svc) {
         const normalized = normalizeServiceFields(svc);
@@ -238,8 +257,8 @@ export function WorkActModal({
             serviceName: svc.name,
             serviceCategory: normalized.category,
             quantity: 1,
-            price: apt!.price > 0 ? apt!.price : svc.price,
-            total: apt!.price > 0 ? apt!.price : svc.price,
+            price: aptForDefaults!.price > 0 ? aptForDefaults!.price : svc.price,
+            total: aptForDefaults!.price > 0 ? aptForDefaults!.price : svc.price,
           },
         ]);
       } else {
@@ -254,12 +273,18 @@ export function WorkActModal({
     defaultAppointmentId,
     defaultItems,
     existingAct,
+    existingActId,
     patients,
     appointments,
     services,
     defaultDoctorId,
     activeDoctors,
   ]);
+
+  useEffect(() => {
+    if (!open || !existingAct) return;
+    loadFromAct(existingAct);
+  }, [open, existingAct]);
 
   const persistAct = (submittedToAdmin?: boolean): WorkAct | null => {
     const filledItems = items
@@ -277,7 +302,7 @@ export function WorkActModal({
       return null;
     }
 
-    const existingId = savedActIdRef.current ?? savedActId;
+    const existingId = savedActIdRef.current ?? savedActId ?? existingActId;
     const actId = existingId ?? generateId("act");
     const actNumber = existingId
       ? (workActs.find((a) => a.id === existingId)?.actNumber ?? getNextActNumber())
@@ -289,7 +314,7 @@ export function WorkActModal({
       actNumber,
       actDate,
       patientId,
-      appointmentId: defaultAppointmentId ?? previousAct?.appointmentId,
+      appointmentId: linkedAppointmentId ?? previousAct?.appointmentId,
       doctorId,
       items: filledItems,
       subtotalAmount,
@@ -304,25 +329,26 @@ export function WorkActModal({
       submittedToAdmin: submittedToAdmin ?? workActs.find((a) => a.id === actId)?.submittedToAdmin,
     };
 
-    if (existingId) {
+    if (existingId && workActs.some((a) => a.id === existingId)) {
       updateWorkAct(actId, act);
       syncMedicalRecordForWorkAct(act);
       rememberSavedActId(actId);
-      return act;
     } else {
-      const invoiceId = generateId("inv");
+      const invoiceId = previousAct?.invoiceId ?? generateId("inv");
       const actWithInvoice = { ...act, invoiceId };
       addWorkAct(actWithInvoice);
-      addInvoice(createInvoiceFromWorkAct(actWithInvoice, invoiceId));
-      const appointment = defaultAppointmentId
-        ? appointments.find((a) => a.id === defaultAppointmentId)
+      if (!previousAct?.invoiceId) {
+        addInvoice(createInvoiceFromWorkAct(actWithInvoice, invoiceId));
+      }
+      const appointment = linkedAppointmentId
+        ? appointments.find((a) => a.id === linkedAppointmentId)
         : undefined;
       addMedicalRecord(buildMedicalRecordFromWorkAct(actWithInvoice, appointment));
       rememberSavedActId(actId);
     }
 
-    if (defaultAppointmentId) {
-      updateAppointment(defaultAppointmentId, { workActId: actId });
+    if (linkedAppointmentId) {
+      updateAppointment(linkedAppointmentId, { workActId: actId });
     }
 
     return act;
@@ -345,14 +371,40 @@ export function WorkActModal({
 
   const handleSubmitToAdmin = () => {
     const act = persistAct(true);
-    if (!act || !defaultAppointmentId) return;
+    if (!act || !linkedAppointmentId) return;
     updateWorkAct(act.id, { submittedToAdmin: true });
-    updateAppointment(defaultAppointmentId, {
+    updateAppointment(linkedAppointmentId, {
       status: "ready_for_payment",
       workActId: act.id,
     });
     toast.success("Акт отправлен администратору");
     onSubmitted?.();
+    onOpenChange(false);
+  };
+
+  const handleReturnAppointmentToEditing = () => {
+    if (!linkedAppointmentId) {
+      toast.error("Запись не найдена");
+      return;
+    }
+    updateAppointment(linkedAppointmentId, {
+      status: "completed",
+      workActId: undefined,
+    });
+    toast.success("Запись возвращена на редактирование");
+    onOpenChange(false);
+  };
+
+  const handleAdminFixSave = () => {
+    const act = persistAct(existingAct?.submittedToAdmin ?? true);
+    if (!act) return;
+    if (linkedAppointmentId) {
+      updateAppointment(linkedAppointmentId, {
+        status: "ready_for_payment",
+        workActId: act.id,
+      });
+    }
+    toast.success(`Акт № ${act.actNumber} сохранён`);
     onOpenChange(false);
   };
 
@@ -371,12 +423,16 @@ export function WorkActModal({
     mode === "doctor"
       ? "Акт оказанных услуг — заполнение врачом"
       : mode === "admin_view"
-        ? `Акт № ${existingAct?.actNumber ?? ""} (${
+        ? actMissing
+          ? "Акт не найден"
+          : `Акт № ${existingAct?.actNumber || "—"} (${
             existingActFullyPaid
               ? "оплачен"
               : existingActPartiallyPaid
                 ? "частично оплачен"
-                : "готов к оплате"
+                : actNeedsFix
+                  ? "требует заполнения"
+                  : "готов к оплате"
           })`
         : "Акт оказанных услуг (РФ)";
 
@@ -387,7 +443,18 @@ export function WorkActModal({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {mode === "admin_view" && !existingActFullyPaid && (
+          {mode === "admin_view" && actMissing && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Акт не найден в данных клиники — возможно, не синхронизировался с другого
+              устройства. Заполните услуги и сохраните или верните запись на редактирование.
+            </p>
+          )}
+          {mode === "admin_view" && !actMissing && actNeedsFix && !existingActFullyPaid && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              В акте нет услуг. Добавьте услуги из прайса и сохраните перед оплатой.
+            </p>
+          )}
+          {mode === "admin_view" && !actNeedsFix && !existingActFullyPaid && (
             <p className="text-sm text-slate-600">
               Акт заполнен врачом. Проверьте услуги и перейдите к оплате.
             </p>
@@ -404,7 +471,7 @@ export function WorkActModal({
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              {readOnly ? (
+              {effectiveReadOnly ? (
                 (() => {
                   const p = patients.find((x) => x.id === patientId);
                   if (!p) {
@@ -471,7 +538,7 @@ export function WorkActModal({
               <select
                 className={selectClass}
                 value={doctorId}
-                disabled={readOnly || (!patientId && mode === "standard")}
+                disabled={effectiveReadOnly || (!patientId && mode === "standard")}
                 onChange={(e) => setDoctorId(e.target.value)}
               >
                 <option value="">
@@ -491,7 +558,7 @@ export function WorkActModal({
               <Input
                 type="date"
                 value={actDate}
-                disabled={readOnly}
+                disabled={effectiveReadOnly}
                 onChange={(e) => setActDate(e.target.value)}
               />
             </div>
@@ -499,7 +566,7 @@ export function WorkActModal({
 
           <div className="space-y-3 rounded-lg border border-[var(--border)] p-3">
             <Label>Услуги</Label>
-            {!readOnly && services.length > 0 && (
+            {!effectiveReadOnly && services.length > 0 && (
               <div className="rounded-lg bg-[var(--card)] border border-[var(--border)] p-3">
                 <ClinicServiceSearch
                   services={services}
@@ -542,14 +609,14 @@ export function WorkActModal({
               >
                 <div className="col-span-3 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
                   {item.serviceName}
-                  {!item.serviceId && !readOnly && (
+                  {!item.serviceId && !effectiveReadOnly && (
                     <span className="mt-0.5 block text-xs font-normal text-amber-700">
                       Не из прайса — замените услугу при необходимости
                     </span>
                   )}
                 </div>
                 <div className="col-span-2">
-                  {readOnly ? (
+                  {effectiveReadOnly ? (
                     <span className="block text-center text-sm">
                       {item.toothNumber ?? "—"}
                     </span>
@@ -577,7 +644,7 @@ export function WorkActModal({
                   )}
                 </div>
                 <div className="col-span-2">
-                  {readOnly ? (
+                  {effectiveReadOnly ? (
                     <span className="block text-center text-sm">{item.quantity}</span>
                   ) : (
                     <Input
@@ -620,7 +687,7 @@ export function WorkActModal({
                   )}
                 </div>
                 <div className="col-span-2">
-                  {readOnly ? (
+                  {effectiveReadOnly ? (
                     <span className="text-sm">{formatCurrency(item.price)}</span>
                   ) : (
                     <Input
@@ -645,7 +712,7 @@ export function WorkActModal({
                   )}
                 </div>
                 <div className="col-span-1">
-                  {readOnly ? (
+                  {effectiveReadOnly ? (
                     <span className="block text-center text-sm">{item.discountPercent ?? 0}%</span>
                   ) : (
                     <Input
@@ -673,7 +740,7 @@ export function WorkActModal({
                     />
                   )}
                 </div>
-                {!readOnly && (
+                {!effectiveReadOnly && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -686,7 +753,7 @@ export function WorkActModal({
                 )}
               </div>
             ))}
-            {!readOnly && visibleItems.length === 0 && (
+            {!effectiveReadOnly && visibleItems.length === 0 && (
               <p className="text-sm text-slate-500">Добавьте услуги из прайса клиники</p>
             )}
           </div>
@@ -724,7 +791,7 @@ export function WorkActModal({
                 {formatCurrency(totalAmount)}
               </span>
             </div>
-          {!readOnly && (
+          {!effectiveReadOnly && (
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2 items-end">
                   <div className="space-y-1">
@@ -780,7 +847,7 @@ export function WorkActModal({
 
           <div className="space-y-2">
             <Label>Примечание</Label>
-            {readOnly ? (
+            {effectiveReadOnly ? (
               <p className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] whitespace-pre-wrap">
                 {notes.trim() || "—"}
               </p>
@@ -791,9 +858,9 @@ export function WorkActModal({
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {readOnly ? "Закрыть" : "Отмена"}
+              {effectiveReadOnly ? "Закрыть" : "Отмена"}
             </Button>
-            {readOnly && existingAct && (
+            {effectiveReadOnly && existingAct && (
               <>
                 <Button
                   variant="secondary"
@@ -837,7 +904,17 @@ export function WorkActModal({
                 )}
               </>
             )}
-            {!readOnly && mode === "doctor" && (
+            {!effectiveReadOnly && mode === "admin_view" && actNeedsFix && (
+              <>
+                {linkedAppointmentId && (
+                  <Button variant="outline" onClick={handleReturnAppointmentToEditing}>
+                    Вернуть запись на редактирование
+                  </Button>
+                )}
+                <Button onClick={handleAdminFixSave}>Сохранить акт</Button>
+              </>
+            )}
+            {!effectiveReadOnly && mode === "doctor" && (
               <>
                 <Button variant="outline" onClick={handleSaveOnly}>
                   Сохранить
@@ -848,7 +925,7 @@ export function WorkActModal({
                 <Button onClick={handleSubmitToAdmin}>Отправить администратору</Button>
               </>
             )}
-            {!readOnly && mode === "standard" && (
+            {!effectiveReadOnly && mode === "standard" && (
               <>
                 <Button variant="secondary" onClick={handleSaveAndPrint}>
                   Сохранить и печать

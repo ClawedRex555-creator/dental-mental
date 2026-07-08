@@ -11,11 +11,16 @@ let saveThenPullClinicData: (() => Promise<void>) | null = null;
 let discardLocalEditsAndPullClinicData:
   | ((options?: ClinicDataPullOptions) => Promise<void>)
   | null = null;
+let forcePullClinicDataFromServer:
+  | ((options?: ClinicDataPullOptions) => Promise<void>)
+  | null = null;
 
 export type ClinicDataPullOptions = {
   force?: boolean;
   /** Только по явному действию пользователя — не перетирать локальные правки при фокусе вкладки */
   allowApplyDespitePending?: boolean;
+  /** Обновить с сервера сразу после локального сохранения (иначе ждём cooldown) */
+  allowDuringSaveCooldown?: boolean;
 };
 
 /** Регистрируется из ClinicDataSync — немедленный PUT после важных правок */
@@ -46,6 +51,12 @@ export function registerDiscardLocalEditsAndPull(
   discardLocalEditsAndPullClinicData = fn;
 }
 
+export function registerForcePullClinicDataFromServer(
+  fn: ((options?: ClinicDataPullOptions) => Promise<void>) | null
+): void {
+  forcePullClinicDataFromServer = fn;
+}
+
 export function requestClinicDataFlush(): void {
   flushClinicDataSave?.();
 }
@@ -68,6 +79,13 @@ export async function requestDiscardLocalEditsAndPull(
   options?: ClinicDataPullOptions
 ): Promise<void> {
   await discardLocalEditsAndPullClinicData?.(options);
+}
+
+/** Явное обновление с сервера: серверный снимок побеждает, локальные правки не блокируют pull */
+export async function requestForcePullClinicDataFromServer(
+  options?: ClinicDataPullOptions
+): Promise<void> {
+  await forcePullClinicDataFromServer?.(options);
 }
 
 export function notifyClinicDataChanged(): void {

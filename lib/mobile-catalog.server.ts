@@ -18,9 +18,20 @@ export interface MobileCatalogService {
   durationMinutes?: number;
 }
 
+export interface MobileCatalogClinicInfo {
+  slug: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  description?: string;
+  workHours?: string;
+  logoUrl?: string;
+}
+
 export interface MobileCatalogResponse {
   doctors: MobileCatalogDoctor[];
   services: MobileCatalogService[];
+  clinicInfo?: MobileCatalogClinicInfo;
 }
 
 function mapDoctor(d: Doctor): MobileCatalogDoctor {
@@ -42,12 +53,29 @@ function mapService(s: Service): MobileCatalogService {
   };
 }
 
-export async function getMobileCatalog(clinicId: string): Promise<MobileCatalogResponse> {
+export async function getMobileCatalog(
+  clinicId: string,
+  clinicMeta?: { slug: string; name: string }
+): Promise<MobileCatalogResponse> {
   const record = await loadClinicSnapshot(clinicId);
   const data = record?.data;
   if (!data) {
     return { doctors: [], services: [] };
   }
+
+  const settings = data.clinicSettings;
+  const clinicInfo: MobileCatalogClinicInfo | undefined =
+    clinicMeta || settings
+      ? {
+          slug: clinicMeta?.slug ?? "",
+          name: settings?.name ?? clinicMeta?.name ?? "",
+          phone: settings?.phone || undefined,
+          address: settings?.address || undefined,
+          description: settings?.workHours || undefined,
+          workHours: settings?.workHours || undefined,
+          logoUrl: settings?.logo || undefined,
+        }
+      : undefined;
 
   const doctors = data.doctors
     .filter((d) => d.status === "active")
@@ -57,5 +85,5 @@ export async function getMobileCatalog(clinicId: string): Promise<MobileCatalogR
     .filter((s) => s.active !== false)
     .map(mapService);
 
-  return { doctors, services };
+  return { doctors, services, clinicInfo };
 }

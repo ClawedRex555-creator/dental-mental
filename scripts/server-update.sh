@@ -32,8 +32,13 @@ has_mac_bundle() {
 
 echo "=== Emkaro: обновление ==="
 
-echo ">>> Бэкап PostgreSQL..."
-bash scripts/backup-db.sh "$ROOT"
+echo ">>> Бэкап PostgreSQL (перед деплоем)..."
+bash scripts/backup-db.sh "$ROOT" pre-deploy
+PRE_DEPLOY_BACKUP=""
+if [ -f "$ROOT/backups/.last-pre-deploy-backup" ]; then
+  PRE_DEPLOY_BACKUP="$(tr -d '\r\n' < "$ROOT/backups/.last-pre-deploy-backup")"
+  echo ">>> Точка отката: $PRE_DEPLOY_BACKUP"
+fi
 
 if [ -f "$ARCHIVE" ]; then
   echo ">>> Распаковка $ARCHIVE ..."
@@ -147,11 +152,20 @@ done
 if [ "$health_ok" = 1 ]; then
   echo "OK: новый bundle"
   echo ">>> /api/health: $health"
-  echo "Готово. Бэкап: $ROOT/backups/"
+  if [ -n "$PRE_DEPLOY_BACKUP" ]; then
+    echo "Готово. Бэкап перед деплоем: $PRE_DEPLOY_BACKUP"
+  else
+    echo "Готово. Бэкап: $ROOT/backups/"
+  fi
   exit 0
 fi
 
 echo "ОШИБКА: /api/health не отвечает или старый bundle."
+if [ -n "$PRE_DEPLOY_BACKUP" ] && [ -f "$PRE_DEPLOY_BACKUP" ]; then
+  echo ""
+  echo ">>> Откат БД к состоянию до деплоя:"
+  echo "    bash scripts/restore-db-from-backup.sh $PRE_DEPLOY_BACKUP"
+fi
 echo ">>> /api/health: $health"
 if [ -f "$ROOT/.deploy-next-bundle" ]; then
   echo ">>> Bundle:"

@@ -10,6 +10,7 @@ import {
   repairMissingPatientsInSnapshot,
 } from "@/lib/patient-visits";
 import { filterPaymentsWithExistingWorkActs } from "@/lib/work-act-payment";
+import { detachDeletedWorkActsFromAppointments } from "@/lib/work-act-visit";
 import type {
   Appointment,
   Cabinet,
@@ -64,6 +65,8 @@ export interface ClinicPersistedState {
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
   deletedLegalDocumentIds?: string[];
+  /** Явно удалённые акты — не поднимать с сервера до повторного создания */
+  deletedWorkActIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -129,6 +132,7 @@ type PersistPickSource = {
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
   deletedLegalDocumentIds?: string[];
+  deletedWorkActIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -212,6 +216,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     clinicExpenses: sanitizeClinicExpenses(state.clinicExpenses ?? []),
     legalDocuments: sanitizeLegalDocuments(state.legalDocuments ?? []),
     deletedLegalDocumentIds: state.deletedLegalDocumentIds ?? [],
+    deletedWorkActIds: state.deletedWorkActIds ?? [],
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
@@ -295,6 +300,73 @@ export function hasEntityIdsNotInIncoming<T extends { id: string }>(
   return existing.some((x) => !incomingIds.has(x.id));
 }
 
+const RECOVERY_ENTITY_LIST_KEYS = [
+  "patients",
+  "appointments",
+  "workActs",
+  "payments",
+  "invoices",
+  "medicalRecords",
+  "treatmentPlans",
+  "prepayments",
+  "patientNotes",
+  "patientFiles",
+  "legalDocuments",
+] as const satisfies ReadonlyArray<keyof ClinicPersistedState>;
+
+/** Локальный снимок содержит записи, которых ещё нет на сервере */
+export function snapshotHasLocalOnlyEntities(
+  local: ClinicPersistedState,
+  remote: ClinicPersistedState
+): boolean {
+  for (const key of RECOVERY_ENTITY_LIST_KEYS) {
+    const localRows = local[key] as { id: string }[];
+    const remoteRows = remote[key] as { id: string }[];
+    if (hasEntityIdsNotInIncoming(localRows, remoteRows)) return true;
+  }
+  return false;
+}
+
+/** Сервер опережает локальный буфер (новые id или изменения по общим id) */
+export function serverSnapshotHasUpdatesBeyond(
+  remote: ClinicPersistedState,
+  baseline: ClinicPersistedState
+): boolean {
+  for (const key of RECOVERY_ENTITY_LIST_KEYS) {
+    const remoteRows = remote[key] as { id: string }[];
+    const baselineRows = baseline[key] as { id: string }[];
+    if (hasEntityIdsNotInIncoming(remoteRows, baselineRows)) return true;
+    const remoteById = new Map(remoteRows.map((x) => [x.id, x]));
+    for (const row of baselineRows) {
+      const serverRow = remoteById.get(row.id);
+      if (serverRow && JSON.stringify(serverRow) !== JSON.stringify(row)) return true;
+    }
+  }
+  if (doctorSchedulesDifferQuick(remote.doctorSchedules, baseline.doctorSchedules)) return true;
+  return false;
+}
+
+function doctorSchedulesDifferQuick(
+  remote: ClinicPersistedState["doctorSchedules"],
+  baseline: ClinicPersistedState["doctorSchedules"]
+): boolean {
+  const remoteByKey = new Map(remote.map((s) => [doctorScheduleKey(s), s]));
+  for (const row of baseline) {
+    const serverRow = remoteByKey.get(doctorScheduleKey(row));
+    if (!serverRow) continue;
+    if (
+      serverRow.updatedAt !== row.updatedAt ||
+      JSON.stringify(serverRow.days) !== JSON.stringify(row.days)
+    ) {
+      return true;
+    }
+  }
+  for (const row of remote) {
+    if (!baseline.some((b) => doctorScheduleKey(b) === doctorScheduleKey(row))) return true;
+  }
+  return false;
+}
+
 /** Объединение по id: записи из local (вторая коллекция) перекрывают remote */
 export function mergeByIdPreferLocal<T extends { id: string }>(remote: T[], local: T[]): T[] {
   const map = new Map<string, T>();
@@ -332,6 +404,52 @@ export function mergeLegalDocumentsState(
     (d) => !tombstoneSet.has(d.id)
   );
   return { legalDocuments, deletedLegalDocumentIds };
+}
+
+/**
+ * Акты: union server + client, без потери записей с другого устройства.
+ * Tombstones — явные удаления с этой вкладки.
+ */
+export function mergeWorkActsState(
+  existing: WorkAct[],
+  incoming: WorkAct[],
+  existingTombstones: string[] = [],
+  incomingTombstones: string[] = []
+): { workActs: WorkAct[]; deletedWorkActIds: string[] } {
+  const incomingIds = new Set(incoming.map((a) => a.id));
+  const deletedWorkActIds = [
+    ...new Set([...existingTombstones, ...incomingTombstones]),
+  ].filter((id) => !incomingIds.has(id));
+  const tombstoneSet = new Set(deletedWorkActIds);
+  const workActs = mergeByIdPreferLocal(existing, incoming).filter(
+    (a) => !tombstoneSet.has(a.id)
+  );
+  return { workActs, deletedWorkActIds };
+}
+
+/** Не поднимать акты, помеченные tombstone (например после pull со старым сервером) */
+export function applyDeletedWorkActTombstones(
+  snapshot: ClinicPersistedState,
+  tombstones: string[] = snapshot.deletedWorkActIds ?? []
+): ClinicPersistedState {
+  if (!tombstones.length) return snapshot;
+  const tombstoneSet = new Set(tombstones);
+  const workActs = snapshot.workActs.filter((a) => !tombstoneSet.has(a.id));
+  const appointments = detachDeletedWorkActsFromAppointments(
+    snapshot.appointments,
+    tombstones
+  );
+  const workActsChanged = workActs.length !== snapshot.workActs.length;
+  const appointmentsChanged = appointments !== snapshot.appointments;
+  if (!workActsChanged && !appointmentsChanged) {
+    return { ...snapshot, deletedWorkActIds: tombstones };
+  }
+  return repairFinancialCoupling({
+    ...snapshot,
+    deletedWorkActIds: tombstones,
+    workActs,
+    appointments,
+  });
 }
 
 /** mergeByIdPreferLocal с учётом удалений в local (после reload / до автосохранения) */
@@ -518,6 +636,18 @@ function mergeEntityArraysForSave<T extends { id: string }>(
   return incoming;
 }
 
+/** Акты/оплаты: пустой устаревший снимок не должен обнулять финансы на сервере */
+function mergeFinancialArraysForSave<T extends { id: string }>(
+  existing: T[],
+  incoming: T[],
+  options?: { allowClear?: boolean }
+): T[] {
+  if (!options?.allowClear && incoming.length === 0 && existing.length > 0) {
+    return existing;
+  }
+  return mergeEntityArraysForSave(existing, incoming, { protectMassLoss: true });
+}
+
 /** Убрать платежи/счета по удалённым актам после merge или удаления. */
 export function repairFinancialCoupling(
   snapshot: ClinicPersistedState
@@ -535,20 +665,36 @@ export function repairFinancialCoupling(
 /** merge с сервера: новые акты/оплаты с другого устройства не отбрасываются */
 function mergeFinancialEntityList<T extends { id: string }>(client: T[], server: T[]): T[] {
   const clientIds = new Set(client.map((x) => x.id));
+  const serverIds = new Set(server.map((x) => x.id));
   const clientHasNewRows = hasEntityIdsNotInIncoming(client, server);
   const serverHasRowsMissingOnClient = server.some((x) => !clientIds.has(x.id));
+  const localDeletedRows =
+    client.length > 0 && hasEntityListDeletion(client, server);
+  const idsOverlap = client.some((x) => serverIds.has(x.id));
 
-  // Клиент удалил строки (в т.ч. заменил акты): не поднимать устаревшие id с сервера.
-  if (serverHasRowsMissingOnClient && (clientHasNewRows || client.length < server.length)) {
-    return mergeByIdPreferLocal(
-      server.filter((x) => clientIds.has(x.id)),
-      client
+  // Замена акта (новый id вместо старого) — не поднимать старые строки с сервера.
+  if (clientHasNewRows && serverHasRowsMissingOnClient && !idsOverlap) {
+    return client;
+  }
+
+  // local (server) удалил строки — не поднимать их с remote (client); remote-only — новые с другого устройства
+  if (localDeletedRows) {
+    const merged = mergeByIdPreferLocal(
+      client.filter((x) => serverIds.has(x.id)),
+      server
     );
+    const remoteOnly = client.filter((x) => !serverIds.has(x.id));
+    return remoteOnly.length ? mergeByIdPreferLocal(remoteOnly, merged) : merged;
   }
 
   if (clientHasNewRows) {
     return mergeByIdPreferLocal(client, server);
   }
+
+  if (serverHasRowsMissingOnClient) {
+    return mergeByIdPreferLocal(server, client);
+  }
+
   return mergeByIdPreferLocalRespectingDeletions(client, server);
 }
 
@@ -563,10 +709,7 @@ export function mergeClinicSnapshotWithLocal(
     services: mergeClinicServices(remote.services, local.services),
     cabinets: mergeByIdPreferLocal(remote.cabinets, local.cabinets),
     patients: mergeClinicPatients(remote.patients, local.patients),
-    appointments: mergeByIdPreferLocalRespectingDeletions(
-      remote.appointments,
-      local.appointments
-    ),
+    appointments: mergeFinancialEntityList(remote.appointments, local.appointments),
     medicalRecords: mergeByIdPreferLocalRespectingDeletions(
       remote.medicalRecords,
       local.medicalRecords
@@ -577,7 +720,18 @@ export function mergeClinicSnapshotWithLocal(
     ),
     payments: mergeFinancialEntityList(remote.payments, local.payments),
     invoices: mergeFinancialEntityList(remote.invoices, local.invoices),
-    workActs: mergeFinancialEntityList(remote.workActs, local.workActs),
+    ...(() => {
+      const acts = mergeWorkActsState(
+        remote.workActs,
+        local.workActs,
+        remote.deletedWorkActIds,
+        local.deletedWorkActIds
+      );
+      return {
+        workActs: acts.workActs,
+        deletedWorkActIds: acts.deletedWorkActIds,
+      };
+    })(),
     warehouse: mergeByIdPreferLocalRespectingDeletions(remote.warehouse, local.warehouse),
     tasks: mergeByIdPreferLocalRespectingDeletions(remote.tasks, local.tasks),
     onlineBookings: mergeByIdPreferLocalRespectingDeletions(
@@ -695,9 +849,27 @@ export function mergeClinicDataForSave(
       incoming.treatmentPlans,
       hasPatientDeletion || hasTreatmentPlanDeletion ? undefined : protect
     ),
-    payments: mergeArr(existing.payments, incoming.payments, hasPatientDeletion ? undefined : protect),
-    invoices: mergeArr(existing.invoices, incoming.invoices, hasPatientDeletion ? undefined : protect),
-    workActs: mergeArr(existing.workActs, incoming.workActs, hasPatientDeletion ? undefined : protect),
+    payments: hasPatientDeletion
+      ? mergeArr(existing.payments, incoming.payments)
+      : mergeFinancialArraysForSave(existing.payments, incoming.payments),
+    invoices: hasPatientDeletion
+      ? mergeArr(existing.invoices, incoming.invoices)
+      : mergeFinancialArraysForSave(existing.invoices, incoming.invoices),
+    ...(() => {
+      const acts = mergeWorkActsState(
+        existing.workActs,
+        incoming.workActs,
+        existing.deletedWorkActIds,
+        incoming.deletedWorkActIds
+      );
+      const workActs = hasPatientDeletion
+        ? mergeArr(existing.workActs, incoming.workActs)
+        : mergeFinancialArraysForSave(existing.workActs, acts.workActs);
+      return {
+        workActs,
+        deletedWorkActIds: acts.deletedWorkActIds,
+      };
+    })(),
     warehouse: mergeArr(existing.warehouse, incoming.warehouse, protect),
     tasks: mergeArr(existing.tasks, incoming.tasks, protect),
     onlineBookings: mergeArr(existing.onlineBookings, incoming.onlineBookings, protect),
@@ -794,12 +966,32 @@ export function mergeClinicDataOnWriteConflict(
     services: preferServer(existing.services, incoming.services),
     cabinets: preferServer(existing.cabinets, incoming.cabinets),
     patients: preferServer(existing.patients, incoming.patients),
-    appointments: preferServer(existing.appointments, incoming.appointments),
+    appointments: hasPatientDeletion
+      ? preferServer(existing.appointments, incoming.appointments)
+      : mergeFinancialArraysForSave(existing.appointments, incoming.appointments),
     medicalRecords: preferServer(existing.medicalRecords, incoming.medicalRecords),
     treatmentPlans: preferServer(existing.treatmentPlans, incoming.treatmentPlans),
-    payments: preferServer(existing.payments, incoming.payments),
-    invoices: preferServer(existing.invoices, incoming.invoices),
-    workActs: preferServer(existing.workActs, incoming.workActs),
+    payments: hasPatientDeletion
+      ? preferServer(existing.payments, incoming.payments)
+      : mergeFinancialArraysForSave(existing.payments, incoming.payments),
+    invoices: hasPatientDeletion
+      ? preferServer(existing.invoices, incoming.invoices)
+      : mergeFinancialArraysForSave(existing.invoices, incoming.invoices),
+    ...(() => {
+      const acts = mergeWorkActsState(
+        existing.workActs,
+        incoming.workActs,
+        existing.deletedWorkActIds,
+        incoming.deletedWorkActIds
+      );
+      const workActs = hasPatientDeletion
+        ? preferServer(existing.workActs, incoming.workActs)
+        : mergeFinancialArraysForSave(existing.workActs, acts.workActs);
+      return {
+        workActs,
+        deletedWorkActIds: acts.deletedWorkActIds,
+      };
+    })(),
     warehouse: preferServer(existing.warehouse, incoming.warehouse),
     tasks: preferServer(existing.tasks, incoming.tasks),
     onlineBookings: preferServer(existing.onlineBookings, incoming.onlineBookings),
@@ -970,6 +1162,9 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     legalDocuments: sanitizeLegalDocuments((d.legalDocuments as LegalDocument[]) ?? []),
     deletedLegalDocumentIds: Array.isArray(d.deletedLegalDocumentIds)
       ? (d.deletedLegalDocumentIds as string[])
+      : [],
+    deletedWorkActIds: Array.isArray(d.deletedWorkActIds)
+      ? (d.deletedWorkActIds as string[])
       : [],
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],

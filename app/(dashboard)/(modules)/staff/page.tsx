@@ -63,6 +63,7 @@ export default function StaffPage() {
     // 3) локальный UI без гонки с автосохранением
     useClinicStore.getState().pauseClinicAutoSave();
     useClinicStore.getState().setClinicDataSaveError(null);
+    useClinicStore.getState().setClinicSaveStatus("idle");
     removeDoctor(member.id);
 
     const remote = await fetchClinicDataFromServer();

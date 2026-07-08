@@ -1,6 +1,22 @@
 /** Коды NSI и маппинг OID шаблона CDA → IdMedDocumentType */
 
+import {
+  findCdaTemplateByOid,
+  CDA_TEMPLATE_CATALOG,
+  DEFAULT_DENTAL_TEMPLATE_OID,
+  N3_TEMPLATE_OID_TO_MED_DOCUMENT_TYPE,
+  listSupportedCdaTemplates,
+} from "@/lib/egisz/cda/templates/catalog";
+
 export const NSI_OID_MED_DOCUMENT_TYPES = "1.2.643.2.69.1.1.1.195";
+
+export {
+  CDA_TEMPLATE_CATALOG,
+  DEFAULT_DENTAL_TEMPLATE_OID,
+  N3_TEMPLATE_OID_TO_MED_DOCUMENT_TYPE,
+  findCdaTemplateByOid,
+  listSupportedCdaTemplates,
+};
 
 /** Шаблон CDA стоматологического протокола консультации (N3 / ЕГИСЗ) */
 export const CDA_CONSULTATION_TEMPLATE_OID = "1.2.643.5.1.13.13.14.1.9.1.181";
@@ -18,11 +34,8 @@ export const CDA_CONSULTATION_REV4_NSI = {
   mime_type_remd: "CDA",
 } as const;
 
-export const N3_TEMPLATE_OID_TO_MED_DOCUMENT_TYPE: Record<string, string> = {
-  [CDA_CONSULTATION_TEMPLATE_OID]: CDA_CONSULTATION_REV4_NSI.idMedDocumentType,
-};
-
 export function resolveN3MedDocumentType(documentOid?: string): string {
-  const oid = documentOid?.trim() || CDA_CONSULTATION_TEMPLATE_OID;
-  return N3_TEMPLATE_OID_TO_MED_DOCUMENT_TYPE[oid] ?? CDA_CONSULTATION_REV4_NSI.idMedDocumentType;
+  const meta = findCdaTemplateByOid(documentOid);
+  if (meta) return meta.idMedDocumentType;
+  return CDA_CONSULTATION_REV4_NSI.idMedDocumentType;
 }

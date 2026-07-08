@@ -34,6 +34,7 @@ import type {
   WorkAct,
 } from "@/lib/types";
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
+import type { ClinicSaveStatus } from "@/lib/clinic-save-feedback";
 import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
 import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 
@@ -57,6 +58,7 @@ import {
   mergeDoctorSchedules,
   mergeClinicPatients,
   mergeLegalDocumentsState,
+  mergeWorkActsState,
   pickPersistedState,
   pickPersistedStateForStorage,
   repairFinancialCoupling,
@@ -98,6 +100,7 @@ import {
   resolvePatientBalanceAfterActPayment,
 } from "@/lib/work-act-payment";
 import {
+  detachAppointmentFromWorkAct,
   removeSyntheticVisitForWorkAct,
   syncVisitForWorkAct,
 } from "@/lib/work-act-visit";
@@ -152,6 +155,7 @@ interface ClinicState {
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
   deletedLegalDocumentIds: string[];
+  deletedWorkActIds: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   /** Ручные часы ассистента по датам (yyyy-MM-dd), если смена не привязана к приёму */
@@ -163,6 +167,8 @@ interface ClinicState {
   /** Синхронизация снимка с PostgreSQL (ClinicDataSync) */
   clinicSyncPhase: "loading" | "ready" | "read_only" | "local_only" | "forbidden" | "error";
   clinicDataUnsaved: boolean;
+  /** idle — на сервере; pending/saving — отправка; saved — подтверждено; failed — только локально */
+  clinicSaveStatus: ClinicSaveStatus;
   /** На сервере есть более новый снимок, чем в этой вкладке */
   clinicServerNewerAvailable: boolean;
   clinicDataSaveError: string | null;
@@ -172,6 +178,7 @@ interface ClinicState {
   setSessionUser: (user: ClinicUser) => void;
   setClinicSyncPhase: (phase: ClinicState["clinicSyncPhase"]) => void;
   setClinicDataUnsaved: (unsaved: boolean) => void;
+  setClinicSaveStatus: (status: ClinicSaveStatus) => void;
   setClinicServerNewerAvailable: (available: boolean) => void;
   setClinicDataSaveError: (error: string | null) => void;
   pauseClinicAutoSave: (ms?: number) => void;
@@ -283,6 +290,7 @@ export const useClinicStore = create<ClinicState>()(
       clinicExpenses: freshState.clinicExpenses,
       legalDocuments: freshState.legalDocuments,
       deletedLegalDocumentIds: [],
+      deletedWorkActIds: [],
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
       assistantManualHours: freshState.assistantManualHours,
@@ -290,17 +298,19 @@ export const useClinicStore = create<ClinicState>()(
       enabledModules: defaultClinicModules(),
       clinicSyncPhase: "loading",
       clinicDataUnsaved: false,
+      clinicSaveStatus: "idle",
       clinicServerNewerAvailable: false,
       clinicDataSaveError: null,
       clinicSavePausedUntil: 0,
 
       setClinicSyncPhase: (phase) => set({ clinicSyncPhase: phase }),
       setClinicDataUnsaved: (unsaved) => set({ clinicDataUnsaved: unsaved }),
+      setClinicSaveStatus: (status) => set({ clinicSaveStatus: status }),
       setClinicServerNewerAvailable: (available) =>
         set({ clinicServerNewerAvailable: available }),
       setClinicDataSaveError: (error) => set({ clinicDataSaveError: error }),
       pauseClinicAutoSave: (ms = 8000) =>
-        set({ clinicSavePausedUntil: Date.now() + ms, clinicDataSaveError: null }),
+        set({ clinicSavePausedUntil: Date.now() + ms, clinicDataSaveError: null, clinicSaveStatus: "idle" }),
 
       setSessionUser: (user) =>
         set((s) => ({
@@ -337,6 +347,7 @@ export const useClinicStore = create<ClinicState>()(
           userThemePreferences,
           clinicSyncPhase: "loading",
           clinicDataUnsaved: false,
+          clinicSaveStatus: "idle",
           clinicServerNewerAvailable: false,
           clinicDataSaveError: null,
         });
@@ -628,7 +639,7 @@ export const useClinicStore = create<ClinicState>()(
         scheduleClinicDataFlush();
       },
 
-      setAssistantManualHours: (assistantId, date, hours) =>
+      setAssistantManualHours: (assistantId, date, hours) => {
         set((s) => {
           const next: AssistantManualHoursMap = { ...s.assistantManualHours };
           const byDay = { ...(next[assistantId] ?? {}) };
@@ -638,7 +649,9 @@ export const useClinicStore = create<ClinicState>()(
           if (Object.keys(byDay).length === 0) delete next[assistantId];
           else next[assistantId] = byDay;
           return { assistantManualHours: next };
-        }),
+        });
+        scheduleClinicDataFlush();
+      },
 
       addMedicalRecord: (record) => {
         set((s) => ({ medicalRecords: [record, ...s.medicalRecords] }));
@@ -968,10 +981,11 @@ export const useClinicStore = create<ClinicState>()(
 
       repairPaidActAppointments: () => {
         const state = get();
+        const deletedActIds = new Set(state.deletedWorkActIds ?? []);
         let appointments = state.appointments;
         const patientIds = new Set<string>();
         for (const act of state.workActs) {
-          if (act.actType === "prepayment") continue;
+          if (act.actType === "prepayment" || deletedActIds.has(act.id)) continue;
           appointments = syncVisitForWorkAct(appointments, act, state.payments);
           patientIds.add(act.patientId);
           if (isWorkActFullyPaid(act, state.payments)) {
@@ -997,13 +1011,11 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => {
           const appointments = removeSyntheticVisitForWorkAct(
             s.appointments.map((a) => {
-              if (a.workActId !== actId) return a;
-              return {
-                ...a,
-                workActId: undefined,
-                paymentStatus: "pending" as const,
-                status: a.status === "ready_for_payment" ? ("completed" as const) : a.status,
-              };
+              const linkedByWorkActId = a.workActId === actId;
+              const linkedByAppointmentId =
+                act.appointmentId != null && a.id === act.appointmentId;
+              if (!linkedByWorkActId && !linkedByAppointmentId) return a;
+              return detachAppointmentFromWorkAct(a);
             }),
             actId
           );
@@ -1012,12 +1024,12 @@ export const useClinicStore = create<ClinicState>()(
             return {
               ...p,
               totalSpent: Math.max(0, p.totalSpent - reverseAmount),
-              balance: p.balance + reverseAmount,
             };
           });
           patients = withPatientVisitFields(patients, appointments, act.patientId);
           return {
             workActs: s.workActs.filter((a) => a.id !== actId),
+            deletedWorkActIds: [...new Set([...(s.deletedWorkActIds ?? []), actId])],
             invoices: s.invoices.filter(
               (inv) => inv.workActId !== actId && inv.id !== act.invoiceId
             ),
@@ -1105,6 +1117,7 @@ export const useClinicStore = create<ClinicState>()(
           clinicExpenses: repaired.clinicExpenses ?? [],
           legalDocuments: repaired.legalDocuments ?? [],
           deletedLegalDocumentIds: repaired.deletedLegalDocumentIds ?? [],
+          deletedWorkActIds: repaired.deletedWorkActIds ?? [],
           doctorSchedules: repaired.doctorSchedules ?? [],
           prepayments: repaired.prepayments ?? [],
           assistantManualHours: normalizeAssistantManualHours(repaired.assistantManualHours),
@@ -1127,7 +1140,12 @@ export const useClinicStore = create<ClinicState>()(
           treatmentPlans: mergeByIdPreferLocal(data.treatmentPlans ?? [], s.treatmentPlans),
           payments: mergeByIdPreferLocal(data.payments ?? [], s.payments),
           invoices: mergeByIdPreferLocal(data.invoices ?? [], s.invoices),
-          workActs: mergeByIdPreferLocal(data.workActs ?? [], s.workActs),
+          ...mergeWorkActsState(
+            data.workActs ?? [],
+            s.workActs,
+            data.deletedWorkActIds,
+            s.deletedWorkActIds
+          ),
           actCounter: Math.max(data.actCounter ?? 1, s.actCounter),
           warehouse: mergeByIdPreferLocal(data.warehouse ?? [], s.warehouse),
           tasks: mergeByIdPreferLocal(data.tasks ?? [], s.tasks),

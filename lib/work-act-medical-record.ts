@@ -1,5 +1,7 @@
 import type { Appointment, MedicalRecord, WorkAct } from "@/lib/types";
 import { generateId } from "@/lib/utils";
+import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
+import { DEFAULT_DENTAL_SERVICE_CODE } from "@/lib/egisz/cda/nsi-constants";
 import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
 
 export const WORK_ACT_STUB_COMPLAINTS = "По акту оказанных услуг";
@@ -43,6 +45,7 @@ export function buildMedicalRecordFromWorkAct(
     appointment?.complaints?.trim() ||
     appointment?.reason?.trim() ||
     WORK_ACT_STUB_COMPLAINTS;
+  const diagnosisParsed = extractDiagnosisCode(WORK_ACT_STUB_DIAGNOSIS);
 
   return {
     id: recordId,
@@ -51,8 +54,13 @@ export function buildMedicalRecordFromWorkAct(
     appointmentId: act.appointmentId,
     workActId: act.id,
     complaints,
-    diagnosis: WORK_ACT_STUB_DIAGNOSIS,
+    anamnesis: complaints,
+    lifeAnamnesis: "Не отягощён",
+    objective: servicesList || "Осмотр полости рта",
+    diagnosis: diagnosisParsed.displayName,
+    diagnosisCode: diagnosisParsed.code,
     treatment: servicesList,
+    serviceCode: DEFAULT_DENTAL_SERVICE_CODE,
     recommendations: buildWorkActMedicalRecommendations({
       actNumber: act.actNumber,
       actDate: act.actDate,
@@ -83,8 +91,15 @@ export function enrichMedicalRecordForWorkAct(
     appointmentId: record.appointmentId ?? act.appointmentId,
     doctorId: resolveDoctorId(act, appointment, record.doctorId),
     complaints,
+    anamnesis: record.anamnesis?.trim() || complaints,
+    lifeAnamnesis: record.lifeAnamnesis?.trim() || "Не отягощён",
+    objective: record.objective?.trim() || servicesList || "Осмотр полости рта",
     treatment: servicesList || record.treatment,
     serviceName: servicesList || record.serviceName,
+    serviceCode: record.serviceCode ?? DEFAULT_DENTAL_SERVICE_CODE,
+    diagnosisCode:
+      record.diagnosisCode ??
+      extractDiagnosisCode(record.diagnosis).code,
     recommendations: buildWorkActMedicalRecommendations({
       actNumber: act.actNumber,
       actDate: act.actDate,

@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildVisitFromWorkAct,
+  detachDeletedWorkActsFromAppointments,
   isWorkActSyntheticVisit,
   syncVisitForWorkAct,
   workActVisitId,
 } from "@/lib/work-act-visit";
-import type { WorkAct } from "@/lib/types";
+import type { Appointment, WorkAct } from "@/lib/types";
 
 const baseAct = (): WorkAct => ({
   id: "act-1",
@@ -72,5 +73,31 @@ describe("isWorkActSyntheticVisit", () => {
   it("detects synthetic id", () => {
     const visit = buildVisitFromWorkAct(baseAct());
     assert.equal(isWorkActSyntheticVisit(visit), true);
+  });
+});
+
+describe("detachDeletedWorkActsFromAppointments", () => {
+  it("removes synthetic visit and clears workActId for tombstoned act", () => {
+    const synthetic = buildVisitFromWorkAct(baseAct());
+    const linked: Appointment = {
+      id: "apt-1",
+      patientId: "pat-1",
+      date: "2026-06-27",
+      startTime: "14:00",
+      endTime: "15:00",
+      durationMinutes: 60,
+      status: "completed",
+      price: 5000,
+      paymentStatus: "paid",
+      workActId: "act-1",
+    };
+    const next = detachDeletedWorkActsFromAppointments(
+      [synthetic, linked],
+      ["act-1"]
+    );
+    assert.equal(next.length, 1);
+    assert.equal(next[0]?.id, "apt-1");
+    assert.equal(next[0]?.workActId, undefined);
+    assert.equal(next[0]?.paymentStatus, "pending");
   });
 });
