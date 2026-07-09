@@ -547,6 +547,17 @@ export function AppointmentModal({
                 )}
               </div>
 
+              {legalEnabled && patientId && (appointment?.status === "in_progress" || status === "in_progress") && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => setDocsModalOpen(true)}
+                >
+                  Документы и печать во время приёма
+                </Button>
+              )}
+
               {!formLocked && (
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => onOpenChange(false)}>

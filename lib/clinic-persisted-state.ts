@@ -65,6 +65,7 @@ export interface ClinicPersistedState {
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
   deletedLegalDocumentIds?: string[];
+  deletedServiceIds?: string[];
   /** Явно удалённые акты — не поднимать с сервера до повторного создания */
   deletedWorkActIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
@@ -102,6 +103,7 @@ export function createFreshPersistedState(): ClinicPersistedState {
     documentTemplates: [],
     clinicExpenses: [],
     legalDocuments: [],
+    deletedServiceIds: [],
     doctorSchedules: [],
     prepayments: [],
     userThemePreferences: {},
@@ -132,6 +134,7 @@ type PersistPickSource = {
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
   deletedLegalDocumentIds?: string[];
+  deletedServiceIds?: string[];
   deletedWorkActIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
@@ -216,6 +219,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     clinicExpenses: sanitizeClinicExpenses(state.clinicExpenses ?? []),
     legalDocuments: sanitizeLegalDocuments(state.legalDocuments ?? []),
     deletedLegalDocumentIds: state.deletedLegalDocumentIds ?? [],
+    deletedServiceIds: state.deletedServiceIds ?? [],
     deletedWorkActIds: state.deletedWorkActIds ?? [],
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
@@ -395,15 +399,50 @@ export function mergeLegalDocumentsState(
   existingTombstones: string[] = [],
   incomingTombstones: string[] = []
 ): { legalDocuments: LegalDocument[]; deletedLegalDocumentIds: string[] } {
-  const incomingIds = new Set(incoming.map((d) => d.id));
-  const deletedLegalDocumentIds = [
-    ...new Set([...existingTombstones, ...incomingTombstones]),
-  ].filter((id) => !incomingIds.has(id));
+  // Tombstones must dominate stale snapshots: if one client deleted a document,
+  // another client with old data must not resurrect it on save.
+  const deletedLegalDocumentIds = [...new Set([...existingTombstones, ...incomingTombstones])];
   const tombstoneSet = new Set(deletedLegalDocumentIds);
   const legalDocuments = mergeByIdPreferLocal(existing, incoming).filter(
     (d) => !tombstoneSet.has(d.id)
   );
   return { legalDocuments, deletedLegalDocumentIds };
+}
+
+/**
+ * Услуги: union server + client, без потери записей с другого устройства.
+ * Tombstones — явные удаления услуг в каталоге.
+ */
+export function mergeServicesState(
+  existing: Service[],
+  incoming: Service[],
+  existingTombstones: string[] = [],
+  incomingTombstones: string[] = []
+): { services: Service[]; deletedServiceIds: string[] } {
+  const deletedServiceIds = [...new Set([...existingTombstones, ...incomingTombstones])];
+  const tombstoneSet = new Set(deletedServiceIds);
+  const services = mergeClinicServices(existing, incoming).filter(
+    (service) => !tombstoneSet.has(service.id)
+  );
+  return { services, deletedServiceIds };
+}
+
+/** Не поднимать услуги, помеченные tombstone */
+export function applyDeletedServiceTombstones(
+  snapshot: ClinicPersistedState,
+  tombstones: string[] = snapshot.deletedServiceIds ?? []
+): ClinicPersistedState {
+  if (!tombstones.length) return snapshot;
+  const tombstoneSet = new Set(tombstones);
+  const services = snapshot.services.filter((service) => !tombstoneSet.has(service.id));
+  if (services.length === snapshot.services.length) {
+    return { ...snapshot, deletedServiceIds: tombstones };
+  }
+  return {
+    ...snapshot,
+    deletedServiceIds: tombstones,
+    services,
+  };
 }
 
 /**
@@ -416,15 +455,32 @@ export function mergeWorkActsState(
   existingTombstones: string[] = [],
   incomingTombstones: string[] = []
 ): { workActs: WorkAct[]; deletedWorkActIds: string[] } {
-  const incomingIds = new Set(incoming.map((a) => a.id));
-  const deletedWorkActIds = [
-    ...new Set([...existingTombstones, ...incomingTombstones]),
-  ].filter((id) => !incomingIds.has(id));
+  // Tombstones must dominate stale snapshots: if one client deleted an act,
+  // another client with old data must not resurrect it on save.
+  const deletedWorkActIds = [...new Set([...existingTombstones, ...incomingTombstones])];
   const tombstoneSet = new Set(deletedWorkActIds);
   const workActs = mergeByIdPreferLocal(existing, incoming).filter(
     (a) => !tombstoneSet.has(a.id)
   );
   return { workActs, deletedWorkActIds };
+}
+
+/** Не поднимать юр. документы, помеченные tombstone (например после pull со старым сервером) */
+export function applyDeletedLegalDocumentTombstones(
+  snapshot: ClinicPersistedState,
+  tombstones: string[] = snapshot.deletedLegalDocumentIds ?? []
+): ClinicPersistedState {
+  if (!tombstones.length) return snapshot;
+  const tombstoneSet = new Set(tombstones);
+  const legalDocuments = snapshot.legalDocuments.filter((d) => !tombstoneSet.has(d.id));
+  if (legalDocuments.length === snapshot.legalDocuments.length) {
+    return { ...snapshot, deletedLegalDocumentIds: tombstones };
+  }
+  return {
+    ...snapshot,
+    deletedLegalDocumentIds: tombstones,
+    legalDocuments,
+  };
 }
 
 /** Не поднимать акты, помеченные tombstone (например после pull со старым сервером) */
@@ -706,7 +762,18 @@ export function mergeClinicSnapshotWithLocal(
   const merged: ClinicPersistedState = {
     ...remote,
     doctors: mergeByIdPreferLocal(remote.doctors, local.doctors),
-    services: mergeClinicServices(remote.services, local.services),
+    ...(() => {
+      const services = mergeServicesState(
+        remote.services,
+        local.services,
+        remote.deletedServiceIds,
+        local.deletedServiceIds
+      );
+      return {
+        services: services.services,
+        deletedServiceIds: services.deletedServiceIds,
+      };
+    })(),
     cabinets: mergeByIdPreferLocal(remote.cabinets, local.cabinets),
     patients: mergeClinicPatients(remote.patients, local.patients),
     appointments: mergeFinancialEntityList(remote.appointments, local.appointments),
@@ -827,11 +894,22 @@ export function mergeClinicDataForSave(
   const merged: ClinicPersistedState = {
     ...incoming,
     doctors: mergeArr(existing.doctors, incoming.doctors, protect),
-    services: mergeArr(
-      existing.services,
-      incoming.services,
-      hasServiceDeletion ? undefined : protect
-    ),
+    ...(() => {
+      const servicesState = mergeServicesState(
+        existing.services,
+        incoming.services,
+        existing.deletedServiceIds,
+        incoming.deletedServiceIds
+      );
+      return {
+        services: mergeArr(
+          existing.services,
+          servicesState.services,
+          hasServiceDeletion ? undefined : protect
+        ),
+        deletedServiceIds: servicesState.deletedServiceIds,
+      };
+    })(),
     cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
     patients: mergeArr(existing.patients, incoming.patients, protect),
     appointments: mergeArr(
@@ -963,7 +1041,18 @@ export function mergeClinicDataOnWriteConflict(
   const merged: ClinicPersistedState = {
     ...incoming,
     doctors: preferServer(existing.doctors, incoming.doctors),
-    services: preferServer(existing.services, incoming.services),
+    ...(() => {
+      const servicesState = mergeServicesState(
+        existing.services,
+        incoming.services,
+        existing.deletedServiceIds,
+        incoming.deletedServiceIds
+      );
+      return {
+        services: preferServer(existing.services, servicesState.services),
+        deletedServiceIds: servicesState.deletedServiceIds,
+      };
+    })(),
     cabinets: preferServer(existing.cabinets, incoming.cabinets),
     patients: preferServer(existing.patients, incoming.patients),
     appointments: hasPatientDeletion
@@ -1162,6 +1251,9 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     legalDocuments: sanitizeLegalDocuments((d.legalDocuments as LegalDocument[]) ?? []),
     deletedLegalDocumentIds: Array.isArray(d.deletedLegalDocumentIds)
       ? (d.deletedLegalDocumentIds as string[])
+      : [],
+    deletedServiceIds: Array.isArray(d.deletedServiceIds)
+      ? (d.deletedServiceIds as string[])
       : [],
     deletedWorkActIds: Array.isArray(d.deletedWorkActIds)
       ? (d.deletedWorkActIds as string[])

@@ -9,8 +9,8 @@ import { CabinetModal } from "@/components/staff/cabinet-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { requestForcePullClinicDataFromServer } from "@/lib/clinic-data-sync.client";
 import { ROLE_LABELS } from "@/lib/constants";
-import { fetchClinicDataFromServer } from "@/lib/clinic-data-client";
 import { deleteStaffOnServer } from "@/lib/clinic-staff-client";
 import type { Doctor } from "@/lib/types";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -65,11 +65,11 @@ export default function StaffPage() {
     useClinicStore.getState().setClinicDataSaveError(null);
     useClinicStore.getState().setClinicSaveStatus("idle");
     removeDoctor(member.id);
-
-    const remote = await fetchClinicDataFromServer();
-    if (remote?.data) {
-      useClinicStore.getState().replacePersistedState(remote.data);
-    }
+    await requestForcePullClinicDataFromServer({
+      force: true,
+      allowApplyDespitePending: true,
+      allowDuringSaveCooldown: true,
+    });
 
     toast.success("Сотрудник удалён, доступ отключён");
   };

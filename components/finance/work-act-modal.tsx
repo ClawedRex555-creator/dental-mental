@@ -119,7 +119,7 @@ export function WorkActModal({
 
   const effectiveReadOnly =
     mode === "admin_view" &&
-    !(isAdminOrOwner && actNeedsFix && !existingActFullyPaid);
+    !(isAdminOrOwner && !existingActFullyPaid);
 
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -912,6 +912,14 @@ export function WorkActModal({
                   </Button>
                 )}
                 <Button onClick={handleAdminFixSave}>Сохранить акт</Button>
+              </>
+            )}
+            {!effectiveReadOnly && mode === "admin_view" && !actNeedsFix && (
+              <>
+                <Button variant="outline" onClick={handleAdminFixSave}>
+                  Сохранить изменения
+                </Button>
+                <Button onClick={handleGoToPayment}>Перейти к оплате</Button>
               </>
             )}
             {!effectiveReadOnly && mode === "doctor" && (

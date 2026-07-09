@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createFreshPersistedState } from "./clinic-persisted-state";
 import { mergeRemoteSnapshotForPull } from "./clinic-snapshot-load";
-import type { Appointment, WorkAct } from "./types";
+import type { Appointment, LegalDocument, WorkAct } from "./types";
 
 describe("mergeRemoteSnapshotForPull", () => {
   it("keeps server work acts when local snapshot is stale and there are no unsaved edits", () => {
@@ -152,6 +152,30 @@ describe("mergeRemoteSnapshotForPull", () => {
 
     const merged = mergeRemoteSnapshotForPull(remote, local, true);
     assert.equal(merged.workActs.length, 0);
+  });
+
+  it("does not resurrect legal document deleted locally on fast pull", () => {
+    const base = createFreshPersistedState();
+    const legalDoc: LegalDocument = {
+      id: "ld-1",
+      category: "consent",
+      title: "Информированное согласие",
+      date: "2026-07-01",
+    };
+    const remote = {
+      ...base,
+      legalDocuments: [legalDoc],
+      deletedLegalDocumentIds: [],
+    };
+    const local = {
+      ...base,
+      legalDocuments: [],
+      deletedLegalDocumentIds: ["ld-1"],
+    };
+
+    const merged = mergeRemoteSnapshotForPull(remote, local, false);
+    assert.equal(merged.legalDocuments.length, 0);
+    assert.equal(merged.deletedLegalDocumentIds?.includes("ld-1"), true);
   });
 
   it("clears appointment workActId when act was deleted locally", () => {

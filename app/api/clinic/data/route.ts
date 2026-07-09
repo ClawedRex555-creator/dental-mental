@@ -26,6 +26,10 @@ import { isModuleEnabled } from "@/lib/modules";
 import { getClinicModules } from "@/lib/platform-modules.server";
 
 const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024;
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, must-revalidate",
+  Vary: "Cookie",
+};
 
 async function requireClinicSession(
   request: Request
@@ -42,16 +46,21 @@ async function requireClinicSession(
 
 export async function GET(request: Request) {
   if (!isDatabaseEnabled()) {
-    return NextResponse.json({ data: null, database: false });
+    return NextResponse.json(
+      { data: null, database: false },
+      { headers: NO_STORE_HEADERS }
+    );
   }
 
   const sessionOrDenied = await requireClinicSession(request);
   if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
   const session = sessionOrDenied;
-  if (!canReadClinicDataSync(session.role)) {
+  const authUser = await findAuthUserByUserIdDb(session.clinicId, session.userId);
+  const role = authUser?.role ?? session.role;
+  if (!authUser || !canReadClinicDataSync(role)) {
     return NextResponse.json(
       { error: "Нет доступа к данным клиники" },
-      { status: 403 }
+      { status: 403, headers: NO_STORE_HEADERS }
     );
   }
 
@@ -64,7 +73,7 @@ export async function GET(request: Request) {
       database: true,
       version: CLINIC_DATA_SCHEMA_VERSION,
       updatedAt: null,
-    });
+    }, { headers: NO_STORE_HEADERS });
   }
 
   if (metaOnly) {
@@ -72,11 +81,11 @@ export async function GET(request: Request) {
       database: true,
       updatedAt: record.updatedAt,
       version: record.version,
-    });
+    }, { headers: NO_STORE_HEADERS });
   }
 
   const data =
-    session.role === "accountant"
+    role === "accountant"
       ? filterClinicSnapshotForAccountant(record.data)
       : record.data;
 
@@ -85,16 +94,22 @@ export async function GET(request: Request) {
     updatedAt: record.updatedAt,
     version: record.version,
     database: true,
-  });
+  }, { headers: NO_STORE_HEADERS });
 }
 
 export async function PUT(request: Request) {
   if (!verifySameOrigin(request)) {
-    return NextResponse.json({ ok: false, error: "Запрос отклонён" }, { status: 403 });
+    return NextResponse.json(
+      { ok: false, error: "Запрос отклонён" },
+      { status: 403, headers: NO_STORE_HEADERS }
+    );
   }
 
   if (!isDatabaseEnabled()) {
-    return NextResponse.json({ ok: false, error: "База данных не настроена" }, { status: 503 });
+    return NextResponse.json(
+      { ok: false, error: "База данных не настроена" },
+      { status: 503, headers: NO_STORE_HEADERS }
+    );
   }
 
   const sessionOrDenied = await requireClinicSession(request);
@@ -103,28 +118,37 @@ export async function PUT(request: Request) {
 
   const authUser = await findAuthUserByUserIdDb(session.clinicId, session.userId);
   const role = authUser?.role ?? session.role;
-  if (!canWriteClinicDataSync(role)) {
+  if (!authUser || !canWriteClinicDataSync(role)) {
     return NextResponse.json(
       { ok: false, error: "Сохранение данных доступно владельцу, администратору, врачу и ассистенту" },
-      { status: 403 }
+      { status: 403, headers: NO_STORE_HEADERS }
     );
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_PAYLOAD_BYTES) {
-    return NextResponse.json({ ok: false, error: "Слишком большой объём данных" }, { status: 413 });
+    return NextResponse.json(
+      { ok: false, error: "Слишком большой объём данных" },
+      { status: 413, headers: NO_STORE_HEADERS }
+    );
   }
 
   let body: { data?: unknown; expectedUpdatedAt?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "Неверный запрос" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Неверный запрос" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
   }
 
   const parsed = parseClinicPersistedState(body.data);
   if (!parsed) {
-    return NextResponse.json({ ok: false, error: "Некорректные данные клиники" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Некорректные данные клиники" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
   }
 
   try {
@@ -179,9 +203,12 @@ export async function PUT(request: Request) {
       updatedAt: saved.updatedAt,
       version: saved.version,
       merged: mergedConflict,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (e) {
     console.error("[clinic/data] save failed", e);
-    return NextResponse.json({ ok: false, error: "Не удалось сохранить данные" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Не удалось сохранить данные" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

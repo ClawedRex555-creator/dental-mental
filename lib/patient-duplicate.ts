@@ -79,11 +79,8 @@ export function findDuplicatePatient(
   for (const p of patients) {
     if (excludePatientId && p.id === excludePatientId) continue;
 
-    if (
-      !candidate.isChild &&
-      candPhone.length >= 11 &&
-      phoneKey(p.phone) === candPhone
-    ) {
+    const bothAreAdults = !candidate.isChild && !p.isChild;
+    if (bothAreAdults && candPhone.length >= 11 && phoneKey(p.phone) === candPhone) {
       return { patient: p, reason: "phone" };
     }
 

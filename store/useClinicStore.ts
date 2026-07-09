@@ -58,6 +58,7 @@ import {
   mergeDoctorSchedules,
   mergeClinicPatients,
   mergeLegalDocumentsState,
+  mergeServicesState,
   mergeWorkActsState,
   pickPersistedState,
   pickPersistedStateForStorage,
@@ -69,7 +70,6 @@ import {
   syncOtherClinicVisitsInList,
 } from "@/lib/patient-visits";
 import {
-  mergeClinicServices,
   migrateServices,
   normalizeServiceFields,
 } from "@/lib/service-categories";
@@ -155,6 +155,7 @@ interface ClinicState {
   clinicExpenses: ClinicExpense[];
   legalDocuments: LegalDocument[];
   deletedLegalDocumentIds: string[];
+  deletedServiceIds: string[];
   deletedWorkActIds: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
@@ -290,6 +291,7 @@ export const useClinicStore = create<ClinicState>()(
       clinicExpenses: freshState.clinicExpenses,
       legalDocuments: freshState.legalDocuments,
       deletedLegalDocumentIds: [],
+      deletedServiceIds: [],
       deletedWorkActIds: [],
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
@@ -530,6 +532,9 @@ export const useClinicStore = create<ClinicState>()(
         if (!canManageServices(get().currentRole)) return;
         set((s) => ({
           services: [normalizeServiceFields(service), ...s.services],
+          deletedServiceIds: (s.deletedServiceIds ?? []).filter(
+            (serviceId) => serviceId !== service.id
+          ),
         }));
         scheduleClinicDataFlush();
       },
@@ -548,6 +553,7 @@ export const useClinicStore = create<ClinicState>()(
         if (!canManageServices(get().currentRole)) return;
         set((s) => ({
           services: s.services.filter((svc) => svc.id !== id),
+          deletedServiceIds: [...new Set([...(s.deletedServiceIds ?? []), id])],
         }));
         scheduleClinicDataFlush();
       },
@@ -1117,6 +1123,7 @@ export const useClinicStore = create<ClinicState>()(
           clinicExpenses: repaired.clinicExpenses ?? [],
           legalDocuments: repaired.legalDocuments ?? [],
           deletedLegalDocumentIds: repaired.deletedLegalDocumentIds ?? [],
+          deletedServiceIds: repaired.deletedServiceIds ?? [],
           deletedWorkActIds: repaired.deletedWorkActIds ?? [],
           doctorSchedules: repaired.doctorSchedules ?? [],
           prepayments: repaired.prepayments ?? [],
@@ -1132,7 +1139,12 @@ export const useClinicStore = create<ClinicState>()(
       hydratePersistedState: (data) =>
         set((s) => ({
           doctors: mergeByIdPreferLocal(data.doctors ?? [], s.doctors),
-          services: mergeClinicServices(data.services ?? [], s.services),
+          ...mergeServicesState(
+            data.services ?? [],
+            s.services,
+            data.deletedServiceIds,
+            s.deletedServiceIds
+          ),
           cabinets: mergeByIdPreferLocal(data.cabinets ?? [], s.cabinets),
           patients: mergeClinicPatients(data.patients ?? [], s.patients),
           appointments: mergeByIdPreferLocal(data.appointments ?? [], s.appointments),

@@ -37,6 +37,18 @@ describe("findDuplicatePatient", () => {
     assert.equal(match, null);
   });
 
+  it("allows creating adult patient with phone already used by child", () => {
+    const child = basePatient({ id: "pat-child", isChild: true });
+    const match = findDuplicatePatient([child], {
+      phone: "+79991234567",
+      firstName: "Елена",
+      lastName: "Иванова",
+      birthDate: "1988-04-15",
+      isChild: false,
+    });
+    assert.equal(match, null);
+  });
+
   it("detects duplicate phone", () => {
     const existing = basePatient();
     const match = findDuplicatePatient(

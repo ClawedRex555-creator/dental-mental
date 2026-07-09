@@ -1,4 +1,6 @@
 import {
+  applyDeletedServiceTombstones,
+  applyDeletedLegalDocumentTombstones,
   doctorScheduleKey,
   applyDeletedWorkActTombstones,
   hasClinicData,
@@ -123,8 +125,29 @@ export function mergeRemoteSnapshotForPull(
   const base = !hasUnsavedUserEdits
     ? remote
     : mergeClinicSnapshotWithLocal(remote, local);
+  const deletedLegalDocumentIds = [
+    ...new Set([
+      ...(remote.deletedLegalDocumentIds ?? []),
+      ...(local.deletedLegalDocumentIds ?? []),
+    ]),
+  ];
+  const deletedServiceIds = [
+    ...new Set([
+      ...(remote.deletedServiceIds ?? []),
+      ...(local.deletedServiceIds ?? []),
+    ]),
+  ];
   return repairIfOrphans(
-    applyDeletedWorkActTombstones({ ...base, deletedWorkActIds }, deletedWorkActIds)
+    applyDeletedWorkActTombstones(
+      applyDeletedServiceTombstones(
+        applyDeletedLegalDocumentTombstones(
+          { ...base, deletedWorkActIds, deletedLegalDocumentIds, deletedServiceIds },
+          deletedLegalDocumentIds
+        ),
+        deletedServiceIds
+      ),
+      deletedWorkActIds
+    )
   );
 }
 

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   createFreshPersistedState,
+  mergeClinicDataForSave,
   mergeClinicDataOnWriteConflict,
 } from "./clinic-persisted-state";
-import type { Appointment, WorkAct } from "./types";
+import type { Appointment, Service, WorkAct } from "./types";
 
 describe("mergeClinicDataOnWriteConflict", () => {
   it("keeps server appointment doctor when client snapshot is stale", () => {
@@ -85,6 +86,89 @@ describe("mergeClinicDataOnWriteConflict", () => {
     const merged = mergeClinicDataOnWriteConflict(existing, incoming);
     assert.equal(merged.workActs.length, 1);
     assert.equal(merged.workActs[0]?.id, "wa2");
+  });
+
+  it("keeps work-act tombstone when stale client still has deleted act", () => {
+    const base = createFreshPersistedState();
+    const deletedAct: WorkAct = {
+      id: "wa0069",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-07-08",
+      actNumber: "0069",
+      actType: "service",
+      items: [],
+      totalAmount: 1000,
+      paymentStatus: "pending",
+    };
+    const existing = {
+      ...base,
+      workActs: [],
+      deletedWorkActIds: ["wa0069"],
+    };
+    const incoming = {
+      ...base,
+      workActs: [deletedAct], // stale tab still has old act
+      deletedWorkActIds: [],
+    };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    assert.equal(merged.workActs.some((a) => a.id === "wa0069"), false);
+    assert.equal(merged.deletedWorkActIds?.includes("wa0069"), true);
+  });
+
+  it("keeps work-act tombstone when stale client saves without write conflict", () => {
+    const base = createFreshPersistedState();
+    const deletedAct: WorkAct = {
+      id: "wa0069",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-07-08",
+      actNumber: "0069",
+      actType: "service",
+      items: [],
+      totalAmount: 1000,
+      paymentStatus: "pending",
+    };
+    const existing = {
+      ...base,
+      workActs: [],
+      deletedWorkActIds: ["wa0069"],
+    };
+    const incoming = {
+      ...base,
+      workActs: [deletedAct], // stale tab still has old act
+      deletedWorkActIds: [],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.workActs.some((a) => a.id === "wa0069"), false);
+    assert.equal(merged.deletedWorkActIds?.includes("wa0069"), true);
+  });
+
+  it("keeps service tombstone when stale client still has deleted service", () => {
+    const base = createFreshPersistedState();
+    const deletedService: Service = {
+      id: "srv-cleaning",
+      name: "Гигиена",
+      category: "Терапия",
+      price: 5000,
+      active: true,
+    };
+    const existing = {
+      ...base,
+      services: [],
+      deletedServiceIds: ["srv-cleaning"],
+    };
+    const incoming = {
+      ...base,
+      services: [deletedService], // stale tab still has old service
+      deletedServiceIds: [],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.services.some((service) => service.id === "srv-cleaning"), false);
+    assert.equal(merged.deletedServiceIds?.includes("srv-cleaning"), true);
   });
 
   it("keeps server work acts when stale client sends empty list on write conflict", () => {

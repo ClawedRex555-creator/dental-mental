@@ -54,6 +54,14 @@ const FINANCE_TABS: FinanceTab[] = [
   "prepayments",
 ];
 
+function compareWorkActsNewestFirst(a: WorkAct, b: WorkAct): number {
+  const byActDate = new Date(b.actDate).getTime() - new Date(a.actDate).getTime();
+  if (byActDate !== 0) return byActDate;
+  const byCreatedAt = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  if (byCreatedAt !== 0) return byCreatedAt;
+  return b.actNumber.localeCompare(a.actNumber);
+}
+
 export default function FinancePage() {
   const {
     payments,
@@ -365,6 +373,11 @@ export default function FinancePage() {
     [workActs]
   );
 
+  const actsNewestFirst = useMemo(
+    () => [...workActs].sort(compareWorkActsNewestFirst),
+    [workActs]
+  );
+
   const salaryActs = useMemo(
     () =>
       serviceActs.filter((a) => inSalaryPeriod(a.actDate) && a.paymentStatus === "paid"),
@@ -474,7 +487,7 @@ export default function FinancePage() {
         };
       })
       .filter(Boolean)
-      .sort((a, b) => b!.act.actDate.localeCompare(a!.act.actDate));
+      .sort((a, b) => compareWorkActsNewestFirst(a!.act, b!.act));
   }, [salaryActs, doctors, patients, services]);
 
   const assistantSalaryDetails = useMemo(() => {
@@ -1294,7 +1307,7 @@ export default function FinancePage() {
                     </td>
                   </tr>
                 ) : (
-                  workActs.map((act) => {
+                  actsNewestFirst.map((act) => {
                     const patient = patients.find((p) => p.id === act.patientId);
                     const status = getActPaymentStatus(act);
                     const isPaid = status === "paid";

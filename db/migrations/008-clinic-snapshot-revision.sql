@@ -1,0 +1,3 @@
+ALTER TABLE clinic_snapshots
+  ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 0;
+

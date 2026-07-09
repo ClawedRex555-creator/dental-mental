@@ -25,6 +25,7 @@ import {
 } from "@/lib/clinic-persisted-state";
 import {
   notifyClinicDataChanged,
+  flushClinicDataBeforeSessionEnd,
   registerClinicDataFlush,
   registerClinicDataFlushAsync,
   registerClinicDataPull,
@@ -33,9 +34,9 @@ import {
   registerSaveThenPullClinicData,
   subscribeClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
+import { notifySessionChanged } from "@/lib/session-sync.client";
 import {
   mergeRemoteSnapshotForPull,
-  needsMergeWithServerOnLoad,
   prepareSnapshotAfterServerFetch,
   serverSnapshotHasIncomingUpdates,
   shouldPushSnapshotAfterServerFetch,
@@ -53,6 +54,7 @@ import { resolveClinicBootstrap } from "@/lib/clinic-bootstrap.client";
 import { CLINIC_SAVE_RETRY_DELAYS_MS, sleep } from "@/lib/clinic-save-retry";
 import { clinicSaveErrorMessage } from "@/lib/clinic-save-feedback";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
+import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
 import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
 import { useClinicStore } from "@/store/useClinicStore";
 
@@ -62,6 +64,10 @@ const PERIODIC_FLUSH_MS = 60_000;
 const SAVE_ACK_PULL_COOLDOWN_MS = 6_000;
 /** Лёгкий опрос meta (только updatedAt) — полный snapshot только при изменениях */
 const PERIODIC_PULL_MS = 4_000;
+const STALE_TAB_AUTO_RELOAD_SIGNALS = 3;
+const STALE_TAB_AUTO_RELOAD_COOLDOWN_MS = 120_000;
+const STALE_TAB_AUTO_LOGOUT_CONFLICTS = 3;
+const STALE_TAB_LAST_RELOAD_KEY = "dc-stale-tab-last-reload";
 
 function syncErrorMessage(error: unknown): string {
   if (error instanceof FetchTimeoutError) return error.message;
@@ -92,6 +98,7 @@ export function ClinicDataSync() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const periodicTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pullTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pullAfterCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushAfterBaseline = useRef(false);
   const pendingFlushAfterSave = useRef(false);
@@ -100,6 +107,8 @@ export function ClinicDataSync() {
   const saveAckCooldownUntil = useRef(0);
   /** Снимок для подписки — без clinicDataUnsaved, иначе бесконечный subscribe */
   const lastTrackedSnap = useRef("");
+  const staleSignalCount = useRef(0);
+  const versionConflictCount = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,15 +128,8 @@ export function ClinicDataSync() {
       const storeNow = useClinicStore.getState();
       const json = JSON.stringify(pickPersistedState(storeNow));
       if (json !== lastSavedJson.current) {
-        // Иногда локальный снимок меняется "сам" (восстановление/ремонт связей) без реальных правок пользователя.
-        // Если UI считает данные сохранёнными/idle и нет pending-буфера — считаем это новым baseline,
-        // иначе pull будет бесконечно блокироваться и другие устройства не увидят обновления.
-        const pending = readPendingClinicSnapshot();
-        if (
-          !storeNow.clinicDataUnsaved &&
-          storeNow.clinicSaveStatus === "idle" &&
-          !pending
-        ) {
+        // Для read-only вкладок "самопочинка" снимка не должна блокировать pull бесконечно.
+        if (!canWrite.current) {
           lastSavedJson.current = json;
           return false;
         }
@@ -137,6 +139,43 @@ export function ClinicDataSync() {
       const pending = readPendingClinicSnapshot();
       if (!pending) return false;
       return JSON.stringify(pending) !== lastSavedJson.current;
+    };
+
+    const forceLogoutDueToStaleTab = async (message: string) => {
+      if (typeof window === "undefined") return;
+      toast.error(message, { duration: 8000 });
+      try {
+        await flushClinicDataBeforeSessionEnd({ keepalive: true });
+      } catch {
+        /* ignore */
+      }
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "same-origin",
+          keepalive: true,
+        });
+      } catch {
+        /* ignore */
+      }
+      clearPendingClinicSnapshot();
+      clearPersistedClinicData();
+      notifySessionChanged("logout");
+      window.location.assign("/login");
+    };
+
+    const maybeAutoReloadStaleTab = (reason: string): boolean => {
+      if (typeof window === "undefined") return false;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+      if (hasUnsavedUserEdits()) return false;
+      staleSignalCount.current += 1;
+      if (staleSignalCount.current < STALE_TAB_AUTO_RELOAD_SIGNALS) return false;
+      const lastReloadAt = Number(localStorage.getItem(STALE_TAB_LAST_RELOAD_KEY) ?? "0");
+      if (Date.now() - lastReloadAt < STALE_TAB_AUTO_RELOAD_COOLDOWN_MS) return false;
+      localStorage.setItem(STALE_TAB_LAST_RELOAD_KEY, String(Date.now()));
+      toast.info(reason, { duration: 5000 });
+      window.location.reload();
+      return true;
     };
 
     const lastSyncedBaseline = (): ClinicPersistedState => {
@@ -154,6 +193,7 @@ export function ClinicDataSync() {
 
     const ackServerSnapshotVersion = (updatedAt?: string | null) => {
       if (updatedAt) lastServerUpdatedAt.current = updatedAt;
+      staleSignalCount.current = 0;
       setClinicServerNewerAvailable(false);
     };
 
@@ -210,6 +250,7 @@ export function ClinicDataSync() {
 
     const markSaveSuccess = () => {
       saveAckCooldownUntil.current = Date.now() + SAVE_ACK_PULL_COOLDOWN_MS;
+      staleSignalCount.current = 0;
       clearSavedStatusTimer();
       setClinicSaveStatus("saved");
       setClinicDataUnsaved(false);
@@ -261,10 +302,15 @@ export function ClinicDataSync() {
       allowApplyDespitePending?: boolean;
       allowDuringSaveCooldown?: boolean;
     }) => {
-      if (
-        !options?.allowDuringSaveCooldown &&
-        Date.now() < saveAckCooldownUntil.current
-      ) {
+      const now = Date.now();
+      if (!options?.allowDuringSaveCooldown && now < saveAckCooldownUntil.current) {
+        const waitMs = saveAckCooldownUntil.current - now + 25;
+        if (!pullAfterCooldownTimer.current) {
+          pullAfterCooldownTimer.current = setTimeout(() => {
+            pullAfterCooldownTimer.current = null;
+            void pullRemoteSnapshot(options);
+          }, waitMs);
+        }
         return;
       }
       if (pulling.current) {
@@ -282,6 +328,15 @@ export function ClinicDataSync() {
         if (!options?.force && lastServerUpdatedAt.current) {
           const meta = await fetchClinicDataMetaFromServer();
           if (!meta || cancelled || meta.forbidden) return;
+          if (serverSnapshotIsNewer(meta.updatedAt) && hasUnsavedUserEdits()) {
+            if (
+              maybeAutoReloadStaleTab(
+                "Вкладка устарела относительно сервера. Перезагружаем, чтобы избежать рассинхронизации."
+              )
+            ) {
+              return;
+            }
+          }
           if (!serverSnapshotIsNewer(meta.updatedAt)) {
             setClinicServerNewerAvailable(false);
             return;
@@ -304,6 +359,13 @@ export function ClinicDataSync() {
 
         if (!userForcedPull && hasUnsavedUserEdits()) {
           setClinicServerNewerAvailable(true);
+          if (
+            maybeAutoReloadStaleTab(
+              "Обнаружены старые данные вкладки. Перезагружаем для синхронизации."
+            )
+          ) {
+            return;
+          }
           return;
         }
 
@@ -314,7 +376,10 @@ export function ClinicDataSync() {
           setClinicServerNewerAvailable(false);
         }
       } catch {
-        /* ignore background refresh */
+        if (!cancelled) setClinicServerNewerAvailable(true);
+        maybeAutoReloadStaleTab(
+          "Не удаётся подтянуть свежие данные. Перезагружаем устаревшую вкладку."
+        );
       } finally {
         pulling.current = false;
         if (pendingPullAfterPull.current) {
@@ -401,6 +466,7 @@ export function ClinicDataSync() {
         });
 
         if (saveResult.ok) {
+          versionConflictCount.current = 0;
           const acked = await verifySaveAckOnServer(saveResult.updatedAt);
           if (!acked) {
             markSaveFailed(
@@ -431,12 +497,28 @@ export function ClinicDataSync() {
           }
           notifyClinicDataChanged();
         } else if (saveResult.forbidden) {
+          versionConflictCount.current = 0;
           syncForbidden.current = true;
           syncReady.current = false;
           canWrite.current = false;
           setClinicSaveStatus("failed");
           finishPhase("read_only");
         } else if (saveResult.error) {
+          if (
+            /CONFLICT_VERSION_MISMATCH|конфликт версии|изменены на другом устройстве/i.test(
+              saveResult.error
+            )
+          ) {
+            versionConflictCount.current += 1;
+            if (versionConflictCount.current >= STALE_TAB_AUTO_LOGOUT_CONFLICTS) {
+              await forceLogoutDueToStaleTab(
+                "Сессия в этой вкладке слишком устарела. Выполнен выход для безопасного повторного входа."
+              );
+              return;
+            }
+          } else {
+            versionConflictCount.current = 0;
+          }
           markSaveFailed(saveResult.error);
           toast.error(saveResult.error);
         }
@@ -527,14 +609,14 @@ export function ClinicDataSync() {
         return;
       }
       if (document.visibilityState === "visible") {
-        void pullRemoteSnapshot();
+        void pullRemoteSnapshot({ allowDuringSaveCooldown: true });
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
 
     const onWindowFocus = () => {
       if (document.visibilityState === "visible") {
-        void pullRemoteSnapshot();
+        void pullRemoteSnapshot({ allowDuringSaveCooldown: true });
       }
     };
     window.addEventListener("focus", onWindowFocus);
@@ -551,6 +633,10 @@ export function ClinicDataSync() {
         setClinicDataSaveError(null);
         scheduleDeferredFlush();
       }
+      void pullRemoteSnapshot({
+        force: true,
+        allowDuringSaveCooldown: true,
+      });
     };
     window.addEventListener("offline", onOffline);
     window.addEventListener("online", onOnline);
@@ -588,7 +674,7 @@ export function ClinicDataSync() {
         saveTimer.current = null;
       }
       await flushSave();
-      await pullRemoteSnapshot({ force: true });
+      await pullRemoteSnapshot({ force: true, allowDuringSaveCooldown: true });
     });
 
     registerDiscardLocalEditsAndPull(discardLocalEditsAndPull);
@@ -691,10 +777,10 @@ export function ClinicDataSync() {
           discardStalePendingClinicSnapshot(remote.data);
           const local = pickPersistedState(useClinicStore.getState());
           const serverDbOpts = { serverDatabaseMode: true as const };
-          const mustMerge = needsMergeWithServerOnLoad(local, serverDbOpts);
           const snapshot = prepareSnapshotAfterServerFetch(remote.data, local, serverDbOpts);
 
-          applySnapshot(snapshot, mustMerge);
+          // prepareSnapshotAfterServerFetch уже выполнил нужный merge; повторно merge в hydrate не нужен
+          applySnapshot(snapshot, false);
           syncReady.current = true;
           finishPhase(canWrite.current ? "ready" : "read_only");
           useClinicStore.getState().repairPaidActAppointments();
@@ -778,6 +864,7 @@ export function ClinicDataSync() {
                 lastTrackedSnap.current = json;
                 clearPendingClinicSnapshot();
                 markSaveSuccess();
+                notifyClinicDataChanged();
               } catch (e) {
                 markSaveFailed(clinicSaveErrorMessage(e));
                 toast.error(clinicSaveErrorMessage(e));
@@ -808,7 +895,7 @@ export function ClinicDataSync() {
 
     const unsub = useClinicStore.subscribe(onPersistedDataChange);
     const unsubBroadcast = subscribeClinicDataChanged(() => {
-      void pullRemoteSnapshot();
+      void pullRemoteSnapshot({ allowDuringSaveCooldown: true });
     });
 
     return () => {
@@ -829,6 +916,7 @@ export function ClinicDataSync() {
       clearSavedStatusTimer();
       document.removeEventListener("visibilitychange", onVisibility);
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (pullAfterCooldownTimer.current) clearTimeout(pullAfterCooldownTimer.current);
       if (periodicTimer.current) clearInterval(periodicTimer.current);
       if (pullTimer.current) clearInterval(pullTimer.current);
       if (syncReady.current && canWrite.current && !syncForbidden.current) {

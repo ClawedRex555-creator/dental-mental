@@ -22,6 +22,7 @@ export interface ClinicDataMetaResult {
 export async function fetchClinicDataMetaFromServer(): Promise<ClinicDataMetaResult | null> {
   const res = await fetchWithTimeout("/api/clinic/data?meta=1", {
     credentials: "same-origin",
+    cache: "no-store",
   });
   if (res.status === 503) return null;
   if (res.status === 403) {
@@ -42,7 +43,10 @@ export async function fetchClinicDataMetaFromServer(): Promise<ClinicDataMetaRes
 }
 
 export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult | null> {
-  const res = await fetchWithTimeout("/api/clinic/data", { credentials: "same-origin" });
+  const res = await fetchWithTimeout("/api/clinic/data", {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
   if (res.status === 503) return null;
   if (res.status === 403) {
     return { data: null, updatedAt: null, database: true, forbidden: true };
