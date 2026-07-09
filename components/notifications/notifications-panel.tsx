@@ -79,7 +79,10 @@ export function NotificationsPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const saveConfig = async (next: NotificationClinicConfig) => {
