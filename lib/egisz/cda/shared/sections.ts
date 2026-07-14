@@ -118,6 +118,18 @@ export function serviceActSection(
     </component>`;
 }
 
+function diagnosisComponent(code: string, displayName: string): string {
+  return `
+        <component>
+          <section>
+            ${sectionCodeXml("DGN")}
+            <title>${xmlEscape("Диагноз")}</title>
+            <text>${xmlEscape(displayName)}</text>
+            ${diagnosisObservation(code, displayName)}
+          </section>
+        </component>`;
+}
+
 export function buildConsultationBody(ctx: CdaDocumentContext): string {
   const c = ctx.clinical;
   const docinfo = `
@@ -166,8 +178,8 @@ export function buildConsultationBody(ctx: CdaDocumentContext): string {
         )}
         ${textObservation(CDA_FIELD.OBJECTIVE, c.objective)}
         ${textObservation(CDA_FIELD.CONCLUSION, c.conclusion)}
-        ${diagnosisObservation(c.diagnosisCode, c.diagnosisDisplay)}
         ${textObservation(CDA_FIELD.RECOMMENDATIONS, c.recommendations)}
+        ${diagnosisComponent(c.diagnosisCode, c.diagnosisDisplay)}
       </section>
     </component>`;
 

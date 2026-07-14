@@ -50,7 +50,23 @@ export async function GET(request: Request) {
   const cookieOpts = buildSessionCookieOptions(SESSION_MAX_AGE_SEC, request);
 
   try {
-    const { user, sessionPatch, found } = await resolveAuthUserFromSession(session);
+    const { user, sessionPatch, found, sessionVersion } = await resolveAuthUserFromSession(session);
+
+    if (isDatabaseEnabled() && session.clinicId) {
+      const currentSessionVersion = sessionVersion ?? 0;
+      const tokenSessionVersion = session.sessionVersion;
+      if (
+        typeof tokenSessionVersion !== "number" ||
+        tokenSessionVersion !== currentSessionVersion
+      ) {
+        const res = NextResponse.json(
+          { error: "Сессия завершена: выполнен вход с другого устройства." },
+          { status: 401 }
+        );
+        res.cookies.set(AUTH_COOKIE, "", sessionCookieOptions(0));
+        return res;
+      }
+    }
 
     // Если учётка удалена (уволен), не пускаем даже со старой cookie.
     if (isDatabaseEnabled() && session.clinicId && !found) {
@@ -139,6 +155,22 @@ export async function PATCH(request: Request) {
 
   const clinicId = await resolveClinicIdForSession(session, host);
   const current = await resolveAuthUserFromSession(session);
+
+  if (isDatabaseEnabled() && session.clinicId) {
+    const currentSessionVersion = current.sessionVersion ?? 0;
+    const tokenSessionVersion = session.sessionVersion;
+    if (
+      typeof tokenSessionVersion !== "number" ||
+      tokenSessionVersion !== currentSessionVersion
+    ) {
+      const res = NextResponse.json(
+        { error: "Сессия завершена: выполнен вход с другого устройства." },
+        { status: 401 }
+      );
+      res.cookies.set(AUTH_COOKIE, "", sessionCookieOptions(0));
+      return res;
+    }
+  }
 
   try {
     const account = await updateAuthAccountByUserId({

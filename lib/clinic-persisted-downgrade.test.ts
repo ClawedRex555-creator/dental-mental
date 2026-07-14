@@ -346,6 +346,74 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     assert.equal(saved.medicalRecords.some((r) => r.id === "mr0"), false);
   });
 
+  it("mergeClinicDataForSave restores medical records on suspicious mass loss", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [patient("p1")];
+    existing.doctors = [
+      {
+        id: "d1",
+        name: "Doc",
+        specialization: "T",
+        phone: "",
+        email: "",
+        cabinet: "—",
+        commissionPercent: 0,
+        status: "active",
+        role: "doctor",
+      },
+    ];
+    existing.medicalRecords = Array.from({ length: 8 }, (_, i) => ({
+      id: `mr${i}`,
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-01",
+      diagnosis: `Diag ${i}`,
+      complaints: "—",
+      treatment: "—",
+    }));
+
+    // Имитируем устаревшую вкладку после деплоя: отправляет старый урезанный снимок медкарты.
+    const incoming = {
+      ...existing,
+      medicalRecords: existing.medicalRecords.slice(0, 2),
+    };
+
+    const saved = mergeClinicDataForSave(existing, incoming);
+    assert.equal(saved.medicalRecords.length, 8);
+  });
+
+  it("isSuspiciousClinicDataDowngrade flags mass medical record loss", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [patient("p1")];
+    existing.doctors = [
+      {
+        id: "d1",
+        name: "Doc",
+        specialization: "T",
+        phone: "",
+        email: "",
+        cabinet: "—",
+        commissionPercent: 0,
+        status: "active",
+        role: "doctor",
+      },
+    ];
+    existing.medicalRecords = Array.from({ length: 8 }, (_, i) => ({
+      id: `mr${i}`,
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-01",
+      diagnosis: `Diag ${i}`,
+      complaints: "—",
+      treatment: "—",
+    }));
+    const incoming = {
+      ...existing,
+      medicalRecords: existing.medicalRecords.slice(0, 2),
+    };
+    assert.equal(isSuspiciousClinicDataDowngrade(existing, incoming), true);
+  });
+
   it("mergeClinicSnapshotWithLocal respects deleted medical records after reload", () => {
     const remote = createFreshPersistedState();
     remote.patients = [patient("p1")];

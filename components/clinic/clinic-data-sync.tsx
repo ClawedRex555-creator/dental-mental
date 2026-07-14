@@ -64,9 +64,8 @@ const PERIODIC_FLUSH_MS = 60_000;
 const SAVE_ACK_PULL_COOLDOWN_MS = 6_000;
 /** Лёгкий опрос meta (только updatedAt) — полный snapshot только при изменениях */
 const PERIODIC_PULL_MS = 4_000;
-const STALE_TAB_AUTO_RELOAD_SIGNALS = 3;
+const STALE_TAB_AUTO_RELOAD_SIGNALS = 1;
 const STALE_TAB_AUTO_RELOAD_COOLDOWN_MS = 120_000;
-const STALE_TAB_AUTO_LOGOUT_CONFLICTS = 3;
 const STALE_TAB_LAST_RELOAD_KEY = "dc-stale-tab-last-reload";
 
 function syncErrorMessage(error: unknown): string {
@@ -108,7 +107,6 @@ export function ClinicDataSync() {
   /** Снимок для подписки — без clinicDataUnsaved, иначе бесконечный subscribe */
   const lastTrackedSnap = useRef("");
   const staleSignalCount = useRef(0);
-  const versionConflictCount = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -423,30 +421,62 @@ export function ClinicDataSync() {
       return { ok: false as const, error: lastError ?? "Не удалось сохранить данные" };
     };
 
-    const flushSave = async (options?: { keepalive?: boolean }) => {
+    const isStaleSyncConflictError = (error: string | undefined) =>
+      Boolean(
+        error &&
+          /STALE_BASELINE_REQUIRED|CONFLICT_VERSION_MISMATCH|ACCIDENTAL_PATIENT_MASS_LOSS|ACCIDENTAL_SCHEDULE_MASS_LOSS|конфликт версии|изменены на другом устройстве|устарел|массового удаления пациентов|массового изменения расписания/i.test(
+            error
+          )
+      );
+
+    /** Подтянуть сервер, сохранить локальные правки и обновить CAS baseline */
+    const refreshBaselineMergingLocalEdits = async () => {
+      const remote = await fetchClinicDataFromServer();
+      if (cancelled || !remote?.data) return false;
+      discardStalePendingClinicSnapshot(remote.data);
+      applyRemoteSnapshot(remote.data, remote.updatedAt, { preferServer: false });
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      return true;
+    };
+
+    const waitUntilNotSaving = async (timeoutMs = 30_000) => {
+      const started = Date.now();
+      while (saving.current && !cancelled && Date.now() - started < timeoutMs) {
+        await sleep(50);
+      }
+    };
+
+    const flushSave = async (options?: {
+      keepalive?: boolean;
+      /** Для явного «Отправить и обновить»: не разлогинивать при 409, а вернуть конфликт */
+      skipStaleLogout?: boolean;
+    }): Promise<{ ok: boolean; conflict?: boolean }> => {
       if (!syncReady.current || syncForbidden.current || !canWrite.current || saving.current) {
-        return;
+        return { ok: false };
       }
       if (!initialLoadDone.current) {
         flushAfterBaseline.current = true;
-        return;
+        return { ok: false };
       }
 
       const storeNow = useClinicStore.getState();
-      if (storeNow.clinicSyncPhase !== "ready") return;
-      if (storeNow.clinicSavePausedUntil > Date.now()) return;
+      if (storeNow.clinicSyncPhase !== "ready") return { ok: false };
+      if (storeNow.clinicSavePausedUntil > Date.now()) return { ok: false };
 
       const snapshot = pickPersistedState(storeNow);
       if (!hasClinicData(snapshot)) {
         setClinicDataUnsaved(false);
         setClinicSaveStatus("idle");
-        return;
+        return { ok: true };
       }
       const json = JSON.stringify(snapshot);
       if (json === lastSavedJson.current) {
         setClinicDataUnsaved(false);
         setClinicSaveStatus("idle");
-        return;
+        return { ok: true };
       }
 
       setClinicSaveStatus("saving");
@@ -454,7 +484,7 @@ export function ClinicDataSync() {
       setClinicDataSaveError(null);
 
       if (!persistPendingSnapshot(snapshot)) {
-        return;
+        return { ok: false };
       }
 
       saving.current = true;
@@ -466,14 +496,13 @@ export function ClinicDataSync() {
         });
 
         if (saveResult.ok) {
-          versionConflictCount.current = 0;
           const acked = await verifySaveAckOnServer(saveResult.updatedAt);
           if (!acked) {
             markSaveFailed(
               "Сервер не подтвердил сохранение (часто из‑за VPN или медленной сети). Нажмите «Повторить отправку»."
             );
             toast.error("Данные могли не дойти до сервера — повторите отправку");
-            return;
+            return { ok: false };
           }
 
           lastSavedJson.current = json;
@@ -496,36 +525,39 @@ export function ClinicDataSync() {
             }
           }
           notifyClinicDataChanged();
+          return { ok: true };
         } else if (saveResult.forbidden) {
-          versionConflictCount.current = 0;
           syncForbidden.current = true;
           syncReady.current = false;
           canWrite.current = false;
           setClinicSaveStatus("failed");
           finishPhase("read_only");
+          return { ok: false };
         } else if (saveResult.error) {
-          if (
-            /CONFLICT_VERSION_MISMATCH|конфликт версии|изменены на другом устройстве/i.test(
-              saveResult.error
-            )
-          ) {
-            versionConflictCount.current += 1;
-            if (versionConflictCount.current >= STALE_TAB_AUTO_LOGOUT_CONFLICTS) {
-              await forceLogoutDueToStaleTab(
-                "Сессия в этой вкладке слишком устарела. Выполнен выход для безопасного повторного входа."
-              );
-              return;
+          if (isStaleSyncConflictError(saveResult.error)) {
+            setClinicServerNewerAvailable(true);
+            if (options?.skipStaleLogout) {
+              // Не уводим в failed/logout — вызывающий код сделает merge + retry
+              setClinicSaveStatus("pending");
+              setClinicDataUnsaved(true);
+              setClinicDataSaveError(null);
+              return { ok: false, conflict: true };
             }
-          } else {
-            versionConflictCount.current = 0;
+            await forceLogoutDueToStaleTab(
+              "Вкладка устарела и больше не может сохранять данные. Выполнен выход, войдите заново."
+            );
+            return { ok: false, conflict: true };
           }
           markSaveFailed(saveResult.error);
           toast.error(saveResult.error);
+          return { ok: false };
         }
+        return { ok: false };
       } catch (e) {
         const msg = clinicSaveErrorMessage(e);
         markSaveFailed(msg);
         toast.error(msg);
+        return { ok: false };
       } finally {
         saving.current = false;
         if (pendingFlushAfterSave.current) {
@@ -673,8 +705,61 @@ export function ClinicDataSync() {
         clearTimeout(saveTimer.current);
         saveTimer.current = null;
       }
-      await flushSave();
-      await pullRemoteSnapshot({ force: true, allowDuringSaveCooldown: true });
+
+      // Дождаться текущей отправки, иначе flushSave сразу no-op при saving.current
+      await waitUntilNotSaving();
+      if (cancelled) return;
+      if (saving.current) {
+        toast.error("Идёт другая отправка на сервер — подождите пару секунд и нажмите снова.");
+        return;
+      }
+
+      // 1) Сначала сверить baseline с сервером, сохранив локальные правки
+      try {
+        await refreshBaselineMergingLocalEdits();
+      } catch {
+        /* всё равно пробуем отправить */
+      }
+      if (cancelled) return;
+
+      // 2) Отправить объединённый снимок с актуальным expectedUpdatedAt
+      let result = await flushSave({ skipStaleLogout: true });
+
+      // 3) Если между merge и PUT снова пришёл конфликт — ещё одна попытка
+      if (result.conflict) {
+        try {
+          await refreshBaselineMergingLocalEdits();
+        } catch {
+          /* ignore */
+        }
+        if (!cancelled) {
+          result = await flushSave({ skipStaleLogout: true });
+        }
+      }
+
+      if (cancelled) return;
+
+      if (result.ok) {
+        toast.success("Изменения отправлены, данные обновлены");
+      } else if (result.conflict) {
+        markSaveFailed(
+          "Конфликт с данными на сервере. Нажмите «Отменить мои правки» или обновите страницу."
+        );
+        toast.error(
+          "Не удалось отправить из‑за конфликта. Нажмите «Отменить мои правки» или обновите страницу."
+        );
+      }
+
+      // 4) Подтянуть актуальный снимок после успешной отправки
+      await pullRemoteSnapshot({
+        force: true,
+        allowApplyDespitePending: result.ok,
+        allowDuringSaveCooldown: true,
+      });
+
+      if (!result.ok && !result.conflict && hasUnsavedUserEdits()) {
+        setClinicServerNewerAvailable(true);
+      }
     });
 
     registerDiscardLocalEditsAndPull(discardLocalEditsAndPull);

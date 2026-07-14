@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { findAccountByLogin, verifyAccountPassword } from "@/lib/auth-accounts-server";
 import { AUTH_COOKIE, createSessionToken } from "@/lib/auth-session";
-import { findClinicBySlug } from "@/lib/clinic-db.server";
+import { bumpAuthSessionVersionByUserIdDb, findClinicBySlug } from "@/lib/clinic-db.server";
 import { parseClinicSlugFromHost } from "@/lib/clinic-host";
 import { isDatabaseEnabled } from "@/lib/db";
 import { loginRedirectForRole } from "@/lib/login-redirect";
@@ -103,9 +103,16 @@ export async function POST(request: Request) {
     // журнал не должен блокировать вход
   }
 
+  let sessionVersion: number | undefined;
+  if (isDatabaseEnabled() && clinicId) {
+    sessionVersion =
+      (await bumpAuthSessionVersionByUserIdDb(clinicId, account.id)) ?? undefined;
+  }
+
   const token = createSessionToken({
     userId: account.id,
     staffId: account.staffId,
+    sessionVersion,
     role: account.role,
     name: account.name,
     email: account.login,

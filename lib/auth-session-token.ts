@@ -8,6 +8,8 @@ export const DEV_FALLBACK_SECRET = "dentalcloud-mis-dev-secret-change-in-product
 export interface SessionTokenPayload {
   userId: string;
   staffId?: string;
+  /** Версия серверной сессии: позволяет инвалидировать вход на других устройствах */
+  sessionVersion?: number;
   role: UserRole;
   name: string;
   email: string;

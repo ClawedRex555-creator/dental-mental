@@ -68,6 +68,29 @@ describe("clinic-snapshot-load", () => {
     assert.equal(shouldPushSnapshotAfterServerFetch(remote, prepared, opts), false);
   });
 
+  it("server database mode does not auto-restore orphan patient stubs", () => {
+    const remote = createFreshPersistedState();
+    remote.appointments = [
+      {
+        id: "a-orphan",
+        patientId: "p-missing",
+        doctorId: "d1",
+        date: "2026-06-22",
+        startTime: "10:00",
+        endTime: "10:30",
+        durationMinutes: 30,
+        status: "scheduled",
+        price: 0,
+        paymentStatus: "pending",
+      },
+    ];
+    const local = createFreshPersistedState();
+    const opts = { serverDatabaseMode: true as const };
+
+    const prepared = prepareSnapshotAfterServerFetch(remote, local, opts);
+    assert.equal(prepared.patients.length, 0);
+  });
+
   it("pushes when local has new clinic expenses", () => {
     const remote = createFreshPersistedState();
     const local = createFreshPersistedState();

@@ -88,6 +88,10 @@ describe("buildCdaForTemplate", () => {
     assert.match(xml, /<section[\s\S]*code="RESCONS"/);
     assert.match(xml, /<streetAddressLine>/);
     assert.match(xml, /<identity:IdentityDoc/);
+    assert.match(
+      xml,
+      /<patient>[\s\S]*<name>[\s\S]*<family>Тимошенко<\/family>[\s\S]*<given>Наталья<\/given>[\s\S]*<given>Петровна<\/given>[\s\S]*<\/name>[\s\S]*<\/patient>/
+    );
     assert.match(xml, /typeCode="PPRF"/);
     assert.doesNotMatch(xml, /<code code="341"/);
   });

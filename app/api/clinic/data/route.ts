@@ -5,12 +5,12 @@ import { asClinicBoundSession, type ClinicBoundSession } from "@/lib/clinic-boun
 import { assertClinicHost } from "@/lib/assert-clinic-host";
 import {
   CLINIC_DATA_SCHEMA_VERSION,
-  mergeClinicDataForSave,
-  mergeClinicDataOnWriteConflict,
   parseClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
 import {
   getClinicDataDbWithLegacyStaff,
+  PatientMassLossGuardError,
+  ScheduleMassLossGuardError,
   saveClinicDataDb,
 } from "@/lib/clinic-data-db.server";
 import {
@@ -30,6 +30,15 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "private, no-store, must-revalidate",
   Vary: "Cookie",
 };
+
+function isSessionRevokedForAccount(
+  session: ClinicBoundSession,
+  authUser: Awaited<ReturnType<typeof findAuthUserByUserIdDb>>
+): boolean {
+  if (!authUser) return false;
+  const dbVersion = authUser.sessionVersion ?? 0;
+  return typeof session.sessionVersion !== "number" || session.sessionVersion !== dbVersion;
+}
 
 async function requireClinicSession(
   request: Request
@@ -56,6 +65,12 @@ export async function GET(request: Request) {
   if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
   const session = sessionOrDenied;
   const authUser = await findAuthUserByUserIdDb(session.clinicId, session.userId);
+  if (isSessionRevokedForAccount(session, authUser)) {
+    return NextResponse.json(
+      { error: "Сессия завершена: выполнен вход с другого устройства." },
+      { status: 401, headers: NO_STORE_HEADERS }
+    );
+  }
   const role = authUser?.role ?? session.role;
   if (!authUser || !canReadClinicDataSync(role)) {
     return NextResponse.json(
@@ -117,6 +132,12 @@ export async function PUT(request: Request) {
   const session = sessionOrDenied;
 
   const authUser = await findAuthUserByUserIdDb(session.clinicId, session.userId);
+  if (isSessionRevokedForAccount(session, authUser)) {
+    return NextResponse.json(
+      { ok: false, error: "Сессия завершена: выполнен вход с другого устройства." },
+      { status: 401, headers: NO_STORE_HEADERS }
+    );
+  }
   const role = authUser?.role ?? session.role;
   if (!authUser || !canWriteClinicDataSync(role)) {
     return NextResponse.json(
@@ -133,7 +154,7 @@ export async function PUT(request: Request) {
     );
   }
 
-  let body: { data?: unknown; expectedUpdatedAt?: string };
+  let body: { data?: unknown; expectedUpdatedAt?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -153,16 +174,40 @@ export async function PUT(request: Request) {
 
   try {
     const existing = await getClinicDataDbWithLegacyStaff(session.clinicId);
-    let toPersist = parsed;
-    let mergedConflict = false;
-    if (
-      existing?.data &&
-      body.expectedUpdatedAt &&
-      existing.updatedAt > body.expectedUpdatedAt
-    ) {
-      toPersist = mergeClinicDataOnWriteConflict(existing.data, parsed);
-      mergedConflict = true;
+    const expectedUpdatedAt =
+      typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
+        ? body.expectedUpdatedAt
+        : null;
+
+    // Hard guard: never accept writes from tabs that do not carry
+    // a sync baseline when snapshot already exists on server.
+    if (existing?.data && !expectedUpdatedAt) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "STALE_BASELINE_REQUIRED",
+          error:
+            "Вкладка работает со старыми данными. Обновите страницу и повторите действие.",
+          serverUpdatedAt: existing.updatedAt,
+        },
+        { status: 409, headers: NO_STORE_HEADERS }
+      );
     }
+
+    // Hard guard: reject stale baseline instead of silently merge-overwriting.
+    if (existing?.data && expectedUpdatedAt && existing.updatedAt > expectedUpdatedAt) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "CONFLICT_VERSION_MISMATCH",
+          error:
+            "Данные клиники уже изменились в другой вкладке/на другом устройстве. Обновите страницу.",
+          serverUpdatedAt: existing.updatedAt,
+        },
+        { status: 409, headers: NO_STORE_HEADERS }
+      );
+    }
+    let toPersist = parsed;
     toPersist = preserveServicesForReadOnlyRoles(
       role,
       toPersist,
@@ -202,9 +247,31 @@ export async function PUT(request: Request) {
       ok: true,
       updatedAt: saved.updatedAt,
       version: saved.version,
-      merged: mergedConflict,
+      merged: false,
     }, { headers: NO_STORE_HEADERS });
   } catch (e) {
+    if (e instanceof PatientMassLossGuardError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: e.code,
+          error:
+            "Обнаружена попытка массового удаления пациентов из устаревшей вкладки. Обновите страницу и повторите действие.",
+        },
+        { status: 409, headers: NO_STORE_HEADERS }
+      );
+    }
+    if (e instanceof ScheduleMassLossGuardError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: e.code,
+          error:
+            "Обнаружена попытка массового изменения расписания из устаревшей вкладки. Обновите страницу и повторите действие.",
+        },
+        { status: 409, headers: NO_STORE_HEADERS }
+      );
+    }
     console.error("[clinic/data] save failed", e);
     return NextResponse.json(
       { ok: false, error: "Не удалось сохранить данные" },

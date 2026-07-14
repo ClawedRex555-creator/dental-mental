@@ -43,6 +43,7 @@ export function resolveStructuredAddress(
 /** Адрес МО по схематрону У1-3 / Core02-1 */
 export function buildStructuredAddrXml(address: Required<StructuredAddressInput>): string {
   return `<addr>
+        <address:Type xsi:type="CD" code="3" codeSystem="1.2.643.5.1.13.13.11.1504" codeSystemName="Тип адреса пациента" codeSystemVersion="1.0" displayName="Адрес проживания"/>
         <streetAddressLine>${xmlEscape(address.streetLine)}</streetAddressLine>
         <address:stateCode xsi:type="CD" code="${xmlEscape(address.regionCode)}" codeSystem="${NSI_REGION}" codeSystemName="Субъекты Российской Федерации" codeSystemVersion="${NSI_REGION_VERSION}" displayName="${xmlEscape(address.regionName)}"/>
         <postalCode>${xmlEscape(address.postalCode)}</postalCode>

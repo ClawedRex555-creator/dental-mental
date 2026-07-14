@@ -105,7 +105,7 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
     setIdRoot: buildMisIdRoot(orgOid, "50", misNumber, misInstance),
     patientIdRoot: buildMisIdRoot(orgOid, "10", misNumber, misInstance),
     patientMisExtension: input.patient.id,
-    encounterIdRoot: buildMisIdRoot(orgOid, "15", misNumber, misInstance),
+    encounterIdRoot: buildMisIdRoot(orgOid, "17", misNumber, misInstance),
     encounterCaseExtension: `${encounterId}-case`,
     orgOid,
     orgName,

@@ -59,6 +59,7 @@ export function createRefreshedSessionToken(
   return createSessionToken({
     userId: session.userId,
     staffId: session.staffId,
+    sessionVersion: session.sessionVersion,
     role: patch.role ?? session.role,
     name: patch.name ?? session.name,
     email: patch.email ?? session.email,

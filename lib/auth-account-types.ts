@@ -8,4 +8,5 @@ export interface AuthAccountRecord {
   role: UserRole;
   name: string;
   staffId?: string;
+  sessionVersion?: number;
 }

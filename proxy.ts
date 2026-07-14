@@ -38,6 +38,7 @@ function isPublicApi(pathname: string): boolean {
     pathname.startsWith("/api/auth/logout") ||
     pathname.startsWith("/api/auth/me") ||
     pathname.startsWith("/api/clinic/context") ||
+    pathname.startsWith("/api/landing/connection-requests") ||
     pathname.startsWith("/api/platform/auth/login") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/internal/tls-ask") ||

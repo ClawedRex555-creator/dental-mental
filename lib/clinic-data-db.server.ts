@@ -4,6 +4,8 @@ import {
   CLINIC_DATA_SCHEMA_VERSION,
   createFreshPersistedState,
   hasClinicData,
+  hasEntityListDeletion,
+  isLikelyAccidentalMassEntityLoss,
   isSuspiciousClinicDataDowngrade,
   mergeClinicDataForSave,
   parseClinicPersistedState,
@@ -21,6 +23,47 @@ export interface ClinicDataRecord {
   data: ClinicPersistedState;
   updatedAt: string;
   version: number;
+}
+
+export class PatientMassLossGuardError extends Error {
+  readonly code = "ACCIDENTAL_PATIENT_MASS_LOSS" as const;
+  constructor() {
+    super("Отклонено: вкладка пытается резко сократить список пациентов");
+  }
+}
+
+export class ScheduleMassLossGuardError extends Error {
+  readonly code = "ACCIDENTAL_SCHEDULE_MASS_LOSS" as const;
+  constructor() {
+    super("Отклонено: вкладка пытается резко сократить расписание");
+  }
+}
+
+function enforceDeletedPatientsHard(
+  snapshot: ClinicPersistedState,
+  deletedPatientIds: Set<string>
+): ClinicPersistedState {
+  if (!deletedPatientIds.size) return snapshot;
+  const filterByPatient = <T extends { patientId?: string }>(rows: T[]) =>
+    rows.filter((row) => !row.patientId || !deletedPatientIds.has(row.patientId));
+  const nextTeeth = { ...snapshot.teethByPatient };
+  for (const patientId of deletedPatientIds) {
+    delete nextTeeth[patientId];
+  }
+  return {
+    ...snapshot,
+    patients: snapshot.patients.filter((p) => !deletedPatientIds.has(p.id)),
+    appointments: filterByPatient(snapshot.appointments),
+    medicalRecords: filterByPatient(snapshot.medicalRecords),
+    treatmentPlans: filterByPatient(snapshot.treatmentPlans),
+    payments: filterByPatient(snapshot.payments),
+    invoices: filterByPatient(snapshot.invoices),
+    workActs: filterByPatient(snapshot.workActs),
+    prepayments: filterByPatient(snapshot.prepayments),
+    patientFiles: filterByPatient(snapshot.patientFiles),
+    patientNotes: filterByPatient(snapshot.patientNotes),
+    teethByPatient: nextTeeth,
+  };
 }
 
 export async function getClinicDataDb(clinicId: string): Promise<ClinicDataRecord | null> {
@@ -119,10 +162,31 @@ export async function saveClinicDataDb(
   options?: { allowEmptyResult?: boolean }
 ): Promise<ClinicDataRecord> {
   const existing = await getClinicDataDbWithLegacyStaff(clinicId);
-  const toSave =
+  if (
+    existing &&
+    isLikelyAccidentalMassEntityLoss(existing.data.patients, data.patients)
+  ) {
+    throw new PatientMassLossGuardError();
+  }
+  if (
+    existing &&
+    isLikelyAccidentalMassEntityLoss(existing.data.appointments, data.appointments)
+  ) {
+    throw new ScheduleMassLossGuardError();
+  }
+  const deletedPatientIds = new Set<string>();
+  if (existing && hasEntityListDeletion(existing.data.patients, data.patients)) {
+    const incomingPatientIds = new Set(data.patients.map((p) => p.id));
+    for (const patient of existing.data.patients) {
+      if (!incomingPatientIds.has(patient.id)) deletedPatientIds.add(patient.id);
+    }
+  }
+
+  const merged =
     existing && hasClinicData(existing.data)
       ? mergeClinicDataForSave(existing.data, data)
       : data;
+  const toSave = enforceDeletedPatientsHard(merged, deletedPatientIds);
 
   if (
     !options?.allowEmptyResult &&

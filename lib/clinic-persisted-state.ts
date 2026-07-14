@@ -882,10 +882,6 @@ export function mergeClinicDataForSave(
     incoming.legalDocuments
   );
   const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
-  const hasMedicalRecordDeletion = hasEntityListDeletion(
-    existing.medicalRecords,
-    incoming.medicalRecords
-  );
   const hasTreatmentPlanDeletion = hasEntityListDeletion(
     existing.treatmentPlans,
     incoming.treatmentPlans
@@ -920,7 +916,7 @@ export function mergeClinicDataForSave(
     medicalRecords: mergeArr(
       existing.medicalRecords,
       incoming.medicalRecords,
-      hasPatientDeletion || hasMedicalRecordDeletion ? undefined : protect
+      hasPatientDeletion ? undefined : protect
     ),
     treatmentPlans: mergeArr(
       existing.treatmentPlans,
@@ -1167,10 +1163,6 @@ export function isSuspiciousClinicDataDowngrade(
     incoming.legalDocuments
   );
   const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
-  const hasMedicalRecordDeletion = hasEntityListDeletion(
-    existing.medicalRecords,
-    incoming.medicalRecords
-  );
   const hasTreatmentPlanDeletion = hasEntityListDeletion(
     existing.treatmentPlans,
     incoming.treatmentPlans
@@ -1194,7 +1186,7 @@ export function isSuspiciousClinicDataDowngrade(
     {
       existing: existing.medicalRecords,
       incoming: incoming.medicalRecords,
-      protectMassLoss: !hasPatientDeletion && !hasMedicalRecordDeletion,
+      protectMassLoss: !hasPatientDeletion,
     },
     {
       existing: existing.treatmentPlans,

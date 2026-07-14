@@ -101,8 +101,9 @@ export async function findAuthUserByStaffIdDb(
         name: string;
         staff_id: string | null;
         clinic_id: string;
+        session_version: number | string | null;
       }>(
-        `SELECT id, login, password_hash, role, name, staff_id, clinic_id
+        `SELECT id, login, password_hash, role, name, staff_id, clinic_id, session_version
          FROM auth_users WHERE clinic_id = $1 AND staff_id = $2 LIMIT 1`,
         [clinicId, staffId]
       );
@@ -116,6 +117,7 @@ export async function findAuthUserByStaffIdDb(
         role: row.role,
         name: row.name,
         staffId: row.staff_id ?? undefined,
+        sessionVersion: Number(row.session_version ?? 0),
       };
     })) ?? null
   );
@@ -135,8 +137,9 @@ export async function findAuthUserByUserIdDb(
         name: string;
         staff_id: string | null;
         clinic_id: string;
+        session_version: number | string | null;
       }>(
-        `SELECT id, login, password_hash, role, name, staff_id, clinic_id
+        `SELECT id, login, password_hash, role, name, staff_id, clinic_id, session_version
          FROM auth_users WHERE clinic_id = $1 AND id = $2 LIMIT 1`,
         [clinicId, userId]
       );
@@ -150,6 +153,7 @@ export async function findAuthUserByUserIdDb(
         role: row.role,
         name: row.name,
         staffId: row.staff_id ?? undefined,
+        sessionVersion: Number(row.session_version ?? 0),
       };
     })) ?? null
   );
@@ -253,8 +257,9 @@ export async function findAuthUserByLogin(
         name: string;
         staff_id: string | null;
         clinic_id: string;
+        session_version: number | string | null;
       }>(
-        `SELECT id, login, password_hash, role, name, staff_id, clinic_id
+        `SELECT id, login, password_hash, role, name, staff_id, clinic_id, session_version
          FROM auth_users WHERE clinic_id = $1 AND login = $2 LIMIT 1`,
         [clinicId, key]
       );
@@ -268,6 +273,7 @@ export async function findAuthUserByLogin(
         role: row.role,
         name: row.name,
         staffId: row.staff_id ?? undefined,
+        sessionVersion: Number(row.session_version ?? 0),
       };
     })) ?? null
   );
@@ -326,4 +332,23 @@ export async function removeAuthUserByStaffIdDb(
       staffId,
     ]);
   });
+}
+
+export async function bumpAuthSessionVersionByUserIdDb(
+  clinicId: string,
+  userId: string
+): Promise<number | null> {
+  return (
+    (await withDb(async (client) => {
+      const res = await client.query<{ session_version: number | string }>(
+        `UPDATE auth_users
+           SET session_version = COALESCE(session_version, 0) + 1
+         WHERE clinic_id = $1 AND id = $2
+         RETURNING session_version`,
+        [clinicId, userId]
+      );
+      const row = res.rows[0];
+      return row ? Number(row.session_version) : null;
+    })) ?? null
+  );
 }

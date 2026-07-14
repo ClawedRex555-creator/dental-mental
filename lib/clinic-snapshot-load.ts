@@ -137,18 +137,17 @@ export function mergeRemoteSnapshotForPull(
       ...(local.deletedServiceIds ?? []),
     ]),
   ];
-  return repairIfOrphans(
-    applyDeletedWorkActTombstones(
-      applyDeletedServiceTombstones(
-        applyDeletedLegalDocumentTombstones(
-          { ...base, deletedWorkActIds, deletedLegalDocumentIds, deletedServiceIds },
-          deletedLegalDocumentIds
-        ),
-        deletedServiceIds
+  const withTombstones = applyDeletedWorkActTombstones(
+    applyDeletedServiceTombstones(
+      applyDeletedLegalDocumentTombstones(
+        { ...base, deletedWorkActIds, deletedLegalDocumentIds, deletedServiceIds },
+        deletedLegalDocumentIds
       ),
-      deletedWorkActIds
-    )
+      deletedServiceIds
+    ),
+    deletedWorkActIds
   );
+  return hasUnsavedUserEdits ? repairIfOrphans(withTombstones) : withTombstones;
 }
 
 /** Есть ли на сервере изменения относительно baseline (обычно текущий экран) */
@@ -206,7 +205,7 @@ export function prepareSnapshotAfterServerFetch(
   options?: { serverDatabaseMode?: boolean }
 ): ClinicPersistedState {
   if (!needsMergeWithServerOnLoad(local, options)) {
-    return repairIfOrphans(remote);
+    return options?.serverDatabaseMode ? remote : repairIfOrphans(remote);
   }
 
   const pending = readPendingClinicSnapshot();

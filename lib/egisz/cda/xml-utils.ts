@@ -46,18 +46,18 @@ export function buildMisIdRoot(
   return `${organizationOid.trim()}.100.${misNumber}.${misInstance}.${suffix}`;
 }
 
-/** HL7 name: ровно один given (имя + отчество через пробел) */
+/** HL7 name: для N3 имя и отчество должны быть в отдельных <given>. */
 export function buildCdaPersonNameXml(
   family: string,
   given: string,
   middleName?: string
 ): string {
-  const givenFull = middleName?.trim()
-    ? `${given.trim()} ${middleName.trim()}`
-    : given.trim();
+  const givenName = given.trim();
+  const middle = middleName?.trim();
+  const middleNode = middle ? `\n          <given>${xmlEscape(middle)}</given>` : "";
   return `<name>
           <family>${xmlEscape(family)}</family>
-          <given>${xmlEscape(givenFull)}</given>
+          <given>${xmlEscape(givenName)}</given>${middleNode}
         </name>`;
 }
 

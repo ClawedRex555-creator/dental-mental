@@ -13,6 +13,8 @@ export interface ResolvedAuthUser {
   user: ClinicUser;
   /** true — учётка найдена в DB/файле, false — сессия устарела/уволен */
   found: boolean;
+  /** Актуальная версия серверной сессии (только DB-режим). */
+  sessionVersion?: number;
   /** Поля, отличающиеся от JWT — нужно обновить cookie */
   sessionPatch?: {
     role?: UserRole;
@@ -71,6 +73,7 @@ export async function resolveAuthUserFromSession(
       return {
         user,
         found: true,
+        sessionVersion: account.sessionVersion ?? 0,
         sessionPatch: sessionPatchIfNeeded(session, account),
       };
     }

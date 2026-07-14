@@ -126,7 +126,7 @@ export function ClinicDataSaveBanner() {
                 className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
                 onClick={() => void runSyncAction(requestSaveThenPullClinicData)}
               >
-                Отправить и обновить
+                {syncActionLoading ? "Отправка…" : "Отправить и обновить"}
               </Button>
               <Button
                 type="button"

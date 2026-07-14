@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth-session";
 import { asClinicBoundSession, type ClinicBoundSession } from "@/lib/clinic-bound-session";
 import { assertClinicHost } from "@/lib/assert-clinic-host";
+import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 import { removeStaffFromClinicSnapshot } from "@/lib/clinic-data-db.server";
@@ -20,6 +21,23 @@ async function requireStaffSession(
   const hostDenied = assertClinicHost(session, request);
   if (hostDenied) return hostDenied;
   return session;
+}
+
+async function ensureFreshAccountSession(
+  session: ClinicBoundSession
+): Promise<NextResponse | null> {
+  const authUser = await findAuthUserByUserIdDb(session.clinicId, session.userId);
+  if (!authUser) {
+    return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
+  }
+  const dbVersion = authUser.sessionVersion ?? 0;
+  if (typeof session.sessionVersion !== "number" || session.sessionVersion !== dbVersion) {
+    return NextResponse.json(
+      { error: "Сессия завершена: выполнен вход с другого устройства." },
+      { status: 401 }
+    );
+  }
+  return null;
 }
 
 function parseDoctor(body: unknown): Doctor | null {
@@ -47,6 +65,8 @@ export async function GET(request: Request) {
   const sessionOrDenied = await requireStaffSession(request);
   if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
   const session = sessionOrDenied;
+  const revoked = await ensureFreshAccountSession(session);
+  if (revoked) return revoked;
 
   const staff = await listStaffDb(session.clinicId);
   return NextResponse.json({ staff, database: true });
@@ -64,6 +84,8 @@ export async function POST(request: Request) {
   const sessionOrDenied = await requireStaffSession(request);
   if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
   const session = sessionOrDenied;
+  const revoked = await ensureFreshAccountSession(session);
+  if (revoked) return revoked;
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }
@@ -101,6 +123,8 @@ export async function DELETE(request: Request) {
   const sessionOrDenied = await requireStaffSession(request);
   if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
   const session = sessionOrDenied;
+  const revoked = await ensureFreshAccountSession(session);
+  if (revoked) return revoked;
   if (session.role !== "owner" && session.role !== "admin") {
     return NextResponse.json({ error: "Доступ запрещён" }, { status: 403 });
   }

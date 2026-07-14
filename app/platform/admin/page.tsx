@@ -43,23 +43,45 @@ interface ClinicEgiszRow {
   sentCount: number;
 }
 
+type ConnectionRequestStatus = "new" | "contacted" | "approved" | "rejected";
+
+interface ConnectionRequestRow {
+  id: string;
+  createdAt: string;
+  clinicName: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  desiredSlug: string | null;
+  message: string | null;
+  status: ConnectionRequestStatus;
+  clinicId: string | null;
+  ownerUserId: string | null;
+  notes: string | null;
+}
+
 export default function PlatformAdminPage() {
   const [clinics, setClinics] = useState<ClinicRow[]>([]);
   const [egiszClinics, setEgiszClinics] = useState<ClinicEgiszRow[]>([]);
+  const [connectionRequests, setConnectionRequests] = useState<ConnectionRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [requestSavingId, setRequestSavingId] = useState<string | null>(null);
+  const [requestProvisioningId, setRequestProvisioningId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [clinicsRes, egiszRes] = await Promise.all([
+      const [clinicsRes, egiszRes, requestsRes] = await Promise.all([
         fetch("/api/platform/clinics", { credentials: "same-origin" }),
         fetch("/api/platform/egisz", { credentials: "same-origin" }),
+        fetch("/api/platform/connection-requests", { credentials: "same-origin" }),
       ]);
       const clinicsData = await clinicsRes.json().catch(() => ({}));
       const egiszData = await egiszRes.json().catch(() => ({}));
+      const requestsData = await requestsRes.json().catch(() => ({}));
 
       if (!clinicsRes.ok) {
         setLoadError(clinicsData.error || `Ошибка загрузки (${clinicsRes.status})`);
@@ -70,6 +92,11 @@ export default function PlatformAdminPage() {
 
       if (egiszRes.ok) {
         setEgiszClinics(egiszData.clinics ?? []);
+      }
+      if (requestsRes.ok) {
+        setConnectionRequests(requestsData.requests ?? []);
+      } else {
+        setConnectionRequests([]);
       }
     } catch {
       setLoadError("Не удалось связаться с сервером");
@@ -82,6 +109,63 @@ export default function PlatformAdminPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const updateRequestStatus = async (id: string, status: ConnectionRequestStatus) => {
+    setRequestSavingId(id);
+    try {
+      const response = await fetch("/api/platform/connection-requests", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => ({}))) as { error?: string };
+        toast.error(error.error ?? "Не удалось обновить заявку");
+        return;
+      }
+      setConnectionRequests((prev) => prev.map((row) => (row.id === id ? { ...row, status } : row)));
+      toast.success("Статус заявки обновлён");
+    } catch {
+      toast.error("Ошибка сети при обновлении заявки");
+    } finally {
+      setRequestSavingId(null);
+    }
+  };
+
+  const provisionClinic = async (requestId: string) => {
+    setRequestProvisioningId(requestId);
+    try {
+      const response = await fetch("/api/platform/connection-requests", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        clinicSlug?: string;
+        ownerEmail?: string;
+        tempPassword?: string;
+        loginUrl?: string;
+      };
+      if (!response.ok) {
+        toast.error(json.error ?? "Не удалось создать клинику");
+        return;
+      }
+      toast.success("Клиника создана по заявке");
+      if (json.ownerEmail && json.tempPassword && json.loginUrl) {
+        window.alert(
+          `Клиника создана.\n\nЛогин: ${json.ownerEmail}\nВременный пароль: ${json.tempPassword}\nВход: ${json.loginUrl}\n\nСохраните эти данные и передайте клиенту.`
+        );
+      }
+      await load();
+    } catch {
+      toast.error("Ошибка сети при создании клиники");
+    } finally {
+      setRequestProvisioningId(null);
+    }
+  };
 
   const toggleModule = async (clinic: ClinicRow, moduleId: SystemModuleId) => {
     const next = parseClinicModules({
@@ -141,6 +225,100 @@ export default function PlatformAdminPage() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
+        {!loading && !loadError && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Заявки на подключение с сайта</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {connectionRequests.length === 0 ? (
+                <p className="text-sm text-slate-500">Новых заявок пока нет.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-100 text-left text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2">Дата</th>
+                        <th className="px-3 py-2">Клиника</th>
+                        <th className="px-3 py-2">Контакт</th>
+                        <th className="px-3 py-2">Статус</th>
+                        <th className="px-3 py-2">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {connectionRequests.map((request) => (
+                        <tr key={request.id} className="border-t border-slate-100 align-top">
+                          <td className="px-3 py-2 text-slate-500">
+                            {new Date(request.createdAt).toLocaleString("ru-RU")}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-slate-800">{request.clinicName}</div>
+                            {request.desiredSlug && (
+                              <div className="font-mono text-teal-700">{request.desiredSlug}</div>
+                            )}
+                            {request.message && (
+                              <p className="mt-1 max-w-[22rem] text-slate-500">{request.message}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div>{request.contactName}</div>
+                            <div className="text-slate-500">{request.phone}</div>
+                            <div className="text-slate-500">{request.email}</div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium">
+                              {request.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={requestSavingId === request.id}
+                                onClick={() => updateRequestStatus(request.id, "contacted")}
+                              >
+                                Связались
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={requestSavingId === request.id}
+                                onClick={() => updateRequestStatus(request.id, "approved")}
+                              >
+                                Одобрить
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={requestSavingId === request.id}
+                                onClick={() => updateRequestStatus(request.id, "rejected")}
+                              >
+                                Отклонить
+                              </Button>
+                              <Button
+                                size="sm"
+                                disabled={
+                                  requestProvisioningId === request.id ||
+                                  request.status === "approved" ||
+                                  Boolean(request.clinicId)
+                                }
+                                onClick={() => provisionClinic(request.id)}
+                              >
+                                Создать клинику
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {!loading && !loadError && (
           <Card>
             <CardHeader>
@@ -209,7 +387,7 @@ export default function PlatformAdminPage() {
         ) : clinics.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-slate-500">
-              Клиники не найдены. Создайте клинику через регистрацию или БД.
+              Клиники не найдены. Создайте клинику через скрипт `npm run create-clinic`.
             </CardContent>
           </Card>
         ) : (
