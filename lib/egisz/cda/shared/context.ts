@@ -6,7 +6,7 @@ import {
 import { DEFAULT_DENTAL_SERVICE_CODE, DEFAULT_DENTAL_SERVICE_NAME } from "@/lib/egisz/cda/nsi-constants";
 import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
 import {
-  buildStructuredAddrXml,
+  buildOrganizationAddrXml,
   resolveStructuredAddress,
 } from "@/lib/egisz/cda/address-xml";
 import type { CdaBuildInput, CdaDocumentContext, DoctorEntityContext } from "@/lib/egisz/cda/shared/types";
@@ -95,7 +95,7 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
   const misInstance = Number(process.env.EGISZ_MIS_INSTANCE ?? "1") || 1;
   const encounterId = input.record.appointmentId?.trim() || input.record.id;
   const structuredAddr = resolveStructuredAddress(orgAddress);
-  const orgAddrXml = buildStructuredAddrXml(structuredAddr);
+  const orgAddrXml = buildOrganizationAddrXml(structuredAddr);
 
   return {
     input,
@@ -105,6 +105,7 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
     setIdRoot: buildMisIdRoot(orgOid, "50", misNumber, misInstance),
     patientIdRoot: buildMisIdRoot(orgOid, "10", misNumber, misInstance),
     patientMisExtension: input.patient.id,
+    encounterCaseIdRoot: buildMisIdRoot(orgOid, "15", misNumber, misInstance),
     encounterIdRoot: buildMisIdRoot(orgOid, "17", misNumber, misInstance),
     encounterCaseExtension: `${encounterId}-case`,
     orgOid,

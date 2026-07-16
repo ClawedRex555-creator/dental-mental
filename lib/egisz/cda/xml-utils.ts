@@ -46,7 +46,7 @@ export function buildMisIdRoot(
   return `${organizationOid.trim()}.100.${misNumber}.${misInstance}.${suffix}`;
 }
 
-/** HL7 name: для N3 имя и отчество должны быть в отдельных <given>. */
+/** HL7 name по У1-1: ровно 1 given; отчество — identity:Patronymic. */
 export function buildCdaPersonNameXml(
   family: string,
   given: string,
@@ -54,10 +54,12 @@ export function buildCdaPersonNameXml(
 ): string {
   const givenName = given.trim();
   const middle = middleName?.trim();
-  const middleNode = middle ? `\n          <given>${xmlEscape(middle)}</given>` : "";
+  const patronymic = middle
+    ? `\n          <identity:Patronymic xsi:type="ST">${xmlEscape(middle)}</identity:Patronymic>`
+    : "";
   return `<name>
           <family>${xmlEscape(family)}</family>
-          <given>${xmlEscape(givenName)}</given>${middleNode}
+          <given>${xmlEscape(givenName)}</given>${patronymic}
         </name>`;
 }
 

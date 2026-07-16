@@ -99,7 +99,13 @@ export interface ClinicEgiszReadiness {
 
 export function getClinicEgiszReadiness(
   config: EgiszClinicConfig,
-  clinicMeta?: { name?: string; inn?: string }
+  clinicMeta?: {
+    name?: string;
+    inn?: string;
+    ogrn?: string;
+    ogrnip?: string;
+    medicalLicense?: string;
+  }
 ): ClinicEgiszReadiness {
   const resolved = resolveClinicEgiszConfig(config);
   const stubMode = isN3StubMode(resolved);
@@ -107,6 +113,18 @@ export function getClinicEgiszReadiness(
 
   if (!clinicMeta?.name?.trim()) missingForLive.push("Название клиники");
   if (!clinicMeta?.inn?.trim()) missingForLive.push("ИНН клиники");
+  const innDigits = (clinicMeta?.inn ?? "").replace(/\D/g, "");
+  const ogrnDigits = (clinicMeta?.ogrn ?? "").replace(/\D/g, "");
+  const ogrnipDigits = (clinicMeta?.ogrnip ?? "").replace(/\D/g, "");
+  if (innDigits.length === 12 && ogrnipDigits.length !== 15) {
+    missingForLive.push("ОГРНИП (15 цифр) для ИП");
+  }
+  if (innDigits.length === 12 && !clinicMeta?.medicalLicense?.trim()) {
+    missingForLive.push("Номер лицензии на мед. деятельность");
+  }
+  if (innDigits.length === 10 && ogrnDigits.length !== 13) {
+    missingForLive.push("ОГРН (13 цифр) для ООО / юр. лица");
+  }
   if (!resolved.organizationOid?.trim()) missingForLive.push("OID организации");
   if (!resolved.n3?.guid?.trim()) missingForLive.push("GUID N3");
   if (!resolved.n3?.lpuId?.trim()) missingForLive.push("idLPU N3");

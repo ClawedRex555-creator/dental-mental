@@ -1,5 +1,7 @@
 # Интеграция Emkaro с N3.Health ИЭМК (ЕГИСЗ)
 
+Схематроны, ZIP-материалы SEMD и чеклист валидации: [EGISZ-MATERIALS.md](./EGISZ-MATERIALS.md).
+
 Подключение клиники к **N3.Health ИЭМК** для передачи данных в ЕГИСЗ (ИЭМК + РЭМД) по 140-ФЗ.
 
 - Поставщик: [N3.Health](https://n3health.ru)

@@ -1,7 +1,6 @@
 import {
   CDA_FIELD,
   CDA_FIELD_ANAMNESIS_TEXT,
-  CDA_FIELD_BENEFITS,
   CDA_FIELD_NAMES,
   CDA_SECTION,
   CDA_SECTION_TITLES,
@@ -9,6 +8,8 @@ import {
   DEFAULT_PATIENT_CONDITION_NAME,
   DEFAULT_PLACE_CODE,
   DEFAULT_PLACE_NAME,
+  DEFAULT_VISIT_KIND_CODE,
+  DEFAULT_VISIT_KIND_NAME,
   NSI_CODED_FIELDS,
   NSI_CODED_FIELDS_VERSION,
   NSI_MED_SERVICES,
@@ -21,6 +22,8 @@ import {
   NSI_PLACE_OF_CARE_VERSION,
   NSI_SECTIONS,
   NSI_SECTIONS_VERSION,
+  NSI_VISIT_KIND,
+  NSI_VISIT_KIND_VERSION,
 } from "@/lib/egisz/cda/nsi-constants";
 import type { ClinicalNarrative, CdaDocumentContext } from "@/lib/egisz/cda/shared/types";
 import { xmlEscape } from "@/lib/egisz/cda/xml-utils";
@@ -40,7 +43,6 @@ export function textObservation(fieldCode: string, text: string): string {
     <entry>
       <observation classCode="OBS" moodCode="EVN">
         ${codedFieldXml(fieldCode)}
-        <text>${xmlEscape(text)}</text>
         <value xsi:type="ST">${xmlEscape(text)}</value>
       </observation>
     </entry>`;
@@ -64,13 +66,19 @@ export function codedObservation(
 }
 
 export function diagnosisObservation(code: string, displayName: string): string {
-  return `
-    <entry>
-      <observation classCode="OBS" moodCode="EVN">
-        ${codedFieldXml(CDA_FIELD.DIAGNOSIS)}
-        <value xsi:type="CD" code="${xmlEscape(code)}" codeSystem="${NSI_MKB10}" codeSystemName="Международная статистическая классификация болезней и проблем, связанных со здоровьем (10-й пересмотр)" codeSystemVersion="${NSI_MKB10_VERSION}" displayName="${xmlEscape(displayName)}"/>
-      </observation>
-    </entry>`;
+  return codedObservation(
+    CDA_FIELD.MKB10,
+    code,
+    NSI_MKB10,
+    "Международная статистическая классификация болезней и проблем, связанных со здоровьем (10-й пересмотр)",
+    NSI_MKB10_VERSION,
+    displayName
+  );
+}
+
+/** DGN: текстовый диагноз с кодом поля 806 (эталон SEMD 119) */
+export function diagnosisTextObservation(displayName: string): string {
+  return textObservation(CDA_FIELD.CONCLUSION, displayName);
 }
 
 export function nullFlavorSection(sectionCode: string): string {
@@ -118,14 +126,14 @@ export function serviceActSection(
     </component>`;
 }
 
-function diagnosisComponent(code: string, displayName: string): string {
+function diagnosisComponent(displayName: string): string {
   return `
         <component>
           <section>
             ${sectionCodeXml("DGN")}
-            <title>${xmlEscape("Диагноз")}</title>
+            <title>${xmlEscape("Диагнозы")}</title>
             <text>${xmlEscape(displayName)}</text>
-            ${diagnosisObservation(code, displayName)}
+            ${diagnosisTextObservation(displayName)}
           </section>
         </component>`;
 }
@@ -137,25 +145,26 @@ export function buildConsultationBody(ctx: CdaDocumentContext): string {
       <section>
         ${sectionCodeXml(CDA_SECTION.DOCINFO)}
         <title>${xmlEscape(CDA_SECTION_TITLES.DOCINFO)}</title>
-        <text>${xmlEscape(`Место оказания помощи: ${DEFAULT_PLACE_NAME}`)}</text>
+        <text>${xmlEscape(
+          `МКБ-10: ${c.diagnosisCode} ${c.diagnosisDisplay}. Обращение: ${DEFAULT_VISIT_KIND_NAME}. Место: ${DEFAULT_PLACE_NAME}`
+        )}</text>
+        ${diagnosisObservation(c.diagnosisCode, c.diagnosisDisplay)}
+        ${codedObservation(
+          CDA_FIELD.VISIT_KIND,
+          DEFAULT_VISIT_KIND_CODE,
+          NSI_VISIT_KIND,
+          "Вид случая госпитализации или обращения (первичный, повторный)",
+          NSI_VISIT_KIND_VERSION,
+          DEFAULT_VISIT_KIND_NAME
+        )}
         ${codedObservation(
           CDA_FIELD.PLACE_OF_CARE,
           DEFAULT_PLACE_CODE,
           NSI_PLACE_OF_CARE,
-          "Места оказания медицинской помощи",
+          "Место оказания медицинской помощи",
           NSI_PLACE_OF_CARE_VERSION,
           DEFAULT_PLACE_NAME
         )}
-      </section>
-    </component>`;
-
-  const benefits = `
-    <component>
-      <section>
-        ${sectionCodeXml(CDA_SECTION.BENEFITS)}
-        <title>${xmlEscape(CDA_SECTION_TITLES.BENEFITS)}</title>
-        <text>${xmlEscape("Сведения о льготах отсутствуют")}</text>
-        ${textObservation(CDA_FIELD_BENEFITS, "Льготы не установлены")}
       </section>
     </component>`;
 
@@ -167,37 +176,24 @@ export function buildConsultationBody(ctx: CdaDocumentContext): string {
         <text>${xmlEscape(
           `Жалобы: ${c.complaints}. Состояние: ${DEFAULT_PATIENT_CONDITION_NAME}. Объективно: ${c.objective}. Заключение: ${c.conclusion}. Диагноз: ${c.diagnosisDisplay}. Рекомендации: ${c.recommendations}`
         )}</text>
-        ${textObservation(CDA_FIELD.COMPLAINTS, c.complaints)}
         ${codedObservation(
           CDA_FIELD.PATIENT_CONDITION,
           DEFAULT_PATIENT_CONDITION_CODE,
           NSI_PATIENT_CONDITION,
-          "Степени тяжести состояния пациента",
+          "Степень тяжести состояния пациента",
           NSI_PATIENT_CONDITION_VERSION,
           DEFAULT_PATIENT_CONDITION_NAME
         )}
         ${textObservation(CDA_FIELD.OBJECTIVE, c.objective)}
         ${textObservation(CDA_FIELD.CONCLUSION, c.conclusion)}
-        ${textObservation(CDA_FIELD.RECOMMENDATIONS, c.recommendations)}
-        ${diagnosisComponent(c.diagnosisCode, c.diagnosisDisplay)}
-      </section>
-    </component>`;
-
-  const vitalparam = `
-    <component>
-      <section nullFlavor="NI">
-        ${sectionCodeXml(CDA_SECTION.VITALPARAM)}
-        <title>${xmlEscape(CDA_SECTION_TITLES.VITALPARAM)}</title>
-        <text>${xmlEscape("Не измерялись")}</text>
+        ${diagnosisComponent(c.diagnosisDisplay)}
       </section>
     </component>`;
 
   return `
       ${docinfo}
-      ${benefits}
       ${textSection(CDA_SECTION.ANAM, c.diseaseAnamnesis, CDA_FIELD_ANAMNESIS_TEXT)}
       ${textSection(CDA_SECTION.LANAM, c.lifeAnamnesis, CDA_FIELD_ANAMNESIS_TEXT)}
-      ${vitalparam}
       ${rescons}
       ${serviceActSection(ctx, c)}`;
 }
@@ -270,7 +266,7 @@ export function buildEpicrisisBody(ctx: CdaDocumentContext): string {
           <text>${xmlEscape(summary)}</text>
           ${diagnosisObservation(c.diagnosisCode, c.diagnosisDisplay)}
           ${textObservation(CDA_FIELD.CONCLUSION, c.conclusion)}
-          ${textObservation(CDA_FIELD.RECOMMENDATIONS, c.recommendations)}
+          ${textObservation(CDA_FIELD.COMPLAINTS, c.recommendations)}
         </section>
       </component>
       ${serviceActSection(ctx, c)}`;

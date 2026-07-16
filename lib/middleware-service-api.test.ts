@@ -18,6 +18,10 @@ function isServiceApi(pathname: string): boolean {
   return (
     pathname.startsWith("/api/egisz/webhook") ||
     pathname.startsWith("/api/egisz/process") ||
+    pathname.startsWith("/api/notifications/process") ||
+    pathname.startsWith("/api/medflex/booking") ||
+    pathname.startsWith("/api/medflex/health") ||
+    pathname.startsWith("/api/medflex/process") ||
     pathname.startsWith("/api/mobile/")
   );
 }
@@ -29,6 +33,14 @@ describe("middleware service API bypass", () => {
 
   it("allows egisz process cron without session", () => {
     assert.equal(isServiceApi("/api/egisz/process"), true);
+  });
+
+  it("allows medflex booking and health without session", () => {
+    assert.equal(isServiceApi("/api/medflex/booking"), true);
+    assert.equal(isServiceApi("/api/medflex/booking/cancel"), true);
+    assert.equal(isServiceApi("/api/medflex/health"), true);
+    assert.equal(isServiceApi("/api/medflex/process"), true);
+    assert.equal(isServiceApi("/api/medflex/config"), false);
   });
 
   it("does not bypass protected clinic APIs", () => {

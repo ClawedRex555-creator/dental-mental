@@ -44,6 +44,8 @@ export interface CdaDocumentContext {
   patientIdRoot: string;
   patientMisExtension: string;
   encounterIdRoot: string;
+  /** root ….15 — случай оказания помощи (encompassingEncounter/id[1]) */
+  encounterCaseIdRoot: string;
   encounterCaseExtension: string;
   orgOid: string;
   orgName: string;

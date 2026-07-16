@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   createFreshPersistedState,
+  hasSnapshotRecoveryFromMerge,
   isSuspiciousClinicDataDowngrade,
   mergeClinicDataForSave,
   mergeClinicSnapshotWithLocal,
@@ -544,5 +545,46 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     const merged = mergeClinicDataForSave(existing, incoming);
     assert.equal(merged.legalDocuments.length, 1);
     assert.equal(merged.legalDocuments[0]?.id, "ld1");
+  });
+
+  it("mergeClinicSnapshotWithLocal keeps remote-only clinic expenses", () => {
+    const remote = createFreshPersistedState();
+    remote.clinicExpenses = [
+      {
+        id: "e1",
+        date: "2026-07-14",
+        category: "Прочее",
+        amount: 1000,
+        description: "A",
+      },
+      {
+        id: "e2",
+        date: "2026-07-15",
+        category: "Прочее",
+        amount: 2000,
+        description: "B",
+      },
+    ];
+    const local = createFreshPersistedState();
+    local.clinicExpenses = [remote.clinicExpenses[0]!];
+
+    const merged = mergeClinicSnapshotWithLocal(remote, local);
+    assert.equal(merged.clinicExpenses.length, 2);
+    assert.ok(merged.clinicExpenses.some((e) => e.id === "e2"));
+  });
+
+  it("hasSnapshotRecoveryFromMerge detects local-only clinic expenses", () => {
+    const remote = createFreshPersistedState();
+    const merged = createFreshPersistedState();
+    merged.clinicExpenses = [
+      {
+        id: "e-local",
+        date: "2026-07-15",
+        category: "Прочее",
+        amount: 500,
+        description: "Local only",
+      },
+    ];
+    assert.equal(hasSnapshotRecoveryFromMerge(remote, merged), true);
   });
 });

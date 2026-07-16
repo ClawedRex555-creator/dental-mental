@@ -17,13 +17,32 @@ export interface StructuredAddressInput {
   fiasHouseguid?: string;
 }
 
-const NIL_FIAS =
-  "00000000-0000-0000-0000-000000000000";
+const NIL_FIAS = "00000000-0000-0000-0000-000000000000";
+const NSI_PATIENT_ADDRESS_TYPE = "1.2.643.5.1.13.13.11.1504";
+const NSI_PATIENT_ADDRESS_TYPE_VERSION = "1.3";
 
 function parseStreetFromFreeform(address: string): string {
   const trimmed = address.trim();
   if (!trimmed || trimmed === "—") return "Адрес не указан";
   return trimmed;
+}
+
+function hasRealFias(address: Required<StructuredAddressInput>): boolean {
+  return (
+    address.fiasAoguid !== NIL_FIAS &&
+    address.fiasAoguid.trim().length > 0 &&
+    address.fiasAoguid !== "00000000-0000-0000-0000-000000000000"
+  );
+}
+
+function buildFiasBlock(address: Required<StructuredAddressInput>): string {
+  if (!hasRealFias(address)) {
+    return `<fias:Address nullFlavor="NI"/>`;
+  }
+  return `<fias:Address>
+          <fias:AOGUID>${xmlEscape(address.fiasAoguid)}</fias:AOGUID>
+          <fias:HOUSEGUID>${xmlEscape(address.fiasHouseguid)}</fias:HOUSEGUID>
+        </fias:Address>`;
 }
 
 export function resolveStructuredAddress(
@@ -40,25 +59,37 @@ export function resolveStructuredAddress(
   };
 }
 
-/** Адрес МО по схематрону У1-3 / Core02-1 */
-export function buildStructuredAddrXml(address: Required<StructuredAddressInput>): string {
+/** Адрес пациента: address:Type обязателен (NSI 1504). */
+export function buildPatientAddrXml(address: Required<StructuredAddressInput>): string {
   return `<addr>
-        <address:Type xsi:type="CD" code="3" codeSystem="1.2.643.5.1.13.13.11.1504" codeSystemName="Тип адреса пациента" codeSystemVersion="1.0" displayName="Адрес проживания"/>
+        <address:Type xsi:type="CD" code="3" codeSystem="${NSI_PATIENT_ADDRESS_TYPE}" codeSystemName="Тип адреса пациента" codeSystemVersion="${NSI_PATIENT_ADDRESS_TYPE_VERSION}" displayName="Адрес фактического проживания (пребывания)"/>
         <streetAddressLine>${xmlEscape(address.streetLine)}</streetAddressLine>
         <address:stateCode xsi:type="CD" code="${xmlEscape(address.regionCode)}" codeSystem="${NSI_REGION}" codeSystemName="Субъекты Российской Федерации" codeSystemVersion="${NSI_REGION_VERSION}" displayName="${xmlEscape(address.regionName)}"/>
         <postalCode>${xmlEscape(address.postalCode)}</postalCode>
-        <fias:Address>
-          <fias:AOGUID>${xmlEscape(address.fiasAoguid)}</fias:AOGUID>
-          <fias:HOUSEGUID>${xmlEscape(address.fiasHouseguid)}</fias:HOUSEGUID>
-        </fias:Address>
+        ${buildFiasBlock(address)}
       </addr>`;
 }
 
+/** Адрес МО: без address:Type (NSI 1504 только для пациента). */
+export function buildOrganizationAddrXml(address: Required<StructuredAddressInput>): string {
+  return `<addr>
+        <streetAddressLine>${xmlEscape(address.streetLine)}</streetAddressLine>
+        <address:stateCode xsi:type="CD" code="${xmlEscape(address.regionCode)}" codeSystem="${NSI_REGION}" codeSystemName="Субъекты Российской Федерации" codeSystemVersion="${NSI_REGION_VERSION}" displayName="${xmlEscape(address.regionName)}"/>
+        <postalCode>${xmlEscape(address.postalCode)}</postalCode>
+        ${buildFiasBlock(address)}
+      </addr>`;
+}
+
+/** @deprecated Используйте buildPatientAddrXml или buildOrganizationAddrXml */
+export function buildStructuredAddrXml(address: Required<StructuredAddressInput>): string {
+  return buildPatientAddrXml(address);
+}
+
 export const CDA_ADDRESS_NAMESPACES = {
-  identity: "http://rosminzdrav.ru/identity",
-  address: "http://rosminzdrav.ru/address",
-  fias: "http://rosminzdrav.ru/fias",
-  medService: "http://rosminzdrav.ru/medService",
+  identity: "urn:hl7-ru:identity",
+  address: "urn:hl7-ru:address",
+  fias: "urn:hl7-ru:fias",
+  medService: "urn:hl7-ru:medService",
 } as const;
 
 export function clinicalDocumentNamespaceAttrs(): string {

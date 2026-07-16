@@ -52,6 +52,9 @@ function isServiceApi(pathname: string): boolean {
     pathname.startsWith("/api/egisz/webhook") ||
     pathname.startsWith("/api/egisz/process") ||
     pathname.startsWith("/api/notifications/process") ||
+    pathname.startsWith("/api/medflex/booking") ||
+    pathname.startsWith("/api/medflex/health") ||
+    pathname.startsWith("/api/medflex/process") ||
     pathname.startsWith("/api/mobile/")
   );
 }

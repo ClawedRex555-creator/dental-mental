@@ -29,8 +29,13 @@ import { getLegalDocumentUploadFeedback } from "@/lib/legal-pdf-upload-feedback"
 import type { LegalDocument } from "@/lib/types";
 
 export default function LegalPage() {
-  const { legalDocuments, addLegalDocument, updateLegalDocument, removeLegalDocument } =
-    useClinicStore();
+  const {
+    legalDocuments,
+    deletedLegalDocumentIds,
+    addLegalDocument,
+    updateLegalDocument,
+    removeLegalDocument,
+  } = useClinicStore();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<LegalCategory>(LEGAL_CATEGORY_CONSENTS);
   const [notes, setNotes] = useState("");
@@ -40,7 +45,10 @@ export default function LegalPage() {
 
   useEffect(() => {
     if (bundleImported.current) return;
-    const missing = missingLegalConsentBundleEntries(legalDocuments);
+    // Не поднимать удалённые согласия заново при возврате на вкладку
+    const missing = missingLegalConsentBundleEntries(legalDocuments, {
+      deletedIds: deletedLegalDocumentIds,
+    });
     if (missing.length === 0) return;
     bundleImported.current = true;
     const today = new Date().toISOString().slice(0, 10);
@@ -56,7 +64,7 @@ export default function LegalPage() {
     }
     toast.success(`Добавлен комплект ИДС: ${missing.length} документов`);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз при первом открытии
-  }, [legalDocuments.length]);
+  }, [legalDocuments.length, deletedLegalDocumentIds.length]);
 
   const handleAdd = (fileDataUrl?: string, fileName?: string) => {
     const docTitle = title.trim() || fileName?.replace(/\.[^.]+$/, "") || "";
@@ -147,7 +155,11 @@ export default function LegalPage() {
   };
 
   const importBundle = () => {
-    const missing = missingLegalConsentBundleEntries(legalDocuments);
+    // Явный импорт может вернуть ранее удалённые согласия комплекта
+    const missing = missingLegalConsentBundleEntries(legalDocuments, {
+      deletedIds: deletedLegalDocumentIds,
+      includeDeleted: true,
+    });
     if (missing.length === 0) {
       toast.info("Комплект ИДС уже добавлен");
       return;

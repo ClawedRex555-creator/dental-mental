@@ -38,6 +38,9 @@ export async function GET(request: Request) {
   const readiness = getClinicEgiszReadiness(config, {
     name: clinicSettings?.name,
     inn: clinicSettings?.inn,
+    ogrn: clinicSettings?.ogrn,
+    ogrnip: clinicSettings?.ogrnip,
+    medicalLicense: clinicSettings?.medicalLicense,
   });
 
   return NextResponse.json({
@@ -47,6 +50,8 @@ export async function GET(request: Request) {
     clinic: {
       name: clinicSettings?.name ?? "",
       inn: clinicSettings?.inn ?? "",
+      ogrn: clinicSettings?.ogrn ?? "",
+      ogrnip: clinicSettings?.ogrnip ?? "",
     },
     readiness,
   });

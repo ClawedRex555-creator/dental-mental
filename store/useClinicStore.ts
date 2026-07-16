@@ -507,7 +507,12 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       addLegalDocument: (doc) => {
-        set((s) => ({ legalDocuments: [doc, ...s.legalDocuments] }));
+        set((s) => ({
+          legalDocuments: [doc, ...s.legalDocuments.filter((d) => d.id !== doc.id)],
+          deletedLegalDocumentIds: (s.deletedLegalDocumentIds ?? []).filter(
+            (documentId) => documentId !== doc.id
+          ),
+        }));
         scheduleClinicDataFlush();
       },
 

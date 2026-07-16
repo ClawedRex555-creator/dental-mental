@@ -248,6 +248,10 @@ export interface Appointment {
   workActId?: string;
   /** Визит в другой клинике (только история, не расписание) */
   isOtherClinicVisit?: boolean;
+  /** Id заявки внешней онлайн-записи (MedFlex / ПроДокторов) */
+  externalClaimId?: string;
+  /** Источник внешней записи */
+  externalSource?: string;
 }
 
 export type ClinicDocumentCategory = "contract" | "consent" | "egisz_refusal";
@@ -539,6 +543,14 @@ export interface ClinicSettings {
   email: string;
   address: string;
   inn: string;
+  /** ОГРН юр. лица (13 цифр) — для CDA / ЕГИСЗ */
+  ogrn?: string;
+  /** ОГРНИП (15 цифр) — для ИП в CDA / ЕГИСЗ */
+  ogrnip?: string;
+  /** Номер лицензии на мед. деятельность (обязателен для ИП в providerOrganization) */
+  medicalLicense?: string;
+  /** Кем выдана лицензия / дата (assigningAuthorityName) */
+  medicalLicenseAuthority?: string;
   /** Текстовое описание (генерируется из weeklySchedule) */
   workHours: string;
   weeklySchedule?: ClinicWeeklySchedule;

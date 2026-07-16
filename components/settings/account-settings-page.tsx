@@ -33,6 +33,14 @@ const EgiszSettingsPanel = dynamic(
   { ssr: false }
 );
 
+const MedflexSettingsPanel = dynamic(
+  () =>
+    import("@/components/settings/medflex-settings-panel").then((m) => ({
+      default: m.MedflexSettingsPanel,
+    })),
+  { ssr: false }
+);
+
 function roleLabel(role: UserRole): string {
   return ROLE_LABELS[role] ?? role;
 }
@@ -89,6 +97,10 @@ export default function AccountSettingsPage() {
       email: clinicForm.email.trim(),
       address: clinicForm.address.trim(),
       inn: clinicForm.inn.trim(),
+      ogrn: clinicForm.ogrn?.trim() || undefined,
+      ogrnip: clinicForm.ogrnip?.trim() || undefined,
+      medicalLicense: clinicForm.medicalLicense?.trim() || undefined,
+      medicalLicenseAuthority: clinicForm.medicalLicenseAuthority?.trim() || undefined,
       weeklySchedule: normalizeWeeklySchedule(clinicForm.weeklySchedule),
       logo: sanitizeHttpImageUrl(clinicForm.logo?.trim()) || undefined,
     });
@@ -213,6 +225,45 @@ export default function AccountSettingsPage() {
               placeholder="7700000000"
             />
           </div>
+          <div className="space-y-2">
+            <Label>ОГРН (ООО / юр. лицо, 13 цифр)</Label>
+            <Input
+              value={clinicForm.ogrn ?? ""}
+              onChange={(e) => setClinicField("ogrn", e.target.value)}
+              placeholder="1027700132195"
+            />
+            <p className="text-xs text-slate-500">
+              Для ООО заполните ОГРН. Для ИП — ОГРНИП ниже (не оба сразу).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>ОГРНИП (только ИП, 15 цифр)</Label>
+            <Input
+              value={clinicForm.ogrnip ?? ""}
+              onChange={(e) => setClinicField("ogrnip", e.target.value)}
+              placeholder="316774600000000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Лицензия на мед. деятельность</Label>
+            <Input
+              value={clinicForm.medicalLicense ?? ""}
+              onChange={(e) => setClinicField("medicalLicense", e.target.value)}
+              placeholder="ЛО-61-01-000000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Кем выдана лицензия</Label>
+            <Input
+              value={clinicForm.medicalLicenseAuthority ?? ""}
+              onChange={(e) => setClinicField("medicalLicenseAuthority", e.target.value)}
+              placeholder="Минздрав области. Дата регистрации: …"
+            />
+            <p className="text-xs text-slate-500">
+              Для ИП номер лицензии обязателен в СЭМД. Для ООО — рекомендуется, если есть в
+              ФРМО.
+            </p>
+          </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Адрес</Label>
             <Input
@@ -324,6 +375,11 @@ export default function AccountSettingsPage() {
           <ModuleGate module="egisz">
             <PanelErrorBoundary title="Блок ЕГИСЗ временно недоступен">
               <EgiszSettingsPanel />
+            </PanelErrorBoundary>
+          </ModuleGate>
+          <ModuleGate module="online_booking">
+            <PanelErrorBoundary title="Блок MedFlex временно недоступен">
+              <MedflexSettingsPanel />
             </PanelErrorBoundary>
           </ModuleGate>
         </>

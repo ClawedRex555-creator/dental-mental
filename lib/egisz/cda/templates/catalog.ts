@@ -25,7 +25,8 @@ export interface CdaTemplateMeta {
 export const CDA_TEMPLATE_CATALOG: CdaTemplateMeta[] = [
   {
     key: "consultation_rev4",
-    templateOid: "1.2.643.5.1.13.13.14.1.9.1.181",
+    /** Официальный templateId из схематрона/эталона Минздрава (У1-11) */
+    templateOid: "1.2.643.5.1.13.2.7.5.1.5.9.4",
     remdCode: "119",
     idMedDocumentType: "198",
     cdaHeaderCode: "5",
@@ -138,17 +139,27 @@ export const CDA_TEMPLATE_CATALOG: CdaTemplateMeta[] = [
 
 export const DEFAULT_DENTAL_TEMPLATE_OID =
   CDA_TEMPLATE_CATALOG.find((t) => t.defaultForDental)?.templateOid ??
+  "1.2.643.5.1.13.2.7.5.1.5.9.4";
+
+/** Устаревший OID из ранних интеграций N3 — маппится на тот же шаблон */
+export const LEGACY_CONSULTATION_REV4_TEMPLATE_OID =
   "1.2.643.5.1.13.13.14.1.9.1.181";
 
 export const N3_TEMPLATE_OID_TO_MED_DOCUMENT_TYPE: Record<string, string> =
-  Object.fromEntries(
-    CDA_TEMPLATE_CATALOG.map((t) => [t.templateOid, t.idMedDocumentType])
-  );
+  Object.fromEntries([
+    ...CDA_TEMPLATE_CATALOG.map((t) => [t.templateOid, t.idMedDocumentType] as const),
+    [LEGACY_CONSULTATION_REV4_TEMPLATE_OID, "198"] as const,
+  ]);
 
 export function findCdaTemplateByOid(oid?: string): CdaTemplateMeta | undefined {
   const normalized = oid?.trim();
   if (!normalized) return CDA_TEMPLATE_CATALOG.find((t) => t.defaultForDental);
-  return CDA_TEMPLATE_CATALOG.find((t) => t.templateOid === normalized);
+  const direct = CDA_TEMPLATE_CATALOG.find((t) => t.templateOid === normalized);
+  if (direct) return direct;
+  if (normalized === LEGACY_CONSULTATION_REV4_TEMPLATE_OID) {
+    return CDA_TEMPLATE_CATALOG.find((t) => t.key === "consultation_rev4");
+  }
+  return undefined;
 }
 
 export function findCdaTemplateByMedDocumentType(id: string): CdaTemplateMeta | undefined {

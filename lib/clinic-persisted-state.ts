@@ -316,6 +316,7 @@ const RECOVERY_ENTITY_LIST_KEYS = [
   "patientNotes",
   "patientFiles",
   "legalDocuments",
+  "clinicExpenses",
 ] as const satisfies ReadonlyArray<keyof ClinicPersistedState>;
 
 /** Локальный снимок содержит записи, которых ещё нет на сервере */
@@ -617,6 +618,7 @@ export function hasSnapshotRecoveryFromMerge(
     | "patientNotes"
     | "patientFiles"
     | "legalDocuments"
+    | "clinicExpenses"
   >> = [
     "appointments",
     "medicalRecords",
@@ -626,6 +628,7 @@ export function hasSnapshotRecoveryFromMerge(
     "patientNotes",
     "patientFiles",
     "legalDocuments",
+    "clinicExpenses",
   ];
 
   for (const key of arrays) {
@@ -818,7 +821,7 @@ export function mergeClinicSnapshotWithLocal(
       remote.documentTemplates,
       local.documentTemplates
     ),
-    clinicExpenses: mergeByIdPreferLocalRespectingDeletions(
+    clinicExpenses: mergeFinancialEntityList(
       remote.clinicExpenses,
       local.clinicExpenses
     ),

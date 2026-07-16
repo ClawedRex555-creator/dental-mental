@@ -139,6 +139,24 @@ export function validateClinicForEgisz(
   const errors: string[] = [];
   if (!settings.name?.trim()) errors.push("Название клиники");
   if (!settings.inn?.trim()) errors.push("ИНН клиники");
+  const innDigits = settings.inn.replace(/\D/g, "");
+  const ogrnDigits = (settings.ogrn ?? "").replace(/\D/g, "");
+  const ogrnipDigits = (settings.ogrnip ?? "").replace(/\D/g, "");
+  if (innDigits.length === 12 && ogrnipDigits.length !== 15) {
+    errors.push("ОГРНИП (15 цифр) для ИП — как в ФРМО");
+  }
+  if (innDigits.length === 12 && !settings.medicalLicense?.trim()) {
+    errors.push("Номер лицензии на мед. деятельность (для ИП в СЭМД)");
+  }
+  if (innDigits.length === 10 && ogrnDigits.length !== 13) {
+    errors.push("ОГРН (13 цифр) для ООО / юр. лица — как в ФРМО");
+  }
+  if (innDigits.length === 10 && ogrnipDigits.length === 15) {
+    errors.push("Для ООО укажите ОГРН, а не ОГРНИП");
+  }
+  if (innDigits.length === 12 && ogrnDigits.length === 13) {
+    errors.push("Для ИП укажите ОГРНИП, а не ОГРН");
+  }
   if (!config.organizationOid?.trim()) errors.push("OID организации");
   if (options?.requireN3) {
     if (!config.n3?.guid?.trim()) errors.push("GUID N3");

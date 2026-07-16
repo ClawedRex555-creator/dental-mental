@@ -18,8 +18,8 @@ export {
   listSupportedCdaTemplates,
 };
 
-/** Шаблон CDA стоматологического протокола консультации (N3 / ЕГИСЗ) */
-export const CDA_CONSULTATION_TEMPLATE_OID = "1.2.643.5.1.13.13.14.1.9.1.181";
+/** Шаблон CDA стоматологического протокола консультации (официальный OID SEMD 119 rev.4) */
+export const CDA_CONSULTATION_TEMPLATE_OID = "1.2.643.5.1.13.2.7.5.1.5.9.4";
 
 /**
  * Подтверждено справочником NSI 1.2.643.2.69.1.1.1.195 (выгрузка 374).

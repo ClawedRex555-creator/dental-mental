@@ -37,6 +37,8 @@ interface StatusInfo {
 interface ClinicInfo {
   name: string;
   inn: string;
+  ogrn?: string;
+  ogrnip?: string;
 }
 
 type ClientConfig = EgiszClinicConfig & { n3PasswordSet?: boolean };
@@ -223,6 +225,12 @@ export function EgiszSettingsPanel() {
           <p className="font-medium" style={{ color: "var(--callout-info-title)" }}>
             {clinic.name || "Клиника"}
             {clinic.inn ? ` · ИНН ${clinic.inn}` : " · укажите ИНН в общих настройках"}
+            {clinic.ogrnip ? ` · ОГРНИП ${clinic.ogrnip}` : null}
+            {clinic.ogrn ? ` · ОГРН ${clinic.ogrn}` : null}
+          </p>
+          <p className="mt-1 text-xs" style={{ color: "var(--callout-info-text)" }}>
+            Название и ОГРН/ОГРНИП должны совпадать с ФРМО. Проверка схематрона: ЛК N3 → «Валидация по
+            схематрону». Материалы SEMD: docs/EGISZ-MATERIALS.md
           </p>
         </div>
 

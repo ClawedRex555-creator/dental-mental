@@ -3,11 +3,15 @@
 export const NSI_REGISTERED_EMD = "1.2.643.5.1.13.13.11.1520";
 export const NSI_REGISTERED_EMD_VERSION = "9.2";
 
-/** Типы медицинских документов (заголовок ClinicalDocument/code) */
-export const NSI_MED_DOC_TYPES_CDA = "1.2.643.5.1.13.13.99.2.195";
-export const NSI_MED_DOC_TYPES_CDA_VERSION = "8.1";
+/** Типы/виды мед. документации (ClinicalDocument/code) — как в эталоне SEMD 119 */
+export const NSI_MED_DOC_TYPES_CDA = "1.2.643.5.1.13.13.11.1522";
+export const NSI_MED_DOC_TYPES_CDA_VERSION = "4.45";
+export const NSI_MED_DOC_TYPES_CDA_NAME = "Виды медицинской документации";
 export const CDA_HEADER_CODE_CONSULTATION = "5";
 export const CDA_HEADER_CODE_CONSULTATION_DISPENSARY = "85";
+
+/** Номер лицензии на мед. деятельность (для ИП обязателен в providerOrganization) */
+export const NSI_MED_LICENSE_ROOT = "1.2.643.5.1.13.2.1.1.1504.101";
 
 export const NSI_CONFIDENTIALITY = "1.2.643.5.1.13.13.99.2.285";
 export const NSI_CONFIDENTIALITY_VERSION = "1.2";
@@ -20,11 +24,12 @@ export const DEFAULT_REGION_CODE = "61";
 export const DEFAULT_REGION_NAME = "Ростовская область";
 export const DEFAULT_POSTAL_CODE = "344000";
 
-export const NSI_IDENTITY_DOC_TYPE = "1.2.643.5.1.13.13.11.1009";
-export const NSI_IDENTITY_DOC_TYPE_VERSION = "2.1";
+/** Документы, удостоверяющие личность (эталон SEMD 119) */
+export const NSI_IDENTITY_DOC_TYPE = "1.2.643.5.1.13.13.99.2.48";
+export const NSI_IDENTITY_DOC_TYPE_VERSION = "4.2";
 
-export const NSI_OMS_POLICY_TYPE = "1.2.643.5.1.13.13.11.1008";
-export const NSI_OMS_POLICY_TYPE_VERSION = "1.1";
+export const NSI_OMS_POLICY_TYPE = "1.2.643.5.1.13.13.11.1035";
+export const NSI_OMS_POLICY_TYPE_VERSION = "1.3";
 
 export const NSI_SERVICE_EVENT_V2 = "1.2.643.5.1.13.13.99.2.726";
 export const NSI_SERVICE_EVENT_V2_VERSION = "3.38";
@@ -32,10 +37,9 @@ export const NSI_SERVICE_EVENT_V2_VERSION = "3.38";
 export const NSI_ENCOUNTER_KIND = "1.2.643.5.1.13.13.99.2.723";
 export const NSI_ENCOUNTER_KIND_VERSION = "1.1";
 
-export const NSI_MED_SERVICE_DOC_TYPE = "1.2.643.5.1.13.13.99.2.724";
-export const NSI_MED_SERVICE_DOC_TYPE_VERSION = "1.1";
-export const DEFAULT_MED_SERVICE_DOC_TYPE_CODE = "1";
-export const DEFAULT_MED_SERVICE_DOC_TYPE_NAME = "Амбулаторный прием";
+/** Виды мед. направлений (результат консультации, поле 810) */
+export const NSI_MED_REFERRAL_KIND = "1.2.643.5.1.13.13.11.1009";
+export const NSI_MED_REFERRAL_KIND_VERSION = "2.4";
 
 export const NSI_GENDER = "1.2.643.5.1.13.13.11.1040";
 export const NSI_GENDER_VERSION = "2.1";
@@ -67,8 +71,15 @@ export const NSI_SERVICE_EVENT_VERSION = "1.1";
 export const NSI_ENCOUNTER_TYPE = "1.2.643.5.1.13.13.11.1522";
 export const NSI_ENCOUNTER_TYPE_VERSION = "4.45";
 
-export const NSI_PLACE_OF_CARE = "1.2.643.5.1.13.13.11.1004";
-export const NSI_PLACE_OF_CARE_VERSION = "2.1";
+/** Место оказания медицинской помощи (DOCINFO поле 801) */
+export const NSI_PLACE_OF_CARE = "1.2.643.5.1.13.13.11.1008";
+export const NSI_PLACE_OF_CARE_VERSION = "4.3";
+
+/** Вид случая обращения (DOCINFO поле 800) */
+export const NSI_VISIT_KIND = "1.2.643.5.1.13.13.11.1007";
+export const NSI_VISIT_KIND_VERSION = "2.1";
+export const DEFAULT_VISIT_KIND_CODE = "1";
+export const DEFAULT_VISIT_KIND_NAME = "Первичный";
 
 export const NSI_REMD_RECIPIENT_ROOT = "1.2.643.5.1.13";
 
@@ -118,7 +129,7 @@ export const DEFAULT_SERVICE_EVENT_CODE = "1";
 export const DEFAULT_SERVICE_EVENT_NAME = "Консультация";
 
 export const CDA_FIELD_ANAMNESIS_TEXT = "7006";
-export const CDA_FIELD_BENEFITS = "11002";
+export const CDA_FIELD_BENEFITS = "811";
 
 export const DEFAULT_DENTAL_SERVICE_CODE = "A16.07.002";
 export const DEFAULT_DENTAL_SERVICE_NAME = "Прием (осмотр, консультация) врача-стоматолога";
@@ -127,33 +138,46 @@ export const DEFAULT_RADIOLOGY_SERVICE_CODE = "A06.07.003";
 export const DEFAULT_RADIOLOGY_SERVICE_NAME =
   "Прицельная внутриротовая контактная рентгенография";
 
+/** Коды полей 2.166 — как в эталоне SEMD 119 Obs_Protocol */
 export const CDA_FIELD = {
-  PLACE_OF_CARE: "11003",
+  /** DOCINFO: шифр МКБ-10 */
+  MKB10: "809",
+  /** DOCINFO: вид обращения */
+  VISIT_KIND: "800",
+  /** DOCINFO: место проведения */
+  PLACE_OF_CARE: "801",
   PATIENT_CONDITION: "804",
   OBJECTIVE: "805",
+  /** RESCONS заключение + DGN текст диагноза */
   CONCLUSION: "806",
-  DIAGNOSIS: "809",
-  RECOMMENDATIONS: "810",
-  DISEASE_ANAMNESIS: "800",
-  LIFE_ANAMNESIS: "801",
-  COMPLAINTS: "808",
+  /** Выявленные патологии (опционально, CD МКБ) */
+  PATHOLOGIES: "808",
+  /** Результат консультации / вид направления (опционально, CD 1009) */
+  CONSULT_RESULT: "810",
+  BENEFITS: "811",
+  DISEASE_ANAMNESIS: "7006",
+  LIFE_ANAMNESIS: "7006",
+  COMPLAINTS: "7006",
   REFERRAL_REASON: "12005",
   STUDY_RESULT: "18005",
   PAYMENT_AMOUNT: "12010",
+  /** @deprecated alias → MKB10 */
+  DIAGNOSIS: "809",
+  /** @deprecated alias → CONSULT_RESULT */
+  RECOMMENDATIONS: "810",
 } as const;
 
 export const CDA_FIELD_NAMES: Record<string, string> = {
-  "11003": "Место оказания медицинской помощи",
+  "809": "Шифр по МКБ-10",
+  "800": "Обращение",
+  "801": "Место проведения",
   "804": "Состояние пациента",
-  "805": "Объективно",
-  "806": "Заключение",
-  "809": "Диагноз",
-  "810": "Рекомендации",
-  "800": "Анамнез заболевания",
-  "801": "Анамнез жизни",
-  "808": "Жалобы",
-  "7006": "Текстовое заключение",
-  "11002": "Сведения о льготах",
+  "805": "Протокол консультации",
+  "806": "Заключение консультации",
+  "808": "Выявленные патологии",
+  "810": "Результат консультации",
+  "811": "Льготная категория",
+  "7006": "Текстовое описание",
   "12005": "Показания к направлению",
   "18005": "Результат исследования",
   "12010": "Сумма оплаты",

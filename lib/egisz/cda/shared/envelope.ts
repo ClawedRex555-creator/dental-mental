@@ -7,14 +7,13 @@ import {
   buildOrganizationPropsXml,
   buildPatientIdentityDocXml,
   buildPatientInsurancePolicyXml,
+  organizationRequisitesFromClinic,
 } from "@/lib/egisz/cda/identity-xml";
 import {
   DEFAULT_CONFIDENTIALITY_CODE,
   DEFAULT_CONFIDENTIALITY_NAME,
   DEFAULT_ENCOUNTER_CODE,
   DEFAULT_ENCOUNTER_NAME,
-  DEFAULT_MED_SERVICE_DOC_TYPE_CODE,
-  DEFAULT_MED_SERVICE_DOC_TYPE_NAME,
   DEFAULT_SERVICE_EVENT_CODE,
   DEFAULT_SERVICE_EVENT_NAME,
   NSI_CONFIDENTIALITY,
@@ -25,8 +24,8 @@ import {
   NSI_GENDER_VERSION,
   NSI_MED_DOC_TYPES_CDA,
   NSI_MED_DOC_TYPES_CDA_VERSION,
-  NSI_MED_SERVICE_DOC_TYPE,
-  NSI_MED_SERVICE_DOC_TYPE_VERSION,
+  NSI_MED_DOC_TYPES_CDA_NAME,
+  NSI_MED_LICENSE_ROOT,
   NSI_POSITIONS,
   NSI_POSITIONS_VERSION,
   NSI_REMD_RECIPIENT_ROOT,
@@ -36,7 +35,7 @@ import {
   CDA_HEADER_CODE_CONSULTATION,
 } from "@/lib/egisz/cda/nsi-constants";
 import {
-  buildStructuredAddrXml,
+  buildPatientAddrXml,
   clinicalDocumentNamespaceAttrs,
   resolveStructuredAddress,
 } from "@/lib/egisz/cda/address-xml";
@@ -112,9 +111,19 @@ export function wrapClinicalDocument(
   const patient = input.patient;
   const sex = ctx.sex;
   const headerCode = meta.cdaHeaderCode ?? CDA_HEADER_CODE_CONSULTATION;
-  const patientAddr = buildStructuredAddrXml(
+  const patientAddr = buildPatientAddrXml(
     resolveStructuredAddress(patient.address ?? ctx.orgAddress)
   );
+  const orgRequisites = organizationRequisitesFromClinic(input.clinic);
+  const medicalLicense = input.clinic.medicalLicense?.trim();
+  const medicalLicenseAuthority = input.clinic.medicalLicenseAuthority?.trim();
+  const licenseIdXml = medicalLicense
+    ? `<id root="${NSI_MED_LICENSE_ROOT}" extension="${xmlEscape(medicalLicense)}"${
+        medicalLicenseAuthority
+          ? ` assigningAuthorityName="${xmlEscape(medicalLicenseAuthority)}"`
+          : ""
+      }/>`
+    : "";
 
   const devParticipant = ctx.systemOid
     ? `
@@ -123,7 +132,7 @@ export function wrapClinicalDocument(
       <id root="${xmlEscape(ctx.systemOid)}" extension="${xmlEscape(ctx.productName)}"/>
       <scopingOrganization>
         <id root="${xmlEscape(orgOid)}"/>
-        <name>${xmlEscape(ctx.productName)}</name>
+        <name>${xmlEscape(orgName)}</name>
       </scopingOrganization>
     </associatedEntity>
   </participant>`
@@ -135,7 +144,7 @@ export function wrapClinicalDocument(
   <typeId root="${CDA_TYPE_ID_ROOT}" extension="${CDA_TYPE_ID_EXTENSION}"/>
   <templateId root="${xmlEscape(meta.templateOid)}"/>
   <id root="${xmlEscape(ctx.docIdRoot)}" extension="${xmlEscape(ctx.docId)}"/>
-  <code code="${xmlEscape(headerCode)}" codeSystem="${NSI_MED_DOC_TYPES_CDA}" codeSystemName="Типы медицинских документов" codeSystemVersion="${NSI_MED_DOC_TYPES_CDA_VERSION}" displayName="${xmlEscape(meta.displayName)}"/>
+  <code code="${xmlEscape(headerCode)}" codeSystem="${NSI_MED_DOC_TYPES_CDA}" codeSystemName="${NSI_MED_DOC_TYPES_CDA_NAME}" codeSystemVersion="${NSI_MED_DOC_TYPES_CDA_VERSION}" displayName="${xmlEscape(meta.displayName)}"/>
   <title>${xmlEscape(ctx.title)}</title>
   <effectiveTime value="${effectiveTime}"/>
   <confidentialityCode code="${DEFAULT_CONFIDENTIALITY_CODE}" codeSystem="${NSI_CONFIDENTIALITY}" codeSystemName="Уровень конфиденциальности медицинского документа" codeSystemVersion="${NSI_CONFIDENTIALITY_VERSION}" displayName="${DEFAULT_CONFIDENTIALITY_NAME}"/>
@@ -156,7 +165,8 @@ export function wrapClinicalDocument(
       </patient>
       <providerOrganization>
         <id root="${xmlEscape(orgOid)}"/>
-        ${buildOrganizationPropsXml(input.clinic.inn)}
+        ${licenseIdXml}
+        ${buildOrganizationPropsXml(orgRequisites)}
         <name>${xmlEscape(orgName)}</name>
         ${orgTelecom}
         ${orgAddrXml}
@@ -169,7 +179,7 @@ export function wrapClinicalDocument(
   </author>
   <custodian>
     <assignedCustodian>
-      <representedCustodianOrganization>
+      <representedCustodianOrganization classCode="ORG">
         <id root="${xmlEscape(orgOid)}"/>
         <name>${xmlEscape(orgName)}</name>
         ${orgTelecom}
@@ -206,13 +216,13 @@ export function wrapClinicalDocument(
   </documentationOf>
   <componentOf>
     <encompassingEncounter>
-      <id root="${xmlEscape(ctx.encounterIdRoot)}" extension="${xmlEscape(ctx.encounterId)}"/>
+      <id root="${xmlEscape(ctx.encounterCaseIdRoot)}" extension="${xmlEscape(ctx.encounterId)}"/>
       <id root="${xmlEscape(ctx.encounterIdRoot)}" extension="${xmlEscape(ctx.encounterCaseExtension)}"/>
       <code code="${DEFAULT_ENCOUNTER_CODE}" codeSystem="${NSI_ENCOUNTER_KIND}" codeSystemName="Типы медицинских случаев" codeSystemVersion="${NSI_ENCOUNTER_KIND_VERSION}" displayName="${xmlEscape(DEFAULT_ENCOUNTER_NAME)}"/>
       <effectiveTime>
         <low value="${effectiveDate}0000+0000"/>
       </effectiveTime>
-      <medService:DocType code="${DEFAULT_MED_SERVICE_DOC_TYPE_CODE}" codeSystem="${NSI_MED_SERVICE_DOC_TYPE}" codeSystemName="Типы документов диспансерного наблюдения" codeSystemVersion="${NSI_MED_SERVICE_DOC_TYPE_VERSION}" displayName="${xmlEscape(DEFAULT_MED_SERVICE_DOC_TYPE_NAME)}"/>
+      <medService:DocType nullFlavor="NI"/>
     </encompassingEncounter>
   </componentOf>
   <component>

@@ -88,12 +88,18 @@ export function legalConsentBundleDocuments(date = new Date().toISOString().slic
   }));
 }
 
-export function missingLegalConsentBundleEntries(existing: LegalDocument[]): LegalConsentBundleEntry[] {
+export function missingLegalConsentBundleEntries(
+  existing: LegalDocument[],
+  options?: { deletedIds?: string[]; includeDeleted?: boolean }
+): LegalConsentBundleEntry[] {
   const urls = new Set(existing.map((d) => d.templateUrl).filter(Boolean));
   const ids = new Set(existing.map((d) => d.id));
-  return LEGAL_CONSENTS_BUNDLE.filter(
-    (e) => !urls.has(e.templateUrl) && !ids.has(e.id)
-  );
+  const deleted = new Set(options?.deletedIds ?? []);
+  return LEGAL_CONSENTS_BUNDLE.filter((e) => {
+    if (urls.has(e.templateUrl) || ids.has(e.id)) return false;
+    if (!options?.includeDeleted && deleted.has(e.id)) return false;
+    return true;
+  });
 }
 `;
 
