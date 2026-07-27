@@ -12,6 +12,7 @@ import {
   shouldRejectEmptyClinicOverwrite,
   type ClinicPersistedState,
 } from "@/lib/clinic-persisted-state";
+import { withUniqueWorkActNumbers } from "@/lib/work-act-number";
 import { listStaffDb } from "@/lib/staff-db.server";
 import {
   decryptClinicSnapshotPhi,
@@ -185,7 +186,7 @@ export async function saveClinicDataDb(
   const merged =
     existing && hasClinicData(existing.data)
       ? mergeClinicDataForSave(existing.data, data)
-      : data;
+      : withUniqueWorkActNumbers(data);
   const toSave = enforceDeletedPatientsHard(merged, deletedPatientIds);
 
   if (

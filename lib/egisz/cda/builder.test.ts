@@ -23,7 +23,7 @@ const doctor = {
   email: "doc@test.ru",
   snils: "98765432101",
   frmrOid: "1.2.643.5.1.13.13.12.2.61.138304.100.1.1.70",
-  positionCode: "34",
+  positionCode: "100",
   cabinet: "1",
   commissionPercent: 30,
 };
@@ -111,6 +111,14 @@ describe("buildCdaForTemplate", () => {
     assert.doesNotMatch(xml, /<given>Наталья<\/given>\s*<given>Петровна<\/given>/);
     assert.match(xml, /typeCode="PPRF"/);
     assert.doesNotMatch(xml, /<code code="341"/);
+    assert.match(xml, /code="100"[^>]*displayName="врач-стоматолог"/);
+    assert.match(xml, /displayName="Протокол консультации"/);
+    assert.match(xml, /displayName="Обычный"/);
+    assert.match(xml, /displayName="Амбулаторная медицинская карта"/);
+    assert.match(xml, /codeSystemVersion="1\.19"/);
+    assert.match(xml, /DocType nullFlavor="NI"\/>\s*<effectiveTime>/);
+    assert.match(xml, /displayName="Кариес дентина"/);
+    assert.match(xml, /\+0300"/);
   });
 
   it("builds all catalog templates without error", () => {

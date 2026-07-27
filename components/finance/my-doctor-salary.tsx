@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function MyDoctorSalary() {
-  const { currentUser, doctors, workActs, patients, services } = useClinicStore();
+  const { currentUser, doctors, workActs, payments, patients, services } = useClinicStore();
   const [period, setPeriod] = useState<SalaryPeriod>("day");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -39,9 +39,9 @@ export function MyDoctorSalary() {
 
   const summary = useMemo(() => {
     if (!doctor) return null;
-    const acts = getPaidServiceActsForDoctor(workActs, doctor.id, from, to);
+    const acts = getPaidServiceActsForDoctor(workActs, doctor.id, from, to, payments);
     return buildDoctorSalarySummary(doctor, acts, patients, services);
-  }, [doctor, workActs, patients, services, from, to]);
+  }, [doctor, workActs, payments, patients, services, from, to]);
 
   if (!doctorId || !doctor) {
     return (
@@ -62,7 +62,8 @@ export function MyDoctorSalary() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--foreground)]">Моя зарплата</h1>
         <p className="text-sm text-[var(--muted)]">
-          Начисление по оплаченным актам · комиссия {doctor.commissionPercent}%
+          Начисление по полностью оплаченным актам (дата полной оплаты) · комиссия{" "}
+          {doctor.commissionPercent}%
           {doctor.implantFee != null && doctor.implantFee > 0
             ? doctor.implantFeeType === "rubles"
               ? ` · имплантация ${doctor.implantFee} ₽/ед.`

@@ -62,9 +62,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
   const [hourlyRate, setHourlyRate] = useState("");
   const [snils, setSnils] = useState("");
   const [frmrOid, setFrmrOid] = useState("");
-  const [positionCode, setPositionCode] = useState("34");
-  const [n3PositionId, setN3PositionId] = useState("114");
-  const [n3SpecialityId, setN3SpecialityId] = useState("28");
+  const [positionCode, setPositionCode] = useState("100");
+  const [n3PositionId, setN3PositionId] = useState("100");
+  const [n3SpecialityId, setN3SpecialityId] = useState("171");
   const [certThumbprint, setCertThumbprint] = useState("");
   const [role, setRole] = useState<UserRole>("doctor");
   const [authPassword, setAuthPassword] = useState("");
@@ -112,9 +112,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setHourlyRate(member.hourlyRate != null ? String(member.hourlyRate) : "");
       setSnils(member.snils ?? "");
       setFrmrOid(member.frmrOid ?? "");
-      setPositionCode(member.positionCode ?? "34");
-      setN3PositionId(member.n3PositionId ?? "114");
-      setN3SpecialityId(member.n3SpecialityId ?? "28");
+      setPositionCode(member.positionCode ?? "100");
+      setN3PositionId(member.n3PositionId ?? "100");
+      setN3SpecialityId(member.n3SpecialityId ?? "171");
       setCertThumbprint(member.certThumbprint ?? "");
       setRole(member.role);
     } else {
@@ -135,9 +135,9 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       setHourlyRate("");
       setSnils("");
       setFrmrOid("");
-      setPositionCode("34");
-      setN3PositionId("114");
-      setN3SpecialityId("28");
+      setPositionCode("100");
+      setN3PositionId("100");
+      setN3SpecialityId("171");
       setCertThumbprint("");
       setRole("doctor");
       setAuthPassword("");
@@ -641,15 +641,15 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>Код должности (NSI 1002)</Label>
-                <Input value={positionCode} onChange={(e) => setPositionCode(e.target.value)} placeholder="34 — врач-стоматолог" />
+                <Input value={positionCode} onChange={(e) => setPositionCode(e.target.value)} placeholder="100 — врач-стоматолог" />
               </div>
               <div className="space-y-2">
                 <Label>N3 IdPosition</Label>
-                <Input value={n3PositionId} onChange={(e) => setN3PositionId(e.target.value)} placeholder="114 — из примера N3" />
+                <Input value={n3PositionId} onChange={(e) => setN3PositionId(e.target.value)} placeholder="100 — тот же справочник 1002" />
               </div>
               <div className="space-y-2">
                 <Label>N3 IdSpeciality</Label>
-                <Input value={n3SpecialityId} onChange={(e) => setN3SpecialityId(e.target.value)} placeholder="28 — из примера N3" />
+                <Input value={n3SpecialityId} onChange={(e) => setN3SpecialityId(e.target.value)} placeholder="171 — стоматология общей практики" />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>Отпечаток КЭП врача (CryptoPro)</Label>

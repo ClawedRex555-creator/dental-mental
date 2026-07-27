@@ -3,6 +3,7 @@ import {
   checkLoginRateLimit,
   clearLoginAttempts,
   loginRateLimitKey,
+  loginRateLimitResponse,
   recordLoginFailure,
 } from "@/lib/login-rate-limit";
 import { mobileAuthFromPatient } from "@/lib/mobile-auth-service.server";
@@ -42,13 +43,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const rateKey = loginRateLimitKey(request, `mobile-register:${clinic.slug}:${email}`);
+  const rateKey = loginRateLimitKey(`mobile-register:${clinic.slug}`, email);
   const rate = checkLoginRateLimit(rateKey);
   if (!rate.allowed) {
-    return NextResponse.json(
-      { error: `Слишком много попыток. Повторите через ${rate.retryAfterSec} с.` },
-      { status: 429 }
-    );
+    return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
 
   try {

@@ -121,7 +121,28 @@ describe("calcDoctorPaymentForAct", () => {
     assert.equal(split.clinicAmount, 5000);
   });
 
-  it("doctor discount bearer reduces doctor fee by full discount", () => {
+  it("clinic 100% discount keeps doctor salary, clinic goes negative", () => {
+    const act = makeAct([
+      {
+        id: "i1",
+        serviceId: "s2",
+        serviceName: "Пломба",
+        serviceCategory: "Терапия",
+        quantity: 1,
+        price: 10000,
+        total: 10000,
+      },
+    ]);
+    act.discountType = "percent";
+    act.discount = 100;
+    act.totalAmount = 0;
+    act.discountBearer = "clinic";
+    const split = calcDoctorPaymentForAct(act, doctor, services);
+    assert.equal(split.doctorAmount, 3000);
+    assert.equal(split.clinicAmount, -3000);
+  });
+
+  it("doctor discount bearer keeps clinic profit, reduces doctor fee", () => {
     const act = makeAct([
       {
         id: "i1",

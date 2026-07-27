@@ -12,13 +12,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PATIENT_STATUS_LABELS, UI } from "@/lib/constants";
 import type { Patient, PatientStatus } from "@/lib/types";
 import { cn, formatCurrency, formatDate, getAge, getFullName } from "@/lib/utils";
-import { canDeletePatients } from "@/lib/rbac";
+import { canDeletePatients, canViewPatientPhone } from "@/lib/rbac";
 import { logAuditClient } from "@/lib/audit-client";
 import { useClinicStore } from "@/store/useClinicStore";
 
 export default function PatientsPage() {
   const { patients, currentUser, deletePatient } = useClinicStore();
   const canDelete = canDeletePatients(currentUser.role);
+  const showPhone = canViewPatientPhone(currentUser.role);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PatientStatus | "all">("all");
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,11 +32,10 @@ export default function PatientsPage() {
         if (statusFilter !== "all" && p.status !== statusFilter) return false;
         if (!q) return true;
         const name = getFullName(p.firstName, p.lastName, p.middleName).toLowerCase();
-        return (
-          name.includes(q) ||
-          p.phone.includes(q) ||
-          (p.email?.toLowerCase().includes(q) ?? false)
-        );
+        if (name.includes(q)) return true;
+        if (p.email?.toLowerCase().includes(q)) return true;
+        if (showPhone && p.phone.includes(q)) return true;
+        return false;
       })
       .sort((a, b) =>
         getFullName(a.firstName, a.lastName, a.middleName).localeCompare(
@@ -43,7 +43,7 @@ export default function PatientsPage() {
           "ru"
         )
       );
-  }, [patients, search, statusFilter]);
+  }, [patients, search, statusFilter, showPhone]);
 
   return (
     <div className="space-y-6">
@@ -106,8 +106,8 @@ export default function PatientsPage() {
                         {name}
                       </Link>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                        <span className="tabular-nums">{p.phone}</span>
-                        <span>·</span>
+                        {showPhone && <span className="tabular-nums">{p.phone}</span>}
+                        {showPhone && <span>·</span>}
                         <span>{getAge(p.birthDate)} лет</span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -177,7 +177,7 @@ export default function PatientsPage() {
               <tr className="border-b border-slate-100 text-left text-slate-500">
                 <th className="w-12 px-4 py-3 font-medium">№</th>
                 <th className="px-4 py-3 font-medium">{UI.patient}</th>
-                <th className="px-4 py-3 font-medium">{UI.phone}</th>
+                {showPhone && <th className="px-4 py-3 font-medium">{UI.phone}</th>}
                 <th className="px-4 py-3 font-medium">{UI.age}</th>
                 <th className="px-4 py-3 font-medium">{UI.status}</th>
                 <th className="px-4 py-3 font-medium">{UI.balance}</th>
@@ -197,7 +197,7 @@ export default function PatientsPage() {
                       {getFullName(p.firstName, p.lastName, p.middleName)}
                     </Link>
                   </td>
-                  <td className="px-4 py-3">{p.phone}</td>
+                  {showPhone && <td className="px-4 py-3">{p.phone}</td>}
                   <td className="px-4 py-3">{getAge(p.birthDate)}</td>
                   <td className="px-4 py-3">
                     <Badge variant="secondary">{PATIENT_STATUS_LABELS[p.status]}</Badge>

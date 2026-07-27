@@ -11,6 +11,7 @@ import {
 } from "@/lib/patient-visits";
 import { filterPaymentsWithExistingWorkActs } from "@/lib/work-act-payment";
 import { detachDeletedWorkActsFromAppointments } from "@/lib/work-act-visit";
+import { withUniqueWorkActNumbers } from "@/lib/work-act-number";
 import type {
   Appointment,
   Cabinet,
@@ -854,8 +855,12 @@ export function mergeClinicSnapshotWithLocal(
     ),
   };
   const repaired = repairFinancialCoupling(merged);
-  if (!findOrphanPatientIds(repaired).length) return repaired;
-  return repairMissingPatientsInSnapshot(repaired);
+  const withActs = withUniqueWorkActNumbers(
+    repaired,
+    new Set(remote.workActs.map((a) => a.id))
+  );
+  if (!findOrphanPatientIds(withActs).length) return withActs;
+  return repairMissingPatientsInSnapshot(withActs);
 }
 
 /** Перед записью в БД: не терять записи при урезанном снимке без явного удаления */
@@ -989,7 +994,10 @@ export function mergeClinicDataForSave(
   };
 
   if (!hasPatientDeletion) {
-    return repairFinancialCoupling(repairMissingPatientsInSnapshot(merged));
+    return withUniqueWorkActNumbers(
+      repairFinancialCoupling(repairMissingPatientsInSnapshot(merged)),
+      new Set(existing.workActs.map((a) => a.id))
+    );
   }
 
   // Жёстко применяем удаление пациента ко всем зависимым сущностям и зубам.
@@ -1001,20 +1009,23 @@ export function mergeClinicDataForSave(
     delete nextTeeth[id];
   }
 
-  return repairFinancialCoupling(
-    repairMissingPatientsInSnapshot({
-      ...merged,
-      appointments: filterByPatient(merged.appointments),
-      medicalRecords: filterByPatient(merged.medicalRecords),
-      treatmentPlans: filterByPatient(merged.treatmentPlans),
-      payments: filterByPatient(merged.payments),
-      invoices: filterByPatient(merged.invoices),
-      workActs: filterByPatient(merged.workActs),
-      prepayments: filterByPatient(merged.prepayments),
-      patientFiles: filterByPatient(merged.patientFiles),
-      patientNotes: filterByPatient(merged.patientNotes),
-      teethByPatient: nextTeeth,
-    })
+  return withUniqueWorkActNumbers(
+    repairFinancialCoupling(
+      repairMissingPatientsInSnapshot({
+        ...merged,
+        appointments: filterByPatient(merged.appointments),
+        medicalRecords: filterByPatient(merged.medicalRecords),
+        treatmentPlans: filterByPatient(merged.treatmentPlans),
+        payments: filterByPatient(merged.payments),
+        invoices: filterByPatient(merged.invoices),
+        workActs: filterByPatient(merged.workActs),
+        prepayments: filterByPatient(merged.prepayments),
+        patientFiles: filterByPatient(merged.patientFiles),
+        patientNotes: filterByPatient(merged.patientNotes),
+        teethByPatient: nextTeeth,
+      })
+    ),
+    new Set(existing.workActs.map((a) => a.id))
   );
 }
 
@@ -1115,7 +1126,10 @@ export function mergeClinicDataOnWriteConflict(
   };
 
   if (!hasPatientDeletion) {
-    return repairMissingPatientsInSnapshot(merged);
+    return withUniqueWorkActNumbers(
+      repairMissingPatientsInSnapshot(merged),
+      new Set(existing.workActs.map((a) => a.id))
+    );
   }
 
   const filterByPatient = <T extends { patientId?: string }>(rows: T[]) =>
@@ -1126,19 +1140,22 @@ export function mergeClinicDataOnWriteConflict(
     delete nextTeeth[id];
   }
 
-  return repairMissingPatientsInSnapshot({
-    ...merged,
-    appointments: filterByPatient(merged.appointments),
-    medicalRecords: filterByPatient(merged.medicalRecords),
-    treatmentPlans: filterByPatient(merged.treatmentPlans),
-    payments: filterByPatient(merged.payments),
-    invoices: filterByPatient(merged.invoices),
-    workActs: filterByPatient(merged.workActs),
-    prepayments: filterByPatient(merged.prepayments),
-    patientFiles: filterByPatient(merged.patientFiles),
-    patientNotes: filterByPatient(merged.patientNotes),
-    teethByPatient: nextTeeth,
-  });
+  return withUniqueWorkActNumbers(
+    repairMissingPatientsInSnapshot({
+      ...merged,
+      appointments: filterByPatient(merged.appointments),
+      medicalRecords: filterByPatient(merged.medicalRecords),
+      treatmentPlans: filterByPatient(merged.treatmentPlans),
+      payments: filterByPatient(merged.payments),
+      invoices: filterByPatient(merged.invoices),
+      workActs: filterByPatient(merged.workActs),
+      prepayments: filterByPatient(merged.prepayments),
+      patientFiles: filterByPatient(merged.patientFiles),
+      patientNotes: filterByPatient(merged.patientNotes),
+      teethByPatient: nextTeeth,
+    }),
+    new Set(existing.workActs.map((a) => a.id))
+  );
 }
 
 /**

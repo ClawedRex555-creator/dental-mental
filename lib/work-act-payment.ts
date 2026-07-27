@@ -22,6 +22,29 @@ export function isWorkActFullyPaid(act: WorkAct, payments: Payment[]): boolean {
   return getWorkActPaidAmount(payments, act.id) >= act.totalAmount;
 }
 
+/** Нулевой акт можно закрыть без внесения денег */
+export function canCloseZeroWorkAct(act: WorkAct, payments: Payment[]): boolean {
+  return act.totalAmount <= 0 && !isWorkActFullyPaid(act, payments);
+}
+
+/**
+ * Дата начисления ЗП: день полной оплаты (последний платёж).
+ * Для нулевого акта — дата акта (закрытие без платежа).
+ */
+export function getWorkActSalaryAccrualDate(
+  act: WorkAct,
+  payments: Payment[]
+): string | null {
+  if (act.actType === "prepayment") return null;
+  if (!isWorkActFullyPaid(act, payments)) return null;
+  if (act.totalAmount <= 0) return act.actDate;
+  const dates = payments
+    .filter((p) => p.workActId === act.id && p.status === "paid")
+    .map((p) => p.date)
+    .sort();
+  return dates[dates.length - 1] ?? act.actDate;
+}
+
 export function resolvePatientBalanceAfterActPayment(
   previousBalance: number,
   actTotal: number,

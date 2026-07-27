@@ -5,7 +5,13 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import type { DiscountBearer, DiscountType, WorkAct, WorkActItem } from "@/lib/types";
+import type {
+  DiscountBearer,
+  DiscountType,
+  PatientPrepayment,
+  WorkAct,
+  WorkActItem,
+} from "@/lib/types";
 import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
@@ -24,6 +30,12 @@ import {
   isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
 import { canDeleteWorkActs } from "@/lib/rbac";
+import {
+  getOpenPrepaidSources,
+  getPrepaymentAvailableCredit,
+  type OpenPrepaidSource,
+} from "@/lib/prepayment-utils";
+import { normalizePlanItemQuantity } from "@/lib/treatment-plan-item-utils";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
@@ -78,6 +90,7 @@ export function WorkActModal({
     clinicSettings,
     workActs,
     payments,
+    prepayments,
     addWorkAct,
     updateWorkAct,
     addInvoice,
@@ -86,6 +99,8 @@ export function WorkActModal({
     updateAppointment,
     getNextActNumber,
     deleteWorkAct,
+    payWorkAct,
+    updatePrepayment,
     currentUser,
   } = useClinicStore();
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
@@ -97,6 +112,10 @@ export function WorkActModal({
 
   const actMissing = Boolean(existingActId && !existingAct);
   const actNeedsFix = actMissing || (existingAct ? !workActHasFilledItems(existingAct) : false);
+
+  /** pending = нужно выбрать; new = обычный акт; settle = зачёт предоплаты */
+  const [prepayPath, setPrepayPath] = useState<"pending" | "new" | "settle">("pending");
+  const [linkedPrepaymentId, setLinkedPrepaymentId] = useState<string | null>(null);
 
   const linkedAppointmentId =
     defaultAppointmentId ??
@@ -197,6 +216,8 @@ export function WorkActModal({
       initialized.current = false;
       savedActIdRef.current = null;
       setSavedActId(null);
+      setPrepayPath("pending");
+      setLinkedPrepaymentId(null);
       return;
     }
     if (initialized.current) return;
@@ -204,6 +225,8 @@ export function WorkActModal({
 
     if (existingAct) {
       loadFromAct(existingAct);
+      setPrepayPath("new");
+      setLinkedPrepaymentId(existingAct.prepaymentId ?? null);
       return;
     }
 
@@ -226,6 +249,15 @@ export function WorkActModal({
     setDiscountBearer("shared");
     savedActIdRef.current = null;
     setSavedActId(null);
+    setLinkedPrepaymentId(null);
+
+    const openPrepays = getOpenPrepaidSources(
+      prepayments,
+      workActs,
+      payments,
+      defaultPatientId ?? ""
+    );
+    setPrepayPath(openPrepays.length > 0 ? "pending" : "new");
 
     const mapDefault = (it: {
       serviceName: string;
@@ -277,6 +309,9 @@ export function WorkActModal({
     patients,
     appointments,
     services,
+    prepayments,
+    workActs,
+    payments,
     defaultDoctorId,
     activeDoctors,
   ]);
@@ -286,7 +321,81 @@ export function WorkActModal({
     loadFromAct(existingAct);
   }, [open, existingAct]);
 
+  const openPrepaysForPatient = useMemo(
+    () => getOpenPrepaidSources(prepayments, workActs, payments, patientId),
+    [prepayments, workActs, payments, patientId]
+  );
+
+  const applyPrepaymentCredit = (act: WorkAct, prep: PatientPrepayment) => {
+    const credit = getPrepaymentAvailableCredit(prep);
+    if (credit <= 0) return;
+    const applied = Math.min(credit, act.totalAmount);
+    if (applied > 0) {
+      payWorkAct(act.id, "transfer", applied);
+    }
+    updatePrepayment(prep.id, {
+      settledAt: format(new Date(), "yyyy-MM-dd"),
+      settledWorkActId: act.id,
+      remainingAmount: Math.max(0, (prep.remainingAmount ?? 0)),
+      notes: [
+        prep.notes,
+        `Зачтено ${applied.toLocaleString("ru-RU")} ₽ в акт № ${act.actNumber}`,
+      ]
+        .filter(Boolean)
+        .join(". "),
+    });
+    updateWorkAct(act.id, { prepaymentId: prep.id });
+  };
+
+  const chooseNewAct = () => {
+    setPrepayPath("new");
+    setLinkedPrepaymentId(null);
+  };
+
+  const chooseSettlePrepayment = (prep: PatientPrepayment) => {
+    setLinkedPrepaymentId(prep.id);
+    setPrepayPath("settle");
+    setPatientId(prep.patientId);
+    if (prep.discountType) setDiscountType(prep.discountType);
+    if (prep.discount != null) setDiscount(String(prep.discount));
+    const nextItems = (prep.items ?? []).map((it) => {
+      const quantity = normalizePlanItemQuantity(it.quantity);
+      const price = it.price;
+      return {
+        id: generateId("wai"),
+        serviceId: it.serviceId,
+        serviceName: it.serviceName,
+        quantity,
+        price,
+        total: quantity * price,
+      };
+    });
+    setItems(nextItems);
+    setNotes(
+      `Оказание по предоплате ${prep.actNumber ?? ""}`.trim() +
+        (prep.paidAmount
+          ? `. Аванс: ${prep.paidAmount.toLocaleString("ru-RU")} ₽`
+          : "")
+    );
+  };
+
+  const chooseOpenPrepaidSource = (source: OpenPrepaidSource) => {
+    if (source.kind === "partial_act" && source.act) {
+      loadFromAct(source.act);
+      setLinkedPrepaymentId(null);
+      setPrepayPath("new");
+      toast.info(
+        `Открыт частично оплаченный акт № ${source.act.actNumber}: внесено ${source.credit.toLocaleString("ru-RU")} ₽, остаток ${source.remaining.toLocaleString("ru-RU")} ₽`
+      );
+      return;
+    }
+    if (source.kind === "document" && source.prepayment) {
+      chooseSettlePrepayment(source.prepayment);
+    }
+  };
+
   const persistAct = (submittedToAdmin?: boolean): WorkAct | null => {
+
     const filledItems = items
       .filter(isWorkActLineFilled)
       .map((i) => {
@@ -327,6 +436,8 @@ export function WorkActModal({
       createdAt: previousAct?.createdAt ?? format(new Date(), "yyyy-MM-dd"),
       notes: notes.trim() || undefined,
       submittedToAdmin: submittedToAdmin ?? workActs.find((a) => a.id === actId)?.submittedToAdmin,
+      prepaymentId: linkedPrepaymentId ?? previousAct?.prepaymentId,
+      actType: previousAct?.actType === "prepayment" ? previousAct.actType : "services",
     };
 
     if (existingId && workActs.some((a) => a.id === existingId)) {
@@ -343,12 +454,21 @@ export function WorkActModal({
       const appointment = linkedAppointmentId
         ? appointments.find((a) => a.id === linkedAppointmentId)
         : undefined;
-      addMedicalRecord(buildMedicalRecordFromWorkAct(actWithInvoice, appointment));
+      addMedicalRecord(
+        buildMedicalRecordFromWorkAct(actWithInvoice, appointment, undefined, services)
+      );
       rememberSavedActId(actId);
     }
 
     if (linkedAppointmentId) {
       updateAppointment(linkedAppointmentId, { workActId: actId });
+    }
+
+    if (linkedPrepaymentId && prepayPath === "settle") {
+      const prep = (prepayments ?? []).find((p) => p.id === linkedPrepaymentId);
+      if (prep && !prep.settledAt) {
+        applyPrepaymentCredit(act, prep);
+      }
     }
 
     return act;
@@ -357,7 +477,11 @@ export function WorkActModal({
   const handleSaveOnly = () => {
     const act = persistAct(mode === "doctor" ? false : undefined);
     if (!act) return;
-    toast.success(`Акт № ${act.actNumber} сохранён`);
+    toast.success(
+      linkedPrepaymentId && prepayPath === "settle"
+        ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
+        : `Акт № ${act.actNumber} сохранён`
+    );
     if (mode !== "doctor") onOpenChange(false);
   };
 
@@ -443,6 +567,72 @@ export function WorkActModal({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {!existingActId && prepayPath === "pending" && openPrepaysForPatient.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
+              <p className="text-sm font-semibold text-teal-900">
+                У пациента есть предоплата
+              </p>
+              <p className="text-sm text-slate-600">
+                Учитываются документы аванса и частично оплаченные акты (в том числе старые).
+                Можно продолжить/зачесть или создать новый акт на другую процедуру.
+              </p>
+              <ul className="space-y-2">
+                {openPrepaysForPatient.map((source) => (
+                  <li
+                    key={source.id}
+                    className="rounded-lg border border-teal-100 bg-white px-3 py-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-slate-900">
+                          {source.label} · внесено {formatCurrency(source.credit)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {source.kind === "partial_act"
+                            ? "Частично оплаченный акт"
+                            : "Документ предоплаты"}
+                          {source.serviceNames.length
+                            ? ` · ${source.serviceNames.slice(0, 3).join(", ")}`
+                            : ""}
+                          {source.remaining > 0
+                            ? ` · остаток ${formatCurrency(source.remaining)}`
+                            : ""}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => chooseOpenPrepaidSource(source)}
+                      >
+                        {source.kind === "partial_act"
+                          ? "Открыть акт"
+                          : "Зачесть предоплату"}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <Button type="button" variant="outline" className="w-full" onClick={chooseNewAct}>
+                Создать новый акт (другая процедура)
+              </Button>
+            </div>
+          )}
+          {prepayPath === "pending" && openPrepaysForPatient.length > 0 && !existingActId ? null : (
+          <>
+          {prepayPath === "settle" && linkedPrepaymentId && (
+            <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900">
+              Режим зачёта предоплаты: услуги подставлены из аванса. При сохранении акт
+              будет закрыт зачётом внесённой суммы (при необходимости остаток доплатит
+              администратор).
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={chooseNewAct}
+              >
+                Сменить на новый акт
+              </button>
+            </p>
+          )}
           {mode === "admin_view" && actMissing && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Акт не найден в данных клиники — возможно, не синхронизировался с другого
@@ -515,8 +705,20 @@ export function WorkActModal({
                   <PatientSearchSelect
                     patients={patients}
                     selectedPatientId={patientId}
-                    placeholder="ФИО или телефон..."
-                    onSelect={(p) => setPatientId(p.id)}
+                    onSelect={(p) => {
+                      setPatientId(p.id);
+                      if (!existingActId && !linkedPrepaymentId) {
+                        const opens = getOpenPrepaidSources(
+                          prepayments,
+                          workActs,
+                          payments,
+                          p.id
+                        );
+                        if (opens.length > 0 && prepayPath === "new") {
+                          setPrepayPath("pending");
+                        }
+                      }
+                    }}
                   />
                   {(() => {
                     const p = patients.find((x) => x.id === patientId);
@@ -834,11 +1036,11 @@ export function WorkActModal({
                   </select>
                   <p className="text-xs text-[var(--muted)]">
                     {discountBearer === "doctor" &&
-                      "Вся доп. скидка уменьшает вознаграждение врача."}
+                      "Скидка врача: уменьшает только ЗП врача, прибыль клиники как без скидки."}
                     {discountBearer === "clinic" &&
-                      "Врач получает % как без доп. скидки, скидку покрывает клиника."}
+                      "Скидка клиники: ЗП врача как без скидки (можно до 100%), скидку покрывает клиника."}
                     {discountBearer === "shared" &&
-                      "Скидка делится между врачом и клиникой пропорционально их долям."}
+                      "Общая скидка: уменьшает и ЗП врача, и прибыль клиники пропорционально."}
                   </p>
                 </div>
               </div>
@@ -942,6 +1144,8 @@ export function WorkActModal({
               </>
             )}
           </div>
+          </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

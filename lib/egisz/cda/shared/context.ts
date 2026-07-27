@@ -5,10 +5,12 @@ import {
 } from "@/lib/egisz/cda/constants";
 import { DEFAULT_DENTAL_SERVICE_CODE, DEFAULT_DENTAL_SERVICE_NAME } from "@/lib/egisz/cda/nsi-constants";
 import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
+import { resolveNmuService } from "@/lib/egisz/cda/nsi-display-names";
 import {
   buildOrganizationAddrXml,
   resolveStructuredAddress,
 } from "@/lib/egisz/cda/address-xml";
+import { resolveDoctorPositionCode } from "@/lib/egisz/doctor-nsi";
 import type { CdaBuildInput, CdaDocumentContext, DoctorEntityContext } from "@/lib/egisz/cda/shared/types";
 import {
   buildMisIdRoot,
@@ -43,7 +45,11 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
   const systemOid = resolveSystemId(input.config);
 
   const recordDate = input.record.createdAt?.trim()
-    ? new Date(`${input.record.createdAt.slice(0, 10)}T12:00:00`)
+    ? new Date(
+        input.record.createdAt.length <= 10
+          ? `${input.record.createdAt.slice(0, 10)}T12:00:00+03:00`
+          : input.record.createdAt
+      )
     : new Date();
   const effectiveTime = formatCdaEffectiveTime(recordDate);
   const effectiveDate = formatCdaDate(input.record.createdAt || new Date().toISOString());
@@ -54,15 +60,17 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
   const sex = mapGenderToEgisz(input.patient.gender);
   const personnelRoot = buildPersonnelIdRoot(orgOid);
   const personnelExtension = input.doctor.frmrOid?.trim() || input.doctor.id;
-  const positionCode = input.doctor.positionCode?.trim() || "34";
-  const positionName = nonEmpty(input.doctor.specialization, "Врач-стоматолог");
+  const position = resolveDoctorPositionCode({
+    positionCode: input.doctor.positionCode,
+    specialization: input.doctor.specialization,
+  });
 
   const doctorCtx: DoctorEntityContext = {
     personnelRoot,
     personnelExtension,
     snils: doctorSnils,
-    positionCode,
-    positionName,
+    positionCode: position.code,
+    positionName: position.displayName,
     familyName: author.familyName,
     givenName: author.givenName,
     middleName: author.middleName,
@@ -73,6 +81,12 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
       ? `${input.record.diagnosisCode} ${input.record.diagnosis}`
       : input.record.diagnosis
   );
+  const service = resolveNmuService({
+    serviceCode: input.record.serviceCode,
+    serviceName: input.record.serviceName,
+    fallbackCode: DEFAULT_DENTAL_SERVICE_CODE,
+    fallbackName: DEFAULT_DENTAL_SERVICE_NAME,
+  });
 
   const complaints = nonEmpty(input.record.complaints, "Жалоб не предъявляет");
   const diseaseAnamnesis = nonEmpty(input.record.anamnesis, complaints);
@@ -129,8 +143,8 @@ export function buildCdaDocumentContext(input: CdaBuildInput): CdaDocumentContex
       recommendations,
       diagnosisCode: diagnosis.code,
       diagnosisDisplay: diagnosis.displayName,
-      serviceCode: input.record.serviceCode?.trim() || DEFAULT_DENTAL_SERVICE_CODE,
-      serviceName: input.record.serviceName?.trim() || DEFAULT_DENTAL_SERVICE_NAME,
+      serviceCode: service.code,
+      serviceName: service.name,
     },
     encounterId,
     title: input.record.serviceName ?? "Медицинский документ",

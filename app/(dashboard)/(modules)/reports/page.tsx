@@ -94,7 +94,8 @@ export default function ReportsPage() {
             from,
             to,
             normalizedAssistantManualHours,
-            services
+            services,
+            payments
           )
         : EMPTY_STAFF_SALARIES,
     [
@@ -106,6 +107,7 @@ export default function ReportsPage() {
       to,
       normalizedAssistantManualHours,
       services,
+      payments,
     ]
   );
   const periodExpensesTotal = useMemo(

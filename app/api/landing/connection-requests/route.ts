@@ -21,6 +21,8 @@ export async function POST(request: Request) {
     email?: string;
     desiredSlug?: string;
     message?: string;
+    pdConsent?: boolean;
+    marketingConsent?: boolean;
   };
   try {
     body = await request.json();
@@ -34,6 +36,8 @@ export async function POST(request: Request) {
   const email = body.email?.trim().toLowerCase() ?? "";
   const desiredSlug = body.desiredSlug?.trim();
   const message = body.message?.trim();
+  const pdConsent = Boolean(body.pdConsent);
+  const marketingConsent = Boolean(body.marketingConsent);
 
   if (clinicName.length < 2) return invalid("Укажите название клиники");
   if (contactName.length < 2) return invalid("Укажите контактное лицо");
@@ -41,6 +45,9 @@ export async function POST(request: Request) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return invalid("Укажите корректный email");
   if (desiredSlug && !/^[a-z0-9-]{2,63}$/.test(desiredSlug)) {
     return invalid("Желаемый адрес должен содержать только a-z, 0-9 и -");
+  }
+  if (!pdConsent) {
+    return invalid("Необходимо согласие на обработку персональных данных");
   }
 
   try {
@@ -52,6 +59,8 @@ export async function POST(request: Request) {
       desiredSlug,
       message,
       source: "landing",
+      pdConsent: true,
+      marketingConsent,
     });
     return NextResponse.json({ ok: true, id: created.id });
   } catch (error) {

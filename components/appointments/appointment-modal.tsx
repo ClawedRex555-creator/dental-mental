@@ -23,6 +23,7 @@ import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
+import { canViewPatientPhone } from "@/lib/rbac";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -377,7 +378,11 @@ export function AppointmentModal({
                           </span>
                         )}
                       </p>
-                      <p className="text-slate-600">{formatPhone(selectedPatient.phone)}</p>
+                      <p className="text-slate-600">
+                        {canViewPatientPhone(currentUser.role)
+                          ? formatPhone(selectedPatient.phone)
+                          : "—"}
+                      </p>
                       <p className="text-slate-600">
                         Д.р. {formatDate(selectedPatient.birthDate)}
                       </p>

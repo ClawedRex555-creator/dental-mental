@@ -25,6 +25,9 @@ export interface PlatformConnectionRequest {
   handledAt: string | null;
   handledBy: string | null;
   notes: string | null;
+  pdConsent: boolean;
+  marketingConsent: boolean;
+  consentAt: string | null;
 }
 
 export interface CreateConnectionRequestInput {
@@ -35,6 +38,8 @@ export interface CreateConnectionRequestInput {
   desiredSlug?: string;
   message?: string;
   source?: string;
+  pdConsent: boolean;
+  marketingConsent?: boolean;
 }
 
 function normalizeOptionalText(value?: string): string | null {
@@ -52,14 +57,28 @@ export async function createConnectionRequest(
   const desiredSlug = normalizeOptionalText(input.desiredSlug)?.toLowerCase();
   const message = normalizeOptionalText(input.message);
   const source = normalizeOptionalText(input.source) ?? "landing";
+  if (!input.pdConsent) {
+    throw new Error("PD_CONSENT_REQUIRED");
+  }
+  const marketingConsent = Boolean(input.marketingConsent);
 
   const created = await withDb(async (client) => {
     const res = await client.query<{ id: string }>(
       `INSERT INTO platform_connection_requests
-        (clinic_name, contact_name, phone, email, desired_slug, message, source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+        (clinic_name, contact_name, phone, email, desired_slug, message, source,
+         pd_consent, marketing_consent, consent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, NOW())
        RETURNING id`,
-      [clinicName, contactName, phone, email, desiredSlug, message, source]
+      [
+        clinicName,
+        contactName,
+        phone,
+        email,
+        desiredSlug,
+        message,
+        source,
+        marketingConsent,
+      ]
     );
     return res.rows[0] ?? null;
   });
@@ -87,10 +106,13 @@ export async function listConnectionRequests(): Promise<PlatformConnectionReques
         handled_at: Date | null;
         handled_by: string | null;
         notes: string | null;
+        pd_consent: boolean;
+        marketing_consent: boolean;
+        consent_at: Date | null;
       }>(
         `SELECT id, created_at, updated_at, clinic_name, contact_name, phone, email,
                 desired_slug, message, source, status, clinic_id, owner_user_id,
-                handled_at, handled_by, notes
+                handled_at, handled_by, notes, pd_consent, marketing_consent, consent_at
            FROM platform_connection_requests
           ORDER BY created_at DESC`
       );
@@ -111,6 +133,9 @@ export async function listConnectionRequests(): Promise<PlatformConnectionReques
         handledAt: row.handled_at?.toISOString() ?? null,
         handledBy: row.handled_by,
         notes: row.notes,
+        pdConsent: row.pd_consent,
+        marketingConsent: row.marketing_consent,
+        consentAt: row.consent_at?.toISOString() ?? null,
       }));
     })) ?? []
   );

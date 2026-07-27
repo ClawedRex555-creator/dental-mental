@@ -3,6 +3,7 @@ import "server-only";
 import type { SignCdaOptions } from "@/lib/egisz/signing/interface";
 import { resolveDoctorCertThumbprint } from "@/lib/egisz/signing/interface";
 import type { DocumentSigner, SignedDocument } from "@/lib/egisz/signing/interface";
+import { isAbortTimeoutError, signingTimeoutMs } from "@/lib/egisz/timeouts";
 
 function normalizeThumbprint(value: string): string {
   return value.replace(/[\s:]/g, "").toUpperCase();
@@ -47,16 +48,30 @@ export const cryptoproDocumentSigner: DocumentSigner = {
       headers.Authorization = `Bearer ${service.secret}`;
     }
 
-    const res = await fetch(service.url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        xml,
-        doctorCertThumbprint: normalizeThumbprint(doctorThumbprint),
-        orgCertThumbprint: normalizeThumbprint(orgThumbprint),
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
+    const timeoutMs = signingTimeoutMs();
+    let res: Response;
+    try {
+      res = await fetch(service.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          xml,
+          doctorCertThumbprint: normalizeThumbprint(doctorThumbprint),
+          orgCertThumbprint: normalizeThumbprint(orgThumbprint),
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      if (isAbortTimeoutError(error)) {
+        throw new Error(
+          `Подпись CryptoPro: таймаут ${Math.round(timeoutMs / 1000)} с. Чаще всего: не введён PIN Rutoken на Windows-ПК, не запущен агент/SSH-туннель, или EGISZ_SIGNING_URL недоступен с сервера (curl ${service.url.replace(/\/sign\/?$/, "/health")}).`
+        );
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Подпись CryptoPro: нет связи с агентом (${service.url}): ${msg}. Проверьте туннель Windows→сервер и что агент слушает :9876.`
+      );
+    }
 
     const data = (await res.json().catch(() => ({}))) as {
       ok?: boolean;

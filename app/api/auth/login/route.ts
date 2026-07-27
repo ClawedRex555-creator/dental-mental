@@ -10,6 +10,7 @@ import {
   checkLoginRateLimit,
   clearLoginAttempts,
   loginRateLimitKey,
+  loginRateLimitResponse,
   recordLoginFailure,
 } from "@/lib/login-rate-limit";
 import { safeRedirectPath } from "@/lib/safe-redirect";
@@ -63,13 +64,10 @@ export async function POST(request: Request) {
     clinicSlugForSession = clinic.slug;
   }
 
-  const rateKey = loginRateLimitKey(request, `${clinicSlug ?? "local"}:${login}`);
+  const rateKey = loginRateLimitKey(`clinic:${clinicSlug ?? "local"}`, login);
   const rate = checkLoginRateLimit(rateKey);
   if (!rate.allowed) {
-    return NextResponse.json(
-      { error: `Слишком много попыток. Повторите через ${rate.retryAfterSec} с.` },
-      { status: 429 }
-    );
+    return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
 
   const account = await findAccountByLogin(login, clinicId);

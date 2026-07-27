@@ -5,14 +5,15 @@ import {
   mapGenderToEgisz,
   resolveN3MedDocumentType,
 } from "@/lib/egisz/cda/constants";
+import { formatN3DateTime } from "@/lib/egisz/cda/xml-utils";
+import {
+  resolveDoctorN3PositionId,
+  resolveDoctorN3SpecialityId,
+} from "@/lib/egisz/doctor-nsi";
 import type { N3EmkPersonDto, N3MedDocumentDto, N3PatientDto } from "@/lib/egisz/n3/types";
 import type { EgiszClinicConfig } from "@/lib/egisz/types";
 import type { SignedDocument } from "@/lib/egisz/signing/interface";
 import type { ClinicSettings, Doctor, MedicalRecord, Patient } from "@/lib/types";
-
-/** Значения из минимального примера N3 (AddMedRecord.xml) */
-const DEFAULT_N3_SPECIALITY = "28";
-const DEFAULT_N3_POSITION = "114";
 
 function splitDoctorName(name: string): {
   familyName: string;
@@ -47,32 +48,27 @@ export function mapDoctorToN3(doctor: Doctor): N3EmkPersonDto {
     givenName: name.givenName,
     middleName: name.middleName ?? "",
     snils: doctor.snils?.replace(/\D/g, "") ?? "",
-    idSpeciality: doctor.n3SpecialityId?.trim() || DEFAULT_N3_SPECIALITY,
-    idPosition: doctor.n3PositionId?.trim() || DEFAULT_N3_POSITION,
+    idSpeciality: resolveDoctorN3SpecialityId({
+      n3SpecialityId: doctor.n3SpecialityId,
+      specialization: doctor.specialization,
+    }),
+    idPosition: resolveDoctorN3PositionId({
+      n3PositionId: doctor.n3PositionId,
+      positionCode: doctor.positionCode,
+      specialization: doctor.specialization,
+    }),
   };
 }
 
 function formatN3CreationDate(record: MedicalRecord): string {
   const raw = record.createdAt?.trim();
   if (raw) {
-    const parsed = new Date(raw);
+    const parsed = new Date(raw.length <= 10 ? `${raw}T12:00:00` : raw);
     if (!Number.isNaN(parsed.getTime())) {
-      const offsetMin = -parsed.getTimezoneOffset();
-      const sign = offsetMin >= 0 ? "+" : "-";
-      const abs = Math.abs(offsetMin);
-      const hh = String(Math.floor(abs / 60)).padStart(2, "0");
-      const mm = String(abs % 60).padStart(2, "0");
-      const iso = parsed.toISOString().slice(0, 19);
-      return `${iso}${sign}${hh}:${mm}`;
+      return formatN3DateTime(parsed);
     }
   }
-  const now = new Date();
-  const offsetMin = -now.getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
-  const mm = String(abs % 60).padStart(2, "0");
-  return `${now.toISOString().slice(0, 19)}${sign}${hh}:${mm}`;
+  return formatN3DateTime(new Date());
 }
 
 export function mapMedDocumentToN3(input: {

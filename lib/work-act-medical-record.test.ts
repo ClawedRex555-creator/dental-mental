@@ -79,6 +79,46 @@ describe("buildMedicalRecordFromWorkAct", () => {
     assert.equal(record.workActId, "act1");
     assert.match(record.recommendations ?? "", /Акт № 12/);
   });
+
+  it("resolves hygiene NMU A16.07.051 from service name", () => {
+    const record = buildMedicalRecordFromWorkAct(
+      act({
+        items: [
+          {
+            id: "i1",
+            serviceName: "Профессиональная гигиена полости рта",
+            quantity: 1,
+            price: 4000,
+            total: 4000,
+          },
+        ],
+      }),
+      appointment,
+      "mr-hyg"
+    );
+    assert.equal(record.serviceCode, "A16.07.051");
+  });
+
+  it("uses nmuCode from price list service", () => {
+    const record = buildMedicalRecordFromWorkAct(
+      act({
+        items: [
+          {
+            id: "i1",
+            serviceId: "srv-hyg",
+            serviceName: "Чистка Air Flow",
+            quantity: 1,
+            price: 4000,
+            total: 4000,
+          },
+        ],
+      }),
+      appointment,
+      "mr-nmu",
+      [{ id: "srv-hyg", name: "Чистка Air Flow", category: "Гигиена", price: 4000, nmuCode: "A16.07.051" }]
+    );
+    assert.equal(record.serviceCode, "A16.07.051");
+  });
 });
 
 describe("ensureMedicalRecordForWorkAct", () => {

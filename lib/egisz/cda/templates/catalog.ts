@@ -15,6 +15,11 @@ export interface CdaTemplateMeta {
   idMedDocumentType: string;
   /** Код ClinicalDocument/code в справочнике 2.195 (У1-13) */
   cdaHeaderCode?: string;
+  /**
+   * displayName для ClinicalDocument/code по справочнику 11.1522.
+   * Не путать с человекочитаемым названием редакции шаблона.
+   */
+  nsiDisplayName?: string;
   displayName: string;
   family: CdaTemplateFamily;
   /** OID шаблона по умолчанию для новых клиник */
@@ -30,6 +35,7 @@ export const CDA_TEMPLATE_CATALOG: CdaTemplateMeta[] = [
     remdCode: "119",
     idMedDocumentType: "198",
     cdaHeaderCode: "5",
+    nsiDisplayName: "Протокол консультации",
     displayName: "Протокол консультации (CDA) Редакция 4",
     family: "consultation",
     defaultForDental: true,
@@ -59,6 +65,7 @@ export const CDA_TEMPLATE_CATALOG: CdaTemplateMeta[] = [
     remdCode: "111",
     idMedDocumentType: "200",
     cdaHeaderCode: "85",
+    nsiDisplayName: "Протокол консультации в рамках диспансерного наблюдения",
     displayName: "Протокол консультации в рамках диспансерного наблюдения (CDA) Редакция 4",
     family: "consultation",
     materialsUrl: "https://portal.egisz.rosminzdrav.ru/materials/4023",

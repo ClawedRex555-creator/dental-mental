@@ -3,8 +3,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Patient } from "@/lib/types";
 import { filterPatientsByQuery } from "@/lib/patient-search";
-import { formatPhone, getFullName } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { canViewPatientPhone } from "@/lib/rbac";
+import { useClinicStore } from "@/store/useClinicStore";
+import { formatPhone, getFullName, cn } from "@/lib/utils";
 
 interface PatientSearchSelectProps {
   patients: Patient[];
@@ -20,9 +21,13 @@ export function PatientSearchSelect({
   selectedPatientId,
   onSelect,
   label,
-  placeholder = "ФИО или телефон...",
+  placeholder,
   disabled = false,
 }: PatientSearchSelectProps) {
+  const role = useClinicStore((s) => s.currentUser.role);
+  const showPhone = canViewPatientPhone(role);
+  const resolvedPlaceholder =
+    placeholder ?? (showPhone ? "ФИО или телефон..." : "ФИО пациента...");
   const listId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -36,8 +41,11 @@ export function PatientSearchSelect({
     : "";
 
   const suggestions = useMemo(
-    () => filterPatientsByQuery(patients, query),
-    [patients, query]
+    () =>
+      filterPatientsByQuery(patients, query, {
+        matchPhone: showPhone,
+      }),
+    [patients, query, showPhone]
   );
 
   const showList = open && !disabled && (query.trim().length > 0 || !selected);
@@ -72,7 +80,7 @@ export function PatientSearchSelect({
           disabled && "opacity-60"
         )}
         value={open ? query : displayLabel || query}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         onChange={(e) => {
           setQuery(e.target.value);
           setHighlight(0);
@@ -146,8 +154,10 @@ export function PatientSearchSelect({
                       : "text-[var(--muted)]"
                   )}
                 >
-                  {formatPhone(patient.phone)}
-                  {patient.email ? ` · ${patient.email}` : ""}
+                  {showPhone ? formatPhone(patient.phone) : null}
+                  {showPhone && patient.email ? ` · ${patient.email}` : null}
+                  {!showPhone && patient.email ? patient.email : null}
+                  {!showPhone && !patient.email ? "—" : null}
                 </span>
               </button>
             </li>

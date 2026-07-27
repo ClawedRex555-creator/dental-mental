@@ -218,6 +218,11 @@ export interface Service {
   notes?: string;
   /** true — в прайсе показывается «от N ₽» (минимальная цена) */
   priceIsFrom?: boolean;
+  /**
+   * Код НМУ (справочник 1.2.643.5.1.13.13.11.1070), напр. A16.07.051.
+   * Обязателен для корректной выгрузки в ЕГИСЗ: displayName берётся из НСИ по этому коду.
+   */
+  nmuCode?: string;
   /** @deprecated используйте notes */
   description?: string;
   active?: boolean;
@@ -427,6 +432,9 @@ export interface PatientPrepayment {
   actNumber?: string;
   discountType?: DiscountType;
   discount?: number;
+  /** Когда аванс зачтён в акт оказанных услуг */
+  settledAt?: string;
+  settledWorkActId?: string;
   /** Сумма после скидки */
   finalAmount?: number;
 }

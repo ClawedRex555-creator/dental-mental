@@ -6,6 +6,7 @@ import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
 import {
   getWorkActPaidAmount,
   getWorkActRemainingAmount,
+  canCloseZeroWorkAct,
 } from "@/lib/work-act-payment";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -43,11 +44,14 @@ function PayActDialogContent({
   const isServiceAct = act.actType !== "prepayment";
   const paidSoFar = getWorkActPaidAmount(payments, act.id);
   const remaining = getWorkActRemainingAmount(act, payments);
+  const zeroClose = canCloseZeroWorkAct(act, payments);
 
   const payAmount =
-    mode === "partial" && isServiceAct
+    mode === "partial" && isServiceAct && !zeroClose
       ? Math.min(remaining, Math.max(0, Number(partialAmount) || 0))
       : remaining;
+
+  const canConfirm = zeroClose || payAmount > 0;
 
   return (
     <DialogContent className="max-w-sm">
@@ -73,6 +77,13 @@ function PayActDialogContent({
               </span>
             </p>
           </div>
+
+          {zeroClose && (
+            <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900">
+              Сумма акта 0 ₽ (например, скидка клиники 100%). Можно закрыть акт — ЗП врача
+              начислится после закрытия.
+            </p>
+          )}
 
           {act.notes?.trim() && (
             <p className="text-sm text-[var(--muted)]">
@@ -104,7 +115,7 @@ function PayActDialogContent({
             </div>
           )}
 
-          {mode === "partial" && isServiceAct && (
+          {mode === "partial" && isServiceAct && remaining > 0 && (
             <div className="space-y-2">
               <Label>Сумма предоплаты, ₽</Label>
               <Input
@@ -117,37 +128,41 @@ function PayActDialogContent({
               />
               <p className="text-xs text-[var(--muted)]">
                 Остаток {formatCurrency(Math.max(0, remaining - payAmount))} будет учтён как долг
-                пациента.
+                пациента. ЗП врача начислится только после полной оплаты акта.
               </p>
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Способ оплаты</Label>
-            <select
-              className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
-              value={method}
-              onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-            >
-              {METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {PAYMENT_METHOD_LABELS[m]}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!zeroClose && (
+            <div className="space-y-2">
+              <Label>Способ оплаты</Label>
+              <select
+                className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)]"
+                value={method}
+                onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+              >
+                {METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {PAYMENT_METHOD_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Отмена
             </Button>
             <Button
-              disabled={payAmount <= 0}
+              disabled={!canConfirm}
               onClick={() => onConfirm(act.id, method, payAmount)}
             >
-              {mode === "partial" && isServiceAct
-                ? `Внести ${formatCurrency(payAmount)}`
-                : "Оплатить полностью"}
+              {zeroClose
+                ? "Закрыть акт (0 ₽)"
+                : mode === "partial" && isServiceAct
+                  ? `Внести ${formatCurrency(payAmount)}`
+                  : "Оплатить полностью"}
             </Button>
           </div>
         </div>

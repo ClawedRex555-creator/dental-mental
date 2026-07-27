@@ -58,6 +58,7 @@ interface ConnectionRequestRow {
   clinicId: string | null;
   ownerUserId: string | null;
   notes: string | null;
+  marketingConsent?: boolean;
 }
 
 export default function PlatformAdminPage() {
@@ -264,6 +265,11 @@ export default function PlatformAdminPage() {
                             <div>{request.contactName}</div>
                             <div className="text-slate-500">{request.phone}</div>
                             <div className="text-slate-500">{request.email}</div>
+                            {request.marketingConsent ? (
+                              <div className="mt-1 text-[11px] text-teal-700">маркетинг: да</div>
+                            ) : (
+                              <div className="mt-1 text-[11px] text-slate-400">маркетинг: нет</div>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium">

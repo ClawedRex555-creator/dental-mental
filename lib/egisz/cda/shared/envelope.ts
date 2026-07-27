@@ -14,6 +14,7 @@ import {
   DEFAULT_CONFIDENTIALITY_NAME,
   DEFAULT_ENCOUNTER_CODE,
   DEFAULT_ENCOUNTER_NAME,
+  NSI_ENCOUNTER_KIND_NAME,
   DEFAULT_SERVICE_EVENT_CODE,
   DEFAULT_SERVICE_EVENT_NAME,
   NSI_CONFIDENTIALITY,
@@ -106,11 +107,12 @@ export function wrapClinicalDocument(
   meta: CdaTemplateMeta,
   structuredBody: string
 ): string {
-  const { input, orgOid, orgName, orgTelecom, orgAddrXml, doctorCtx, effectiveTime, effectiveDate } =
+  const { input, orgOid, orgName, orgTelecom, orgAddrXml, doctorCtx, effectiveTime } =
     ctx;
   const patient = input.patient;
   const sex = ctx.sex;
   const headerCode = meta.cdaHeaderCode ?? CDA_HEADER_CODE_CONSULTATION;
+  const headerDisplayName = meta.nsiDisplayName ?? meta.displayName;
   const patientAddr = buildPatientAddrXml(
     resolveStructuredAddress(patient.address ?? ctx.orgAddress)
   );
@@ -144,7 +146,7 @@ export function wrapClinicalDocument(
   <typeId root="${CDA_TYPE_ID_ROOT}" extension="${CDA_TYPE_ID_EXTENSION}"/>
   <templateId root="${xmlEscape(meta.templateOid)}"/>
   <id root="${xmlEscape(ctx.docIdRoot)}" extension="${xmlEscape(ctx.docId)}"/>
-  <code code="${xmlEscape(headerCode)}" codeSystem="${NSI_MED_DOC_TYPES_CDA}" codeSystemName="${NSI_MED_DOC_TYPES_CDA_NAME}" codeSystemVersion="${NSI_MED_DOC_TYPES_CDA_VERSION}" displayName="${xmlEscape(meta.displayName)}"/>
+  <code code="${xmlEscape(headerCode)}" codeSystem="${NSI_MED_DOC_TYPES_CDA}" codeSystemName="${NSI_MED_DOC_TYPES_CDA_NAME}" codeSystemVersion="${NSI_MED_DOC_TYPES_CDA_VERSION}" displayName="${xmlEscape(headerDisplayName)}"/>
   <title>${xmlEscape(ctx.title)}</title>
   <effectiveTime value="${effectiveTime}"/>
   <confidentialityCode code="${DEFAULT_CONFIDENTIALITY_CODE}" codeSystem="${NSI_CONFIDENTIALITY}" codeSystemName="Уровень конфиденциальности медицинского документа" codeSystemVersion="${NSI_CONFIDENTIALITY_VERSION}" displayName="${DEFAULT_CONFIDENTIALITY_NAME}"/>
@@ -218,11 +220,11 @@ export function wrapClinicalDocument(
     <encompassingEncounter>
       <id root="${xmlEscape(ctx.encounterCaseIdRoot)}" extension="${xmlEscape(ctx.encounterId)}"/>
       <id root="${xmlEscape(ctx.encounterIdRoot)}" extension="${xmlEscape(ctx.encounterCaseExtension)}"/>
-      <code code="${DEFAULT_ENCOUNTER_CODE}" codeSystem="${NSI_ENCOUNTER_KIND}" codeSystemName="Типы медицинских случаев" codeSystemVersion="${NSI_ENCOUNTER_KIND_VERSION}" displayName="${xmlEscape(DEFAULT_ENCOUNTER_NAME)}"/>
-      <effectiveTime>
-        <low value="${effectiveDate}0000+0000"/>
-      </effectiveTime>
+      <code code="${DEFAULT_ENCOUNTER_CODE}" codeSystem="${NSI_ENCOUNTER_KIND}" codeSystemName="${NSI_ENCOUNTER_KIND_NAME}" codeSystemVersion="${NSI_ENCOUNTER_KIND_VERSION}" displayName="${xmlEscape(DEFAULT_ENCOUNTER_NAME)}"/>
       <medService:DocType nullFlavor="NI"/>
+      <effectiveTime>
+        <low value="${effectiveTime}"/>
+      </effectiveTime>
     </encompassingEncounter>
   </componentOf>
   <component>

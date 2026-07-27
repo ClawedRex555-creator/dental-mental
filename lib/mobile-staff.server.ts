@@ -207,11 +207,12 @@ export async function getMobileStaffEarnings(
 
   const acts = data.workActs ?? [];
   const services = data.services ?? [];
+  const payments = data.payments ?? [];
 
   const sumRange = (from: Date, to: Date) =>
     buildDoctorSalarySummary(
       doctor,
-      getPaidServiceActsForDoctor(acts, doctorId, from, to),
+      getPaidServiceActsForDoctor(acts, doctorId, from, to, payments),
       data.patients,
       services
     ).doctorAmount;
@@ -229,7 +230,7 @@ export async function getMobileStaffEarnings(
     to.setHours(23, 59, 59, 999);
     const summary = buildDoctorSalarySummary(
       doctor,
-      getPaidServiceActsForDoctor(acts, doctorId, from, to),
+      getPaidServiceActsForDoctor(acts, doctorId, from, to, payments),
       data.patients,
       services
     );

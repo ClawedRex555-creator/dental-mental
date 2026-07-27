@@ -13,7 +13,14 @@ import {
 import { canAccessPath, defaultPathForRole, isAccountSettingsPath } from "@/lib/rbac";
 
 const PUBLIC_CLINIC_PATHS = ["/login"];
-const PLATFORM_PUBLIC_PATHS = ["/", "/platform/login"];
+const PLATFORM_PUBLIC_PATHS = [
+  "/",
+  "/platform/login",
+  "/privacy",
+  "/personal-data-consent",
+  "/cookies",
+  "/contacts",
+];
 
 function isPublicClinicPath(pathname: string): boolean {
   return PUBLIC_CLINIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

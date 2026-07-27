@@ -15,6 +15,7 @@ import {
   checkLoginRateLimit,
   clearLoginAttempts,
   loginRateLimitKey,
+  loginRateLimitResponse,
   recordLoginFailure,
 } from "@/lib/login-rate-limit";
 import { isDatabaseEnabled } from "@/lib/db";
@@ -43,13 +44,10 @@ export async function POST(request: Request) {
 
   await ensureBootstrapSuperAdmin();
 
-  const rateKey = loginRateLimitKey(request, `platform:${login}`);
+  const rateKey = loginRateLimitKey("platform", login);
   const rate = checkLoginRateLimit(rateKey);
   if (!rate.allowed) {
-    return NextResponse.json(
-      { error: `Слишком много попыток. Повторите через ${rate.retryAfterSec} с.` },
-      { status: 429 }
-    );
+    return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
 
   const admin = await findPlatformAdminByLogin(login);

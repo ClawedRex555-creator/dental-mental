@@ -1,6 +1,7 @@
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
+import { getWorkActSalaryAccrualDate } from "@/lib/work-act-payment";
 import { isDateInRange } from "@/lib/salary-period";
-import type { Doctor, Patient, Service, WorkAct } from "@/lib/types";
+import type { Doctor, Patient, Payment, Service, WorkAct } from "@/lib/types";
 
 export interface DoctorSalaryLine {
   act: WorkAct;
@@ -37,16 +38,15 @@ export function getPaidServiceActsForDoctor(
   workActs: WorkAct[],
   doctorId: string,
   from: Date,
-  to: Date
+  to: Date,
+  payments: Payment[] = []
 ): WorkAct[] {
   return workActs
-    .filter(
-      (a) =>
-        a.actType !== "prepayment" &&
-        a.paymentStatus === "paid" &&
-        a.doctorId === doctorId &&
-        isDateInRange(a.actDate, from, to)
-    )
+    .filter((a) => {
+      if (a.actType === "prepayment" || a.doctorId !== doctorId) return false;
+      const accrual = getWorkActSalaryAccrualDate(a, payments);
+      return accrual != null && isDateInRange(accrual, from, to);
+    })
     .sort((a, b) => b.actDate.localeCompare(a.actDate));
 }
 
@@ -57,11 +57,8 @@ export function buildDoctorSalarySummary(
   services: Service[] = []
 ): DoctorSalarySummary {
   const patientsTotal = acts.reduce((s, a) => s + a.totalAmount, 0);
-  const doctorAmount = acts.reduce(
-    (s, a) => s + calcDoctorPaymentForAct(a, doctor, services).doctorAmount,
-    0
-  );
-  const clinicAmount = Math.max(0, patientsTotal - doctorAmount);
+  let doctorAmount = 0;
+  let clinicAmount = 0;
 
   const lines: DoctorSalaryLine[] = acts.map((act) => {
     const patient = patients.find((p) => p.id === act.patientId);
@@ -69,6 +66,8 @@ export function buildDoctorSalarySummary(
       ? [patient.lastName, patient.firstName, patient.middleName].filter(Boolean).join(" ")
       : "—";
     const lineSplit = calcDoctorPaymentForAct(act, doctor, services);
+    doctorAmount += lineSplit.doctorAmount;
+    clinicAmount += lineSplit.clinicAmount;
     return {
       act,
       patientName,

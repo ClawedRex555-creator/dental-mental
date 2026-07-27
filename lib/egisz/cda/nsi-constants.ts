@@ -14,9 +14,9 @@ export const CDA_HEADER_CODE_CONSULTATION_DISPENSARY = "85";
 export const NSI_MED_LICENSE_ROOT = "1.2.643.5.1.13.2.1.1.1504.101";
 
 export const NSI_CONFIDENTIALITY = "1.2.643.5.1.13.13.99.2.285";
-export const NSI_CONFIDENTIALITY_VERSION = "1.2";
+export const NSI_CONFIDENTIALITY_VERSION = "1.1";
 export const DEFAULT_CONFIDENTIALITY_CODE = "N";
-export const DEFAULT_CONFIDENTIALITY_NAME = "Обычная";
+export const DEFAULT_CONFIDENTIALITY_NAME = "Обычный";
 
 export const NSI_REGION = "1.2.643.5.1.13.13.99.2.206";
 export const NSI_REGION_VERSION = "6.5";
@@ -48,7 +48,8 @@ export const NSI_POSITIONS = "1.2.643.5.1.13.13.11.1002";
 export const NSI_POSITIONS_VERSION = "9.12";
 
 export const NSI_SECTIONS = "1.2.643.5.1.13.13.99.2.197";
-export const NSI_SECTIONS_VERSION = "7.7";
+/** Версия из эталона SEMD 119 (Obs_Protocol); 7.7 в ФРНСИ отсутствует */
+export const NSI_SECTIONS_VERSION = "1.19";
 
 export const NSI_CODED_FIELDS = "1.2.643.5.1.13.13.99.2.166";
 export const NSI_CODED_FIELDS_VERSION = "5.2";
@@ -107,8 +108,8 @@ export const CDA_SECTION_TITLES: Record<string, string> = {
   ANAM: "Анамнез заболевания",
   LANAM: "Анамнез жизни",
   VITALPARAM: "Витальные параметры",
-  RESCONS: "Консультация врачей специалистов",
-  CONSULT: "Консультация врачей специалистов",
+  RESCONS: "Консультации врачей специалистов",
+  CONSULT: "Консультации врачей специалистов",
   SERVICES: "Оказанные услуги",
   SCOPORG: "Медицинская организация, куда направлен пациент",
   RESINFO: "Заключение",
@@ -119,8 +120,10 @@ export const CDA_SECTION_TITLES: Record<string, string> = {
 export const DEFAULT_PATIENT_CONDITION_CODE = "1";
 export const DEFAULT_PATIENT_CONDITION_NAME = "Удовлетворительное";
 
+/** Типы медицинских карт (99.2.723), не «вид обращения» */
 export const DEFAULT_ENCOUNTER_CODE = "1";
-export const DEFAULT_ENCOUNTER_NAME = "Посещение по заболеванию";
+export const DEFAULT_ENCOUNTER_NAME = "Амбулаторная медицинская карта";
+export const NSI_ENCOUNTER_KIND_NAME = "Типы медицинских карт";
 
 export const DEFAULT_PLACE_CODE = "1";
 export const DEFAULT_PLACE_NAME = "Амбулаторно-поликлиническое учреждение";
@@ -131,8 +134,10 @@ export const DEFAULT_SERVICE_EVENT_NAME = "Консультация";
 export const CDA_FIELD_ANAMNESIS_TEXT = "7006";
 export const CDA_FIELD_BENEFITS = "811";
 
-export const DEFAULT_DENTAL_SERVICE_CODE = "A16.07.002";
-export const DEFAULT_DENTAL_SERVICE_NAME = "Прием (осмотр, консультация) врача-стоматолога";
+/** Для СЭМД «протокол консультации» — код приёма, не пломбы (A16.07.002) */
+export const DEFAULT_DENTAL_SERVICE_CODE = "B01.065.001";
+export const DEFAULT_DENTAL_SERVICE_NAME =
+  "Прием (осмотр, консультация) врача-стоматолога первичный";
 
 export const DEFAULT_RADIOLOGY_SERVICE_CODE = "A06.07.003";
 export const DEFAULT_RADIOLOGY_SERVICE_NAME =

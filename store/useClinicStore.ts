@@ -87,6 +87,10 @@ import {
   type ClinicModules,
 } from "@/lib/modules";
 import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
+import {
+  allocateNextActSequence,
+  formatWorkActNumber,
+} from "@/lib/work-act-number";
 import { ensureMedicalRecordForWorkAct } from "@/lib/work-act-medical-record";
 import { applyWorkActItemsToTeeth } from "@/lib/work-act-teeth";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
@@ -235,6 +239,7 @@ interface ClinicState {
   syncMedicalRecordForWorkAct: (act: WorkAct) => void;
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
+  updatePrepayment: (id: string, data: Partial<PatientPrepayment>) => void;
   payWorkAct: (actId: string, method?: PaymentMethod, amount?: number) => boolean;
   /** ready_for_payment → completed, если акт уже оплачен */
   repairPaidActAppointments: () => void;
@@ -722,12 +727,12 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       getNextActNumber: () => {
-        const n = get().actCounter;
+        const s = get();
+        // Не доверяем только локальному счётчику: при одновременной работе врачей
+        // он может отставать — берём max(счётчик, номера уже существующих актов).
+        const n = allocateNextActSequence(s.workActs, s.prepayments ?? [], s.actCounter);
         set({ actCounter: n + 1 });
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        return `${String(n).padStart(4, "0")}-${month}/${year}`;
+        return formatWorkActNumber(n);
       },
 
       addWorkAct: (act) => {
@@ -785,6 +790,15 @@ export const useClinicStore = create<ClinicState>()(
             prepayments: [prepayment, ...prepayments],
           };
         });
+        scheduleClinicDataFlush();
+      },
+
+      updatePrepayment: (id, data) => {
+        set((s) => ({
+          prepayments: (s.prepayments ?? []).map((p) =>
+            p.id === id ? { ...p, ...data } : p
+          ),
+        }));
         scheduleClinicDataFlush();
       },
 
@@ -863,18 +877,50 @@ export const useClinicStore = create<ClinicState>()(
         };
 
         if (remaining <= 0) {
-          if (!isWorkActFullyPaid(act, state.payments)) return false;
-          const appointment = act.appointmentId
-            ? state.appointments.find((a) => a.id === act.appointmentId)
-            : undefined;
-          const medicalSync = ensureMedicalRecordForWorkAct(
-            act,
-            state.medicalRecords,
-            appointment
-          );
-          set((s) => applyFullyPaidState(s, medicalSync));
-          scheduleClinicDataFlush();
-          return true;
+          // Уже полностью оплачен — досинхронизировать статус/приём
+          if (isWorkActFullyPaid(act, state.payments)) {
+            const appointment = act.appointmentId
+              ? state.appointments.find((a) => a.id === act.appointmentId)
+              : undefined;
+            const medicalSync = ensureMedicalRecordForWorkAct(
+              act,
+              state.medicalRecords,
+              appointment,
+              state.services
+            );
+            set((s) => applyFullyPaidState(s, medicalSync));
+            scheduleClinicDataFlush();
+            return true;
+          }
+          // Нулевой акт (например 100% скидка клиники) — закрыть без платежа
+          if (act.totalAmount <= 0) {
+            const appointment = act.appointmentId
+              ? state.appointments.find((a) => a.id === act.appointmentId)
+              : undefined;
+            const medicalSync = ensureMedicalRecordForWorkAct(
+              act,
+              state.medicalRecords,
+              appointment,
+              state.services
+            );
+            set((s) => {
+              const base = applyFullyPaidState(s, medicalSync);
+              return {
+                ...base,
+                invoices: s.invoices.map((inv) => {
+                  const linked =
+                    inv.workActId === actId ||
+                    inv.id === act.invoiceId ||
+                    inv.description.includes(act.actNumber);
+                  if (!linked) return inv;
+                  return { ...inv, workActId: actId, status: "paid" as const, paid: 0 };
+                }),
+              };
+            });
+            scheduleClinicDataFlush();
+            return true;
+          }
+          return false;
         }
 
         const payAmount =
@@ -888,7 +934,12 @@ export const useClinicStore = create<ClinicState>()(
           ? state.appointments.find((a) => a.id === act.appointmentId)
           : undefined;
         const medicalSync = fullyPaid
-          ? ensureMedicalRecordForWorkAct(act, state.medicalRecords, appointment)
+          ? ensureMedicalRecordForWorkAct(
+              act,
+              state.medicalRecords,
+              appointment,
+              state.services
+            )
           : { records: state.medicalRecords, actMedicalRecordId: undefined };
 
         const invoice =
@@ -932,7 +983,7 @@ export const useClinicStore = create<ClinicState>()(
           if (fullyPaid) {
             const full = applyFullyPaidState(
               { ...s, workActs, payments: paymentsNext },
-              ensureMedicalRecordForWorkAct(act, s.medicalRecords, appointment)
+              ensureMedicalRecordForWorkAct(act, s.medicalRecords, appointment, s.services)
             );
             appointments = full.appointments;
             medicalRecords = full.medicalRecords;

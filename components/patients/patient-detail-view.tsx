@@ -38,6 +38,7 @@ import {
   canDeleteMedicalRecords,
   canDeletePatients,
   canDeleteTreatmentPlans,
+  canViewPatientPhone,
 } from "@/lib/rbac";
 import {
   CLINIC_VISIT_STATUSES,
@@ -53,6 +54,7 @@ import { findMedicalRecordForAppointment, findWorkActForAppointment } from "@/li
 import { isWorkActSyntheticVisit } from "@/lib/work-act-visit";
 import { printWorkAct } from "@/lib/work-act-print";
 import { getPatientDebtAmount } from "@/lib/patient-balance";
+import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
 
 const TABS = ["overview", "appointments", "records", "teeth", "plans", "finance", "files", "notes"] as const;
 type Tab = (typeof TABS)[number];
@@ -105,6 +107,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const canDelete = canDeletePatients(currentUser.role);
   const canDeletePlans = canDeleteTreatmentPlans(currentUser.role);
   const canDeleteRecords = canDeleteMedicalRecords(currentUser.role);
+  const showPhone = canViewPatientPhone(currentUser.role);
   const patientName = getFullName(patient.firstName, patient.lastName, patient.middleName);
 
   useEffect(() => {
@@ -151,7 +154,10 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const records = medicalRecords.filter((r) => r.patientId === patient.id);
   const plans = treatmentPlans.filter((p) => p.patientId === patient.id);
   const patientPayments = payments.filter((p) => p.patientId === patient.id);
-  const patientPrepayments = prepayments.filter((p) => p.patientId === patient.id);
+  const patientPrepaidSources = useMemo(
+    () => getOpenPrepaidSources(prepayments, workActs, payments, patient.id),
+    [prepayments, workActs, payments, patient.id]
+  );
   const files = patientFiles.filter((f) => f.patientId === patient.id);
   const notes = patientNotes.filter((n) => n.patientId === patient.id);
   const notesCount = notes.length + (patient.notes?.trim() ? 1 : 0);
@@ -193,7 +199,11 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               <h1 className="text-2xl font-bold text-slate-900">{getFullName(patient.firstName, patient.lastName, patient.middleName)}</h1>
               <PatientStatusBadge status={patient.status} />
             </div>
-            <p className="mt-2 text-sm text-slate-600">{getAge(patient.birthDate)} лет · {formatPhone(patient.phone)}{patient.email && ` · ${patient.email}`}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              {getAge(patient.birthDate)} лет
+              {showPhone ? ` · ${formatPhone(patient.phone)}` : ""}
+              {patient.email && ` · ${patient.email}`}
+            </p>
             <div className="mt-3 flex flex-wrap gap-4 text-sm">
               <span>
                 Баланс:{" "}
@@ -228,7 +238,14 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               <CreditCard className="mr-2 h-4 w-4" />
               Предоплата
             </Button>
-            <Button variant="secondary" size="sm" asChild><a href={`tel:${patient.phone}`}><Phone className="mr-2 h-4 w-4" />Позвонить</a></Button>
+            {showPhone && (
+              <Button variant="secondary" size="sm" asChild>
+                <a href={`tel:${patient.phone}`}>
+                  <Phone className="mr-2 h-4 w-4" />
+                  Позвонить
+                </a>
+              </Button>
+            )}
             {canDelete && (
               <Button
                 variant="outline"
@@ -629,38 +646,36 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               Внести предоплату
             </Button>
           </div>
-          {patientPrepayments.length > 0 && (
+          {patientPrepaidSources.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Предоплаты</CardTitle>
               </CardHeader>
               <CardContent className="divide-y p-0">
-                {patientPrepayments.map((pre) => (
-                  <div key={pre.id} className="space-y-2 px-4 py-3 text-sm">
+                {patientPrepaidSources.map((source) => (
+                  <div key={source.id} className="space-y-2 px-4 py-3 text-sm">
                     <div className="flex justify-between gap-2">
-                      <span className="font-medium">{formatDate(pre.date)}</span>
-                      {pre.actNumber && (
-                        <span className="text-xs text-slate-500">№ {pre.actNumber}</span>
-                      )}
+                      <span className="font-medium">{formatDate(source.date)}</span>
+                      <span className="text-xs text-slate-500">{source.label}</span>
                     </div>
-                    <ul className="text-slate-600">
-                      {pre.items.map((it, i) => (
-                        <li key={i} className="flex justify-between">
-                          <span>
-                            {it.serviceName}
-                            {(it.quantity ?? 1) > 1 ? ` × ${it.quantity}` : ""}
-                          </span>
-                          <span>
-                            {formatCurrency(it.price * Math.max(1, it.quantity ?? 1))}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+                    <p className="text-xs text-slate-500">
+                      {source.kind === "partial_act"
+                        ? "Частично оплаченный акт"
+                        : "Документ предоплаты"}
+                    </p>
+                    {source.serviceNames.length > 0 && (
+                      <ul className="text-slate-600">
+                        {source.serviceNames.slice(0, 6).map((name, i) => (
+                          <li key={`${source.id}-${i}`}>{name}</li>
+                        ))}
+                      </ul>
+                    )}
                     <div className="flex flex-wrap gap-3 text-xs">
-                      <span>План: {formatCurrency(pre.totalAmount)}</span>
-                      <span className="text-teal-700">Внесено: {formatCurrency(pre.paidAmount)}</span>
+                      <span className="text-teal-700">
+                        Внесено: {formatCurrency(source.credit)}
+                      </span>
                       <span className="text-amber-700">
-                        Остаток: {formatCurrency(pre.remainingAmount)}
+                        Остаток: {formatCurrency(source.remaining)}
                       </span>
                     </div>
                   </div>

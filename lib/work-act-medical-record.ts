@@ -1,7 +1,11 @@
-import type { Appointment, MedicalRecord, WorkAct } from "@/lib/types";
+import type { Appointment, MedicalRecord, Service, WorkAct } from "@/lib/types";
 import { generateId } from "@/lib/utils";
 import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
-import { DEFAULT_DENTAL_SERVICE_CODE } from "@/lib/egisz/cda/nsi-constants";
+import {
+  DEFAULT_DENTAL_SERVICE_CODE,
+  DEFAULT_DENTAL_SERVICE_NAME,
+} from "@/lib/egisz/cda/nsi-constants";
+import { resolveNmuService } from "@/lib/egisz/cda/nsi-display-names";
 import { buildWorkActMedicalRecommendations } from "@/lib/work-act-utils";
 
 export const WORK_ACT_STUB_COMPLAINTS = "По акту оказанных услуг";
@@ -9,6 +13,23 @@ export const WORK_ACT_STUB_DIAGNOSIS = "Оказаны стоматологич�
 
 function servicesListFromAct(act: WorkAct): string {
   return act.items.map((i) => i.serviceName).join("; ");
+}
+
+/** Код НМУ для ЕГИСЗ: из прайса (nmuCode) или по названию позиций акта */
+export function resolveNmuForWorkAct(
+  act: WorkAct,
+  services: Service[] = []
+): { code: string; name: string } {
+  const byId = new Map(services.map((s) => [s.id, s]));
+  const explicit = act.items
+    .map((item) => (item.serviceId ? byId.get(item.serviceId)?.nmuCode : undefined))
+    .find((code) => Boolean(code?.trim()));
+  return resolveNmuService({
+    serviceCode: explicit,
+    serviceName: servicesListFromAct(act),
+    fallbackCode: DEFAULT_DENTAL_SERVICE_CODE,
+    fallbackName: DEFAULT_DENTAL_SERVICE_NAME,
+  });
 }
 
 export function findMedicalRecordForWorkAct(
@@ -38,7 +59,8 @@ function resolveDoctorId(
 export function buildMedicalRecordFromWorkAct(
   act: WorkAct,
   appointment: Appointment | undefined,
-  recordId = generateId("mr")
+  recordId = generateId("mr"),
+  services: Service[] = []
 ): MedicalRecord {
   const servicesList = servicesListFromAct(act);
   const complaints =
@@ -46,6 +68,7 @@ export function buildMedicalRecordFromWorkAct(
     appointment?.reason?.trim() ||
     WORK_ACT_STUB_COMPLAINTS;
   const diagnosisParsed = extractDiagnosisCode(WORK_ACT_STUB_DIAGNOSIS);
+  const nmu = resolveNmuForWorkAct(act, services);
 
   return {
     id: recordId,
@@ -60,7 +83,7 @@ export function buildMedicalRecordFromWorkAct(
     diagnosis: diagnosisParsed.displayName,
     diagnosisCode: diagnosisParsed.code,
     treatment: servicesList,
-    serviceCode: DEFAULT_DENTAL_SERVICE_CODE,
+    serviceCode: nmu.code,
     recommendations: buildWorkActMedicalRecommendations({
       actNumber: act.actNumber,
       actDate: act.actDate,
@@ -76,7 +99,8 @@ export function buildMedicalRecordFromWorkAct(
 export function enrichMedicalRecordForWorkAct(
   record: MedicalRecord,
   act: WorkAct,
-  appointment: Appointment | undefined
+  appointment: Appointment | undefined,
+  services: Service[] = []
 ): MedicalRecord {
   const servicesList = servicesListFromAct(act);
   const complaints =
@@ -84,6 +108,10 @@ export function enrichMedicalRecordForWorkAct(
     appointment?.reason?.trim() ||
     record.complaints?.trim() ||
     WORK_ACT_STUB_COMPLAINTS;
+  const nmu = resolveNmuForWorkAct(act, services);
+  const keepExplicit =
+    Boolean(record.serviceCode?.trim()) &&
+    record.serviceCode !== DEFAULT_DENTAL_SERVICE_CODE;
 
   return {
     ...record,
@@ -96,7 +124,7 @@ export function enrichMedicalRecordForWorkAct(
     objective: record.objective?.trim() || servicesList || "Осмотр полости рта",
     treatment: servicesList || record.treatment,
     serviceName: servicesList || record.serviceName,
-    serviceCode: record.serviceCode ?? DEFAULT_DENTAL_SERVICE_CODE,
+    serviceCode: keepExplicit ? record.serviceCode : nmu.code,
     diagnosisCode:
       record.diagnosisCode ??
       extractDiagnosisCode(record.diagnosis).code,
@@ -112,25 +140,26 @@ export function enrichMedicalRecordForWorkAct(
 export function ensureMedicalRecordForWorkAct(
   act: WorkAct,
   medicalRecords: MedicalRecord[],
-  appointment: Appointment | undefined
+  appointment: Appointment | undefined,
+  services: Service[] = []
 ): { records: MedicalRecord[]; record: MedicalRecord; actMedicalRecordId?: string } {
   const existing = findMedicalRecordForWorkAct(act, medicalRecords);
   if (existing) {
-    const enriched = enrichMedicalRecordForWorkAct(existing, act, appointment);
+    const enriched = enrichMedicalRecordForWorkAct(existing, act, appointment, services);
     const changed = enriched !== existing;
     return {
       records: changed
         ? medicalRecords.map((r) => (r.id === existing.id ? enriched : r))
         : medicalRecords,
       record: enriched,
-      actMedicalRecordId: act.medicalRecordId ? undefined : existing.id,
+      actMedicalRecordId: act.medicalRecordId ?? enriched.id,
     };
   }
 
-  const record = buildMedicalRecordFromWorkAct(act, appointment);
+  const created = buildMedicalRecordFromWorkAct(act, appointment, generateId("mr"), services);
   return {
-    records: [record, ...medicalRecords],
-    record,
-    actMedicalRecordId: record.id,
+    records: [created, ...medicalRecords],
+    record: created,
+    actMedicalRecordId: created.id,
   };
 }

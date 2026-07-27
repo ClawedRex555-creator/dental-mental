@@ -138,9 +138,9 @@ powershell -ExecutionPolicy Bypass -File C:\emkaro-signing\list-certs.ps1
 
 | Симптом | Решение |
 |---------|---------|
-| `Connection refused` на `172.17.0.1:9876` | Туннель с Windows: `Start-ScheduledTask EmkaroSigningTunnel` |
+| `Connection refused` на `172.17.0.1:9876` | Туннель с Windows: `Start-ScheduledTask EmkaroSigningTunnel`; на сервере: `systemctl status emkaro-signing-forward` (не `emkaro-egisz-…`) |
+| `timeout` / `aborted due to timeout` | **PIN на экране Windows** не введён; или SSH-туннель/агент мёртв; или OpenVPN N3. После фикса в коде ошибка явно пишет «Подпись CryptoPro» или «N3 SOAP». |
 | `fetch failed` | То же + VPN: `systemctl start emkaro-n3-vpn` |
-| `timeout` при подписи | PIN на экране Windows |
 | Неверный сертификат | Проверить отпечаток в карточке врача и `list-certs.ps1` |
 
 ---

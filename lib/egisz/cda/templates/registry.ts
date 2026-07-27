@@ -12,6 +12,7 @@ import {
   DEFAULT_RADIOLOGY_SERVICE_CODE,
   DEFAULT_RADIOLOGY_SERVICE_NAME,
 } from "@/lib/egisz/cda/nsi-constants";
+import { resolveNmuService } from "@/lib/egisz/cda/nsi-display-names";
 import {
   findCdaTemplateByOid,
   type CdaTemplateMeta,
@@ -21,10 +22,14 @@ function buildByFamily(input: CdaBuildInput, meta: CdaTemplateMeta): string {
   const ctx = buildCdaDocumentContext(input);
 
   if (meta.family === "instrumental") {
-    ctx.clinical.serviceCode =
-      input.record.serviceCode?.trim() || DEFAULT_RADIOLOGY_SERVICE_CODE;
-    ctx.clinical.serviceName =
-      input.record.serviceName?.trim() || DEFAULT_RADIOLOGY_SERVICE_NAME;
+    const radiology = resolveNmuService({
+      serviceCode: input.record.serviceCode,
+      serviceName: input.record.serviceName,
+      fallbackCode: DEFAULT_RADIOLOGY_SERVICE_CODE,
+      fallbackName: DEFAULT_RADIOLOGY_SERVICE_NAME,
+    });
+    ctx.clinical.serviceCode = radiology.code;
+    ctx.clinical.serviceName = radiology.name;
     ctx.title = input.record.serviceName ?? "Протокол инструментального исследования";
     return wrapClinicalDocument(ctx, meta, buildInstrumentalBody(ctx));
   }

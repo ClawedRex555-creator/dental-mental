@@ -7,6 +7,7 @@ import type {
   N3MedDocumentDto,
   N3PatientDto,
 } from "@/lib/egisz/n3/types";
+import { isAbortTimeoutError, n3TimeoutMs } from "@/lib/egisz/timeouts";
 
 const SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/";
 const TEMPURI_NS = "http://tempuri.org/";
@@ -306,15 +307,30 @@ export class N3IemkClient {
     bodyInner: string;
   }): Promise<{ status: number; text: string }> {
     const envelope = buildEnvelope(input.bodyInner);
+    const timeoutMs = n3TimeoutMs();
 
-    const res = await fetch(input.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml;charset=UTF-8",
-        SOAPAction: input.soapAction,
-      },
-      body: envelope,
-    });
+    let res: Response;
+    try {
+      res = await fetch(input.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/xml;charset=UTF-8",
+          SOAPAction: input.soapAction,
+        },
+        body: envelope,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      if (isAbortTimeoutError(error)) {
+        throw new Error(
+          `N3 SOAP таймаут ${Math.round(timeoutMs / 1000)} с (${input.url}). Проверьте OpenVPN к N3 на сервере (systemctl status emkaro-n3-vpn) и доступность шлюза.`
+        );
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `N3 SOAP недоступен (${input.url}): ${msg}. Обычно нет OpenVPN к b2b-demo.n3health.ru.`
+      );
+    }
 
     const text = await res.text();
     return { status: res.status, text };

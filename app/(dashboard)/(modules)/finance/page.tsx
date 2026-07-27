@@ -23,6 +23,7 @@ import {
   getPaymentReportingDate,
   filterPaymentsWithExistingWorkActs,
   isWorkActFullyPaid,
+  getWorkActSalaryAccrualDate,
 } from "@/lib/work-act-payment";
 import { calcDoctorPaymentForAct, calcClinicNetAfterSalaries, calcClinicNetAfterSalariesAndExpenses, computeStaffSalariesForRange, sumClinicExpensesInRange, sumPaidPaymentsInRange, sumStaffPaidExpensesInRange, EMPTY_STAFF_SALARIES } from "@/lib/finance-utils";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
@@ -38,6 +39,7 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, UI } from "@/lib/constant
 import { formatCurrency, formatDate, generateId, getFullName } from "@/lib/utils";
 import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
 import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
+import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
 import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 
@@ -91,6 +93,17 @@ export default function FinancePage() {
   );
   const canDeleteActs = canDeleteWorkActs(currentUser.role);
   const canDeleteExpenses = canDeleteClinicExpenses(currentUser.role);
+
+  /** Документы аванса + частично оплаченные акты (в т.ч. старые) */
+  const prepaidSources = useMemo(() => {
+    const byPatient = new Map<string, ReturnType<typeof getOpenPrepaidSources>>();
+    for (const p of patients) {
+      const sources = getOpenPrepaidSources(prepayments, workActs, payments, p.id);
+      if (sources.length) byPatient.set(p.id, sources);
+    }
+    return [...byPatient.values()].flat().sort((a, b) => b.date.localeCompare(a.date));
+  }, [patients, prepayments, workActs, payments]);
+
   const [tab, setTab] = useState<FinanceTab>("payments");
   const [period, setPeriod] = useState<Period>("day");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -260,7 +273,8 @@ export default function FinancePage() {
             from,
             to,
             normalizedAssistantManualHours,
-            services
+            services,
+            payments
           )
         : EMPTY_STAFF_SALARIES,
     [
@@ -272,6 +286,7 @@ export default function FinancePage() {
       to,
       normalizedAssistantManualHours,
       services,
+      payments,
     ]
   );
 
@@ -310,7 +325,8 @@ export default function FinancePage() {
             salaryRangeFrom,
             salaryRangeTo,
             normalizedAssistantManualHours,
-            services
+            services,
+            payments
           )
         : EMPTY_STAFF_SALARIES,
     [
@@ -322,6 +338,7 @@ export default function FinancePage() {
       salaryRangeTo,
       normalizedAssistantManualHours,
       services,
+      payments,
     ]
   );
 
@@ -380,8 +397,11 @@ export default function FinancePage() {
 
   const salaryActs = useMemo(
     () =>
-      serviceActs.filter((a) => inSalaryPeriod(a.actDate) && a.paymentStatus === "paid"),
-    [serviceActs, salaryRangeFrom, salaryRangeTo, salaryPeriod, salaryFrom, salaryTo]
+      serviceActs.filter((a) => {
+        const accrual = getWorkActSalaryAccrualDate(a, payments);
+        return accrual != null && inSalaryPeriod(accrual);
+      }),
+    [serviceActs, payments, salaryRangeFrom, salaryRangeTo, salaryPeriod, salaryFrom, salaryTo]
   );
 
   const salaryAppointments = useMemo(
@@ -395,17 +415,20 @@ export default function FinancePage() {
       .map((doctor) => {
         const acts = salaryActs.filter((a) => a.doctorId === doctor.id);
         const total = acts.reduce((s, a) => s + a.totalAmount, 0);
-        const doctorAmount = acts.reduce(
-          (s, a) => s + calcDoctorPaymentForAct(a, doctor, services).doctorAmount,
-          0
-        );
+        let doctorAmount = 0;
+        let clinicAmount = 0;
+        for (const a of acts) {
+          const split = calcDoctorPaymentForAct(a, doctor, services);
+          doctorAmount += split.doctorAmount;
+          clinicAmount += split.clinicAmount;
+        }
         return {
           doctor,
           acts: acts.length,
           total,
           doctorAmount,
           assistantAmount: 0,
-          clinicAmount: Math.max(0, total - doctorAmount),
+          clinicAmount,
           doctorPercent: doctor.commissionPercent,
           assistantPercent: 0,
         };
@@ -479,16 +502,18 @@ export default function FinancePage() {
         const patient = patients.find((p) => p.id === act.patientId);
         if (!doctor || doctor.role !== "doctor") return null;
         const split = calcDoctorPaymentForAct(act, doctor, services);
+        const accrualDate = getWorkActSalaryAccrualDate(act, payments) ?? act.actDate;
         return {
           act,
           doctor,
           patient,
+          accrualDate,
           ...split,
         };
       })
       .filter(Boolean)
-      .sort((a, b) => compareWorkActsNewestFirst(a!.act, b!.act));
-  }, [salaryActs, doctors, patients, services]);
+      .sort((a, b) => b!.accrualDate.localeCompare(a!.accrualDate));
+  }, [salaryActs, doctors, patients, services, payments]);
 
   const assistantSalaryDetails = useMemo(() => {
     return salaryAppointments
@@ -959,7 +984,7 @@ export default function FinancePage() {
 
               <div>
                 <h3 className="mb-2 text-sm font-semibold text-slate-800">
-                  Детализация: врачи (по датам актов)
+                  Детализация: врачи (по дате полной оплаты)
                 </h3>
                 <table className="w-full text-sm">
                   <thead>
@@ -976,13 +1001,13 @@ export default function FinancePage() {
                     {doctorSalaryDetails.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
-                          Нет оплаченных актов за выбранный период
+                          Нет полностью оплаченных актов за выбранный период
                         </td>
                       </tr>
                     ) : (
                       doctorSalaryDetails.map((row) => (
                         <tr key={row!.act.id} className="border-b border-slate-50">
-                          <td className="px-4 py-3">{formatDate(row!.act.actDate)}</td>
+                          <td className="px-4 py-3">{formatDate(row!.accrualDate)}</td>
                           <td className="px-4 py-3">{row!.doctor.name}</td>
                           <td className="px-4 py-3">
                             {row!.patient
@@ -1216,17 +1241,16 @@ export default function FinancePage() {
             </div>
           ) : tab === "prepayments" ? (
             <div className="divide-y">
-              {prepayments.length === 0 ? (
-                <p className="px-4 py-8 text-center text-slate-500">Предоплат пока нет</p>
+              {prepaidSources.length === 0 ? (
+                <p className="px-4 py-8 text-center text-slate-500">
+                  Нет открытых предоплат и частично оплаченных актов
+                </p>
               ) : (
-                prepayments.map((pre) => {
-                  const patient = patients.find((p) => p.id === pre.patientId);
-                  const act = pre.workActId
-                    ? workActs.find((a) => a.id === pre.workActId)
-                    : undefined;
-                  const status = act ? getActPaymentStatus(act) : "paid";
+                prepaidSources.map((source) => {
+                  const patient = patients.find((p) => p.id === source.patientId);
+                  const act = source.act;
                   return (
-                    <div key={pre.id} className="space-y-2 px-4 py-4">
+                    <div key={source.id} className="space-y-2 px-4 py-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <p className="font-semibold text-slate-900">
@@ -1239,46 +1263,46 @@ export default function FinancePage() {
                               : "—"}
                           </p>
                           <p className="text-xs text-slate-500">
-                            {formatDate(pre.date)}
-                            {pre.actNumber ? ` · документ ${pre.actNumber}` : ""}
+                            {formatDate(source.date)} · {source.label}
+                            {source.kind === "partial_act"
+                              ? " · частично оплаченный акт"
+                              : " · документ предоплаты"}
                           </p>
                         </div>
-                        <Badge variant={status === "paid" ? "success" : "warning"}>
-                          {status === "paid" ? "Аванс оплачен" : "Ожидает оплаты аванса"}
+                        <Badge variant="warning">
+                          {source.kind === "partial_act"
+                            ? "Предоплата (частичная оплата)"
+                            : source.remaining > 0
+                              ? "Аванс / остаток плана"
+                              : "Аванс"}
                         </Badge>
                       </div>
-                      <ul className="text-sm text-slate-700">
-                        {pre.items.map((it, i) => (
-                          <li key={i} className="flex justify-between gap-2">
-                            <span>
-                              {it.serviceName}
-                              {(it.quantity ?? 1) > 1 ? ` × ${it.quantity}` : ""}
-                            </span>
-                            <span>
-                              {formatCurrency(
-                                it.price * Math.max(1, it.quantity ?? 1)
-                              )}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                      {source.serviceNames.length > 0 && (
+                        <ul className="text-sm text-slate-700">
+                          {source.serviceNames.slice(0, 6).map((name, i) => (
+                            <li key={`${source.id}-${i}`}>{name}</li>
+                          ))}
+                        </ul>
+                      )}
                       <div className="flex flex-wrap gap-4 text-sm">
                         <span>
-                          План: <strong>{formatCurrency(pre.totalAmount)}</strong>
-                        </span>
-                        <span>
-                          Внесено: <strong className="text-teal-700">{formatCurrency(pre.paidAmount)}</strong>
+                          Внесено:{" "}
+                          <strong className="text-teal-700">
+                            {formatCurrency(source.credit)}
+                          </strong>
                         </span>
                         <span>
                           Остаток:{" "}
                           <strong className="text-amber-700">
-                            {formatCurrency(pre.remainingAmount)}
+                            {formatCurrency(source.remaining)}
                           </strong>
                         </span>
                       </div>
-                      {act && status !== "paid" && (
+                      {act && source.remaining > 0 && (
                         <Button size="sm" onClick={() => setPayAct(act)}>
-                          Оплатить аванс
+                          {source.kind === "partial_act"
+                            ? "Доплатить по акту"
+                            : "Оплатить аванс"}
                         </Button>
                       )}
                     </div>
@@ -1354,7 +1378,7 @@ export default function FinancePage() {
                           <div className="flex justify-end gap-2">
                             {!isPaid && (
                               <Button size="sm" onClick={() => setPayAct(act)}>
-                                Оплатить
+                                {act.totalAmount <= 0 ? "Закрыть" : "Оплатить"}
                               </Button>
                             )}
                             <Button
@@ -1539,9 +1563,11 @@ export default function FinancePage() {
               ? actRow.totalAmount - getWorkActPaidAmount(payments, actId)
               : 0;
             toast.success(
-              amount > 0 && amount < dueBefore
-                ? "Предоплата по акту внесена"
-                : "Акт отмечен как оплаченный"
+              actRow && actRow.totalAmount <= 0
+                ? "Нулевой акт закрыт — ЗП врача начислена"
+                : amount > 0 && amount < dueBefore
+                  ? "Предоплата по акту внесена — ЗП начислится после полной оплаты"
+                  : "Акт оплачен полностью — ЗП врача начислена"
             );
             setPayAct(null);
           } else {

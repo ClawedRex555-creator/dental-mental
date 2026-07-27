@@ -213,4 +213,46 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(merged.appointments.length, 1);
     assert.equal(merged.appointments[0]?.id, "apt1");
   });
+
+  it("renumbers duplicate act numbers when two doctors save concurrently", () => {
+    const base = createFreshPersistedState();
+    const existingAct: WorkAct = {
+      id: "wa-existing",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-07-25",
+      createdAt: "2026-07-25T11:00:00.000Z",
+      actNumber: "0095-07/2026",
+      items: [],
+      totalAmount: 1000,
+      paymentStatus: "paid",
+    };
+    const incomingAct: WorkAct = {
+      id: "wa-incoming",
+      patientId: "p2",
+      doctorId: "d2",
+      actDate: "2026-07-25",
+      createdAt: "2026-07-25T13:00:00.000Z",
+      actNumber: "0095-07/2026",
+      items: [],
+      totalAmount: 2000,
+      paymentStatus: "pending",
+    };
+
+    const merged = mergeClinicDataForSave(
+      { ...base, workActs: [existingAct], actCounter: 96 },
+      { ...base, workActs: [incomingAct], actCounter: 96 }
+    );
+
+    assert.equal(merged.workActs.length, 2);
+    assert.equal(new Set(merged.workActs.map((a) => a.actNumber)).size, 2);
+    assert.equal(
+      merged.workActs.find((a) => a.id === "wa-existing")?.actNumber,
+      "0095-07/2026"
+    );
+    assert.notEqual(
+      merged.workActs.find((a) => a.id === "wa-incoming")?.actNumber,
+      "0095-07/2026"
+    );
+  });
 });

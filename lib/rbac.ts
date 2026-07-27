@@ -146,6 +146,11 @@ export function canDeleteClinicExpenses(role: UserRole): boolean {
   return role === "owner";
 }
 
+/** Телефоны пациентов: врач не видит (карточка, каталог, поиск, запись) */
+export function canViewPatientPhone(role: UserRole): boolean {
+  return role !== "doctor";
+}
+
 export function defaultPathForRole(role: UserRole, modules?: ClinicModules): string {
   return navItemsForRole(role, modules)[0]?.href ?? "/settings";
 }

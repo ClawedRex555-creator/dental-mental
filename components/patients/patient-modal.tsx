@@ -32,6 +32,7 @@ import {
   validateSnils,
 } from "@/lib/document-validation";
 import { normalizePhoneInput } from "@/lib/phone-utils";
+import { canViewPatientPhone } from "@/lib/rbac";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { useClinicStore } from "@/store/useClinicStore";
 import {
@@ -128,7 +129,9 @@ export function PatientModal({
     doctors,
     cabinets,
     patients,
+    currentUser,
   } = useClinicStore();
+  const showPhone = canViewPatientPhone(currentUser.role);
   const [fields, setFields] = useState(emptyPatientFields);
   const [appointmentFields, setAppointmentFields] = useState(emptyAppointmentFields);
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
@@ -224,8 +227,10 @@ export function PatientModal({
     }
 
     const errors: Record<string, string> = {};
-    const phoneCheck = validatePhone(fields.phone);
-    if (!phoneCheck.valid) errors.phone = phoneCheck.message!;
+    if (showPhone) {
+      const phoneCheck = validatePhone(fields.phone);
+      if (!phoneCheck.valid) errors.phone = phoneCheck.message!;
+    }
 
     if (!withoutDocuments) {
       const snilsDigits = digitsOnly(fields.snils);
@@ -295,7 +300,9 @@ export function PatientModal({
       firstName: fields.firstName.trim(),
       lastName: fields.lastName.trim(),
       middleName: fields.middleName.trim() || undefined,
-      phone: normalizePhoneInput(fields.phone),
+      phone: showPhone
+        ? normalizePhoneInput(fields.phone)
+        : patient?.phone ?? normalizePhoneInput(fields.phone),
       email: fields.email.trim() || undefined,
       birthDate: fields.birthDate,
       gender: fields.gender,
@@ -606,7 +613,13 @@ export function PatientModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>{UI.phone} *</Label>
+              <Label>{UI.phone} {showPhone ? "*" : ""}</Label>
+              {!showPhone ? (
+                <p className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--muted)]">
+                  Телефон скрыт для роли врача
+                </p>
+              ) : (
+                <>
               {fields.isChild && (
                 <div className="space-y-1">
                   <select
@@ -659,6 +672,8 @@ export function PatientModal({
               <PhoneInput value={fields.phone} onChange={(v) => set("phone", v)} required />
               {docErrors.phone && (
                 <p className="text-xs text-red-600">{docErrors.phone}</p>
+              )}
+                </>
               )}
             </div>
             <div className="space-y-2">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Service } from "@/lib/types";
@@ -10,6 +10,11 @@ import {
   normalizeServiceCategory,
   type ServiceCategory,
 } from "@/lib/service-categories";
+import {
+  getNmuDisplayName,
+  listNmuDentalOptions,
+  suggestNmuCodeFromName,
+} from "@/lib/egisz/cda/nsi-display-names";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { UI } from "@/lib/constants";
 import { useClinicStore } from "@/store/useClinicStore";
@@ -39,9 +44,12 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
   const [price, setPrice] = useState("");
   const [priceIsFrom, setPriceIsFrom] = useState(false);
   const [notes, setNotes] = useState("");
+  const [nmuCode, setNmuCode] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const initialized = useRef(false);
+
+  const nmuOptions = useMemo(() => listNmuDentalOptions(), []);
 
   useEffect(() => {
     if (!open) {
@@ -56,6 +64,7 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
       setPrice(String(service.price));
       setPriceIsFrom(Boolean(service.priceIsFrom));
       setNotes(serviceNotes(service) ?? "");
+      setNmuCode(service.nmuCode?.trim() ?? "");
       setDeleteConfirmOpen(false);
       setDeleteConfirmText("");
     } else {
@@ -64,10 +73,19 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
       setPrice("");
       setPriceIsFrom(false);
       setNotes("");
+      setNmuCode("");
       setDeleteConfirmOpen(false);
       setDeleteConfirmText("");
     }
   }, [open, service]);
+
+  const handleNameChange = (next: string) => {
+    setName(next);
+    if (!nmuCode.trim()) {
+      const suggested = suggestNmuCodeFromName(next);
+      if (suggested) setNmuCode(suggested);
+    }
+  };
 
   const handleSave = () => {
     if (!name.trim() || !price.trim()) {
@@ -76,12 +94,21 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
     }
 
     const trimmedNotes = notes.trim();
+    const trimmedNmu = nmuCode.trim();
+    if (trimmedNmu && !getNmuDisplayName(trimmedNmu)) {
+      toast.error(
+        "Код НМУ не из встроенного справочника. Выберите код из списка — иначе ЕГИСЗ отклонит документ."
+      );
+      return;
+    }
+
     const payload = {
       name: name.trim(),
       category: normalizeServiceCategory(category),
       price: Number(price) || 0,
       priceIsFrom,
       notes: trimmedNotes || undefined,
+      nmuCode: trimmedNmu || undefined,
       active: true,
     };
 
@@ -106,6 +133,8 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
     onOpenChange(false);
   };
 
+  const selectedNmuName = nmuCode.trim() ? getNmuDisplayName(nmuCode) : undefined;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -116,7 +145,7 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
           <SearchAutocomplete
             label="Название услуги"
             value={name}
-            onChange={setName}
+            onChange={handleNameChange}
             catalog={DENTAL_SERVICE_NAMES}
             placeholder="гигиена, имплант, коронка..."
             required
@@ -150,6 +179,25 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
             />
             Цена «от» (минимальная, итоговая может быть выше)
           </label>
+          <div className="space-y-2">
+            <Label>Код НМУ для ЕГИСЗ</Label>
+            <select
+              className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
+              value={nmuCode}
+              onChange={(e) => setNmuCode(e.target.value)}
+            >
+              <option value="">Не задан (подберётся по названию)</option>
+              {nmuOptions.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.code} — {opt.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-[var(--muted)]">
+              В СЭМД уходит код и точное наименование из справочника НСИ 1070
+              {selectedNmuName ? `: «${selectedNmuName}»` : ""}.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label>Примечания</Label>
             <Textarea

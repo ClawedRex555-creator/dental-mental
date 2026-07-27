@@ -3,6 +3,7 @@ import {
   resolveCommissionServiceCategory,
 } from "@/lib/service-categories";
 import { calcWorkActAmounts, calcWorkActLine } from "@/lib/work-act-utils";
+import { getWorkActSalaryAccrualDate } from "@/lib/work-act-payment";
 import {
   type AssistantManualHoursMap,
   calcAssistantHoursInRange,
@@ -86,24 +87,37 @@ function applyActDiscountBearer(
   totalAmount: number,
   bearer: DiscountBearer | undefined
 ): { doctorAmount: number; clinicAmount: number } {
-  if (discountValue <= 0 || !bearer || bearer === "shared") {
-    if (discountValue <= 0 || afterRowDiscounts <= 0) {
-      const doctorAmount = Math.min(doctorAmountFull, totalAmount);
-      return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
-    }
-    const ratio = doctorAmountFull / afterRowDiscounts;
-    const doctorDiscountShare = Math.round(discountValue * ratio);
-    const doctorAmount = Math.max(0, Math.min(doctorAmountFull - doctorDiscountShare, totalAmount));
-    return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+  const doctorFull = Math.min(Math.max(0, doctorAmountFull), Math.max(0, afterRowDiscounts));
+  const clinicFull = Math.max(0, afterRowDiscounts - doctorFull);
+
+  if (discountValue <= 0 || afterRowDiscounts <= 0) {
+    const doctorAmount = Math.min(doctorFull, Math.max(0, totalAmount));
+    return { doctorAmount, clinicAmount: totalAmount - doctorAmount };
   }
 
   if (bearer === "clinic") {
-    const doctorAmount = Math.min(doctorAmountFull, totalAmount);
-    return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+    // Скидка клиники: ЗП врача как без доп. скидки (вплоть до 100%).
+    // Клиника покрывает скидку — доля клиники может стать отрицательной.
+    const doctorAmount = doctorFull;
+    return { doctorAmount, clinicAmount: totalAmount - doctorAmount };
   }
 
-  const doctorAmount = Math.max(0, Math.min(doctorAmountFull - discountValue, totalAmount));
-  return { doctorAmount, clinicAmount: Math.max(0, totalAmount - doctorAmount) };
+  if (bearer === "doctor") {
+    // Скидка врача: прибыль клиники как без доп. скидки.
+    // Врач покрывает скидку; если скидка больше доли врача — остаток гасится из оплаты.
+    const clinicAmount = clinicFull;
+    const doctorAmount = totalAmount - clinicAmount;
+    if (doctorAmount < 0) {
+      return { doctorAmount: 0, clinicAmount: totalAmount };
+    }
+    return { doctorAmount, clinicAmount };
+  }
+
+  // Общая скидка: пропорционально долям врача и клиники
+  const ratio = doctorFull / afterRowDiscounts;
+  const doctorDiscountShare = Math.round(discountValue * ratio);
+  const doctorAmount = Math.max(0, doctorFull - doctorDiscountShare);
+  return { doctorAmount, clinicAmount: totalAmount - doctorAmount };
 }
 
 /** Начисление врачу по акту с учётом категории «Имплантация» и источника скидки */
@@ -223,7 +237,8 @@ export function isDateInRange(dateStr: string, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-/** Зарплаты врачей (% от оплаченных актов) и ассистентов (почасово) за период */
+/** Зарплаты врачей (% от полностью оплаченных актов) и ассистентов (почасово) за период.
+ *  ЗП врача начисляется по дате полной оплаты (не по дате акта). */
 export function computeStaffSalariesForRange(
   doctors: Doctor[],
   serviceActs: WorkAct[],
@@ -231,12 +246,14 @@ export function computeStaffSalariesForRange(
   from: Date,
   to: Date,
   manualAssistantHours: AssistantManualHoursMap | Record<string, string> = {},
-  services: Service[] = []
+  services: Service[] = [],
+  payments: Payment[] = []
 ): StaffSalariesSummary {
   const manualByDay = normalizeAssistantManualHours(manualAssistantHours);
-  const acts = serviceActs.filter(
-    (a) => a.paymentStatus === "paid" && isDateInRange(a.actDate, from, to)
-  );
+  const acts = serviceActs.filter((a) => {
+    const accrual = getWorkActSalaryAccrualDate(a, payments);
+    return accrual != null && isDateInRange(accrual, from, to);
+  });
   const apts = appointments.filter((a) => isDateInRange(a.date, from, to));
 
   let doctorSalary = 0;
@@ -247,12 +264,15 @@ export function computeStaffSalariesForRange(
     const doctorActs = acts.filter((a) => a.doctorId === doctor.id);
     const total = doctorActs.reduce((s, a) => s + a.totalAmount, 0);
     actsTurnover += total;
-    const doctorAmount = doctorActs.reduce(
-      (s, a) => s + calcDoctorPaymentForAct(a, doctor, services).doctorAmount,
-      0
-    );
+    let doctorAmount = 0;
+    let clinicAmount = 0;
+    for (const a of doctorActs) {
+      const split = calcDoctorPaymentForAct(a, doctor, services);
+      doctorAmount += split.doctorAmount;
+      clinicAmount += split.clinicAmount;
+    }
     doctorSalary += doctorAmount;
-    clinicShareFromActs += Math.max(0, total - doctorAmount);
+    clinicShareFromActs += clinicAmount;
   }
 
   let assistantSalary = 0;

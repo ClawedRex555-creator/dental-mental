@@ -6,6 +6,8 @@ import {
   getPaymentReportingDate,
   filterPaymentsWithExistingWorkActs,
   isWorkActFullyPaid,
+  canCloseZeroWorkAct,
+  getWorkActSalaryAccrualDate,
   resolvePatientBalanceAfterActPayment,
 } from "@/lib/work-act-payment";
 import type { Payment, WorkAct } from "@/lib/types";
@@ -40,6 +42,45 @@ describe("work-act-payment", () => {
     assert.equal(getWorkActPaidAmount(payments, "act-1"), 3000);
     assert.equal(getWorkActRemainingAmount(act, payments), 7000);
     assert.equal(isWorkActFullyPaid(act, payments), false);
+    assert.equal(getWorkActSalaryAccrualDate(act, payments), null);
+  });
+
+  it("accrues salary only after full payment (last payment date)", () => {
+    const payments: Payment[] = [
+      {
+        id: "p1",
+        patientId: "pat-1",
+        workActId: "act-1",
+        amount: 3000,
+        method: "cash",
+        status: "paid",
+        date: "2026-06-27",
+      },
+      {
+        id: "p2",
+        patientId: "pat-1",
+        workActId: "act-1",
+        amount: 7000,
+        method: "card",
+        status: "paid",
+        date: "2026-07-05",
+      },
+    ];
+    assert.equal(isWorkActFullyPaid(act, payments), true);
+    assert.equal(getWorkActSalaryAccrualDate(act, payments), "2026-07-05");
+  });
+
+  it("allows closing zero act and accrues on act date", () => {
+    const zeroAct: WorkAct = {
+      ...act,
+      totalAmount: 0,
+      paymentStatus: "pending",
+    };
+    assert.equal(canCloseZeroWorkAct(zeroAct, []), true);
+    assert.equal(getWorkActSalaryAccrualDate(zeroAct, []), null);
+    const closed: WorkAct = { ...zeroAct, paymentStatus: "paid" };
+    assert.equal(canCloseZeroWorkAct(closed, []), false);
+    assert.equal(getWorkActSalaryAccrualDate(closed, []), "2026-06-27");
   });
 
   it("balance after partial then full payment", () => {

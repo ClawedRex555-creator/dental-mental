@@ -8,9 +8,9 @@ import {
 } from "lucide-react";
 import type { ClinicRecord } from "@/lib/clinic-db.server";
 import { APP_NAME } from "@/lib/constants";
-import { HiddenAdminLogo } from "@/components/platform/hidden-admin-logo";
 import { Button } from "@/components/ui/button";
 import { ConnectionRequestForm } from "@/components/marketing/connection-request-form";
+import { PlatformPublicShell } from "@/components/marketing/platform-public-shell";
 
 interface PlatformLandingPageProps {
   rootDomain: string;
@@ -64,19 +64,7 @@ export function PlatformLandingPage({
   databaseEnabled,
 }: PlatformLandingPageProps) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <HiddenAdminLogo className="mb-0 h-10 w-10" logoSize={40} />
-            <p className="text-sm font-semibold">{APP_NAME}</p>
-          </div>
-          <Button size="sm" asChild>
-            <a href="#request">Запросить демо</a>
-          </Button>
-        </div>
-      </header>
-
+    <PlatformPublicShell>
       <main className="mx-auto w-full max-w-6xl space-y-10 px-4 py-8">
         <section className="grid gap-6 rounded-3xl bg-gradient-to-br from-[#f0f7ff] to-[#eefaf7] p-6 lg:grid-cols-2 lg:p-10">
           <div className="space-y-4">
@@ -176,9 +164,7 @@ export function PlatformLandingPage({
             )}
             <p className="mt-4 text-xs text-slate-500">
               Сотрудники клиники входят через свой поддомен:{" "}
-              <code className="text-teal-800">
-                https://название.{rootDomain}
-              </code>
+              <code className="text-teal-800">https://название.{rootDomain}</code>
             </p>
           </div>
           <section id="request">
@@ -186,6 +172,6 @@ export function PlatformLandingPage({
           </section>
         </section>
       </main>
-    </div>
+    </PlatformPublicShell>
   );
 }
