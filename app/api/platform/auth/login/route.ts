@@ -12,11 +12,12 @@ import {
   ensureBootstrapSuperAdmin,
 } from "@/lib/platform-auth.server";
 import {
-  checkLoginRateLimit,
-  clearLoginAttempts,
+  checkLoginRateLimitAsync,
+  clearLoginAttemptsAsync,
+  clientIpFromRequest,
   loginRateLimitKey,
   loginRateLimitResponse,
-  recordLoginFailure,
+  recordLoginFailureAsync,
 } from "@/lib/login-rate-limit";
 import { isDatabaseEnabled } from "@/lib/db";
 
@@ -44,19 +45,19 @@ export async function POST(request: Request) {
 
   await ensureBootstrapSuperAdmin();
 
-  const rateKey = loginRateLimitKey("platform", login);
-  const rate = checkLoginRateLimit(rateKey);
+  const rateKey = loginRateLimitKey("platform", login, clientIpFromRequest(request));
+  const rate = await checkLoginRateLimitAsync(rateKey);
   if (!rate.allowed) {
     return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
 
   const admin = await findPlatformAdminByLogin(login);
   if (!admin || !verifyPlatformPassword(admin.passwordHash, password)) {
-    recordLoginFailure(rateKey);
+    await recordLoginFailureAsync(rateKey);
     return NextResponse.json({ error: "Неверный логин или пароль" }, { status: 401 });
   }
 
-  clearLoginAttempts(rateKey);
+  await clearLoginAttemptsAsync(rateKey);
 
   const token = createSessionToken({
     userId: admin.id,

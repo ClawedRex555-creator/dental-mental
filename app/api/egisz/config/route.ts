@@ -86,6 +86,12 @@ export async function PUT(request: Request) {
 
   try {
     const incoming = parseEgiszConfig(body);
+    if (incoming.gatewayUrl?.trim()) {
+      const { assertSafeEgiszGatewayUrl } = await import("@/lib/egisz/safe-gateway-url");
+      incoming.gatewayUrl = assertSafeEgiszGatewayUrl(incoming.gatewayUrl, {
+        requireHttps: incoming.connectionMode === "live",
+      });
+    }
     const saved = await saveEgiszConfig(ctx.clinicId, incoming);
     return NextResponse.json({
       ok: true,

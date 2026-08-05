@@ -24,6 +24,10 @@ import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
 import { canViewPatientPhone } from "@/lib/rbac";
+import {
+  beginClinicEditorSession,
+  endClinicEditorSession,
+} from "@/lib/clinic-data-sync.client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +49,7 @@ interface AppointmentModalProps {
   defaultDoctorId?: string;
   defaultTime?: string;
   onOpenAct?: (actId: string) => void;
+  onGoToPayment?: (actId: string) => void;
 }
 
 export function AppointmentModal({
@@ -55,6 +60,7 @@ export function AppointmentModal({
   defaultDoctorId,
   defaultTime,
   onOpenAct,
+  onGoToPayment,
 }: AppointmentModalProps) {
   const {
     patients,
@@ -95,8 +101,16 @@ export function AppointmentModal({
   }, [legalEnabled, docsModalOpen]);
   const [patientModalOpen, setPatientModalOpen] = useState(false);
   const [savedAppointmentId, setSavedAppointmentId] = useState<string | null>(null);
-  const initialized = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const initialized = useRef<false | string>(false);
   const prevStatus = useRef<AppointmentStatus>("scheduled");
+
+  useEffect(() => {
+    if (!open) return;
+    beginClinicEditorSession();
+    return () => endClinicEditorSession();
+  }, [open]);
 
   const linkedActId = useMemo(() => {
     if (!appointment) return undefined;
@@ -141,8 +155,15 @@ export function AppointmentModal({
       initialized.current = false;
       return;
     }
-    if (initialized.current) return;
-    initialized.current = true;
+    // Не сбрасывать форму при pull store (patients/doctors — новые массивы).
+    // Переинициализация только при открытии или смене id записи.
+    const sessionKey = appointment?.id ? `edit:${appointment.id}` : "create";
+    if (initialized.current === sessionKey) return;
+    initialized.current = sessionKey;
+
+    const storeDoctors = useClinicStore.getState().doctors;
+    const storeCabinets = useClinicStore.getState().cabinets;
+    const storeActiveDoctors = storeDoctors.filter((d) => d.role === "doctor");
 
     if (appointment) {
       setPatientId(appointment.patientId);
@@ -162,13 +183,13 @@ export function AppointmentModal({
         setActMode(linkedAct && !workActHasFilledItems(linkedAct) ? "standard" : "admin_view");
       }
     } else {
-      const initialDoctorId = defaultDoctorId ?? activeDoctors[0]?.id ?? "";
+      const initialDoctorId = defaultDoctorId ?? storeActiveDoctors[0]?.id ?? "";
       setPatientId("");
       setDoctorId(initialDoctorId);
       setAssistantId("");
       setCabinetId(
-        resolveCabinetIdForDoctor(initialDoctorId, doctors, cabinets) ??
-          cabinets[0]?.id ??
+        resolveCabinetIdForDoctor(initialDoctorId, storeDoctors, storeCabinets) ??
+          storeCabinets[0]?.id ??
           ""
       );
       setComplaints("");
@@ -182,13 +203,10 @@ export function AppointmentModal({
   }, [
     open,
     appointment,
+    appointment?.id,
     defaultDate,
     defaultDoctorId,
     defaultTime,
-    patients,
-    activeDoctors,
-    cabinets,
-    doctors,
     isAdmin,
     linkedActId,
     linkedAct,
@@ -213,6 +231,7 @@ export function AppointmentModal({
   };
 
   const handleSave = () => {
+    if (savingRef.current) return;
     if (!patientId || !complaints.trim()) {
       toast.error("Укажите пациента и основные жалобы");
       return;
@@ -253,37 +272,44 @@ export function AppointmentModal({
       return;
     }
 
-    const wasInProgress = appointment?.status === "in_progress";
-    const completingAsDoctor = isDoctor && wasInProgress && status === "completed";
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const wasInProgress = appointment?.status === "in_progress";
+      const completingAsDoctor = isDoctor && wasInProgress && status === "completed";
 
-    if (appointment) {
-      updateAppointment(appointment.id, payload);
-      toast.success("Запись обновлена");
-    } else {
-      addAppointment(payload);
-      toast.success("Запись создана");
-    }
+      if (appointment) {
+        updateAppointment(appointment.id, payload);
+        toast.success("Запись обновлена");
+      } else {
+        addAppointment(payload);
+        toast.success("Запись создана");
+      }
 
-    prevStatus.current = status;
+      prevStatus.current = status;
 
-    if (completingAsDoctor) {
+      if (completingAsDoctor) {
+        onOpenChange(false);
+        openDoctorAct(payload.id);
+        toast.info("Заполните акт оказанных услуг");
+        return;
+      }
+
+      if (isAdmin && paymentStatus === "paid") {
+        setSavedAppointmentId(payload.id);
+        setActMode("standard");
+        setExistingActId(undefined);
+        onOpenChange(false);
+        setActModalOpen(true);
+        toast.info("Оформите акт оказанных услуг");
+        return;
+      }
+
       onOpenChange(false);
-      openDoctorAct(payload.id);
-      toast.info("Заполните акт оказанных услуг");
-      return;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
-
-    if (isAdmin && paymentStatus === "paid") {
-      setSavedAppointmentId(payload.id);
-      setActMode("standard");
-      setExistingActId(undefined);
-      onOpenChange(false);
-      setActModalOpen(true);
-      toast.info("Оформите акт оказанных услуг");
-      return;
-    }
-
-    onOpenChange(false);
   };
 
   const showAppointmentForm = open;
@@ -570,9 +596,9 @@ export function AppointmentModal({
                   </Button>
                   <Button
                     onClick={handleSave}
-                    disabled={!patientId || !complaints.trim() || !doctorId}
+                    disabled={saving || !patientId || !complaints.trim() || !doctorId}
                   >
-                    {UI.save}
+                    {saving ? "Сохранение…" : UI.save}
                   </Button>
                 </div>
               )}
@@ -623,6 +649,17 @@ export function AppointmentModal({
         defaultDoctorId={doctorId || undefined}
         defaultAppointmentId={savedAppointmentId ?? appointment?.id}
         onSubmitted={() => onOpenChange(false)}
+        onGoToPayment={(actId) => {
+          setActModalOpen(false);
+          onOpenChange(false);
+          if (onGoToPayment) {
+            onGoToPayment(actId);
+            return;
+          }
+          window.setTimeout(() => {
+            window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+          }, 50);
+        }}
       />
     </>
   );

@@ -9,6 +9,7 @@
 3. В карточке пациента отмечается **согласие на сервисные уведомления** (152-ФЗ).
 4. При создании/изменении записи (PUT `/api/clinic/data`) планируются отправки в таблицу `notification_deliveries`.
 5. Cron вызывает `POST /api/notifications/process` — очередь обрабатывается провайдерами.
+   В docker-compose этот тикер теперь поднимается отдельным сервисом `notifications-cron`.
 
 ```mermaid
 flowchart LR
@@ -88,6 +89,7 @@ curl -X POST https://your-clinic.emkaro.ru/api/notifications/process \
 ```
 
 Env: `NOTIFICATIONS_CRON_SECRET` (как `EGISZ_CRON_SECRET`).
+Если `NOTIFICATIONS_CRON_SECRET` не задан, endpoint принимает `AUTH_SECRET` как fallback.
 
 Ручная проверка из UI: **«Проверить записи сейчас»**.
 
@@ -96,6 +98,21 @@ Env: `NOTIFICATIONS_CRON_SECRET` (как `EGISZ_CRON_SECRET`).
 Переменные: `{{patientName}}`, `{{appointmentDate}}`, `{{appointmentTime}}`, `{{doctorName}}`, `{{cabinetName}}`, `{{clinicName}}`, `{{clinicPhone}}`, `{{clinicAddress}}`, `{{confirmUrl}}`.
 
 **По умолчанию в тексте нет диагнозов, услуг и мед. данных.**
+
+## Push сотрудникам (Web Push)
+
+Для врача / администратора / владельца **не нужны SMS и WhatsApp**. Сайт шлёт системные push на устройство, как мобильное приложение.
+
+1. Модуль `notifications` включён, в настройках включены автоматические уведомления.
+2. Сотрудник нажимает **«Включить push»** (баннер в дашборде или раздел Уведомления).
+3. Браузер запрашивает разрешение; подписка сохраняется в `web_push_subscriptions`.
+4. При событии (новая запись врачу, статус пациенту владельцу, акт и т.д.) сервер вызывает Web Push API.
+
+На **iPhone** push работает только из PWA: Safari → Поделиться → **На экран Домой**, затем открыть с иконки.
+
+VAPID-ключи: задайте `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` или оставьте пустыми — пара создаётся в таблице `web_push_vapid` при первом запросе.
+
+Миграция: `db/migrations/013-web-push-subscriptions.sql`.
 
 ## Персональные данные (152-ФЗ)
 

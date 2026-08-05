@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { format } from "date-fns";
 import {
   computeAverageCheckInRange,
   computeDashboardKPI,
   computePopularServices,
   countNewPatientsInRange,
   sumRevenueInRange,
-} from "./analytics.ts";
-import type { Appointment, Patient, Payment, WorkAct } from "./types.ts";
+} from "./analytics";
+import type { Appointment, Doctor, Patient, Payment, WorkAct } from "./types";
+
+const monthPrefix = format(new Date(), "yyyy-MM");
 
 const workActs: WorkAct[] = [
   {
@@ -56,7 +59,7 @@ const patients: Patient[] = [
     phone: "+79990000000",
     birthDate: "1990-01-01",
     gender: "male",
-    source: "walk_in",
+    source: "Google",
     status: "active",
     createdAt: "2026-07-05",
     balance: 0,
@@ -91,6 +94,18 @@ const appointments: Appointment[] = [
     paymentStatus: "pending",
   },
 ];
+
+const doctor: Doctor = {
+  id: "d1",
+  name: "Доктор",
+  role: "doctor",
+  phone: "",
+  email: "",
+  specialization: "Стоматолог",
+  cabinet: "1",
+  commissionPercent: 0,
+  status: "active",
+};
 
 describe("sumRevenueInRange", () => {
   it("uses act date for work-act payments", () => {
@@ -127,9 +142,26 @@ describe("sumRevenueInRange", () => {
 
 describe("computeDashboardKPI", () => {
   it("counts new patients by createdAt in current month", () => {
-    const kpi = computeDashboardKPI(payments, appointments, patients, workActs, [
-      { id: "d1", name: "Доктор", role: "doctor", phone: "", email: "" },
-    ]);
+    const currentMonthActs: WorkAct[] = [
+      {
+        ...workActs[0]!,
+        actDate: `${monthPrefix}-10`,
+        createdAt: `${monthPrefix}-10`,
+      },
+    ];
+    const currentMonthPatients: Patient[] = [
+      {
+        ...patients[0]!,
+        createdAt: `${monthPrefix}-05`,
+      },
+    ];
+    const kpi = computeDashboardKPI(
+      payments,
+      appointments,
+      currentMonthPatients,
+      currentMonthActs,
+      [doctor]
+    );
     assert.equal(kpi.newPatients, 1);
     assert.equal(kpi.averageCheck, 3000);
   });

@@ -1,6 +1,7 @@
 import {
   applyDeletedServiceTombstones,
   applyDeletedLegalDocumentTombstones,
+  applyAllDeletionTombstones,
   doctorScheduleKey,
   applyDeletedWorkActTombstones,
   hasClinicData,
@@ -110,7 +111,64 @@ function serverEntityListChanged<T extends { id: string }>(
   );
 }
 
-/** Снимок после pull: без локальных правок побеждает сервер */
+/**
+ * Снимок remote + строки, которые есть только локально (ещё не ушли на сервер).
+ * Для общих id побеждает remote — когда локальных правок нет.
+ */
+function preferRemoteKeepLocalOnlyEntities(
+  remote: ClinicPersistedState,
+  local: ClinicPersistedState
+): ClinicPersistedState {
+  const appendLocalOnly = <T extends { id: string }>(
+    remoteRows: T[],
+    localRows: T[]
+  ): T[] => {
+    if (!localRows.length) return remoteRows;
+    const remoteIds = new Set(remoteRows.map((row) => row.id));
+    const localOnly = localRows.filter((row) => !remoteIds.has(row.id));
+    return localOnly.length ? [...remoteRows, ...localOnly] : remoteRows;
+  };
+
+  return {
+    ...remote,
+    patients: appendLocalOnly(remote.patients, local.patients),
+    appointments: appendLocalOnly(remote.appointments, local.appointments),
+    medicalRecords: appendLocalOnly(remote.medicalRecords, local.medicalRecords),
+    treatmentPlans: appendLocalOnly(remote.treatmentPlans, local.treatmentPlans),
+    payments: appendLocalOnly(remote.payments, local.payments),
+    invoices: appendLocalOnly(remote.invoices, local.invoices),
+    workActs: appendLocalOnly(remote.workActs, local.workActs),
+    prepayments: appendLocalOnly(remote.prepayments, local.prepayments),
+    patientNotes: appendLocalOnly(remote.patientNotes, local.patientNotes),
+    patientFiles: appendLocalOnly(remote.patientFiles, local.patientFiles),
+    legalDocuments: appendLocalOnly(remote.legalDocuments, local.legalDocuments),
+    clinicExpenses: appendLocalOnly(remote.clinicExpenses, local.clinicExpenses),
+    onlineBookings: appendLocalOnly(remote.onlineBookings, local.onlineBookings),
+    tasks: appendLocalOnly(remote.tasks, local.tasks),
+    warehouse: appendLocalOnly(remote.warehouse, local.warehouse),
+    documentTemplates: appendLocalOnly(
+      remote.documentTemplates,
+      local.documentTemplates
+    ),
+    doctors: appendLocalOnly(remote.doctors, local.doctors),
+    services: appendLocalOnly(remote.services, local.services),
+    cabinets: appendLocalOnly(remote.cabinets, local.cabinets),
+    teethByPatient: {
+      ...remote.teethByPatient,
+      ...Object.fromEntries(
+        Object.entries(local.teethByPatient).filter(
+          ([patientId]) => !(patientId in remote.teethByPatient)
+        )
+      ),
+    },
+  };
+}
+
+/**
+ * Снимок после pull:
+ * - с локальными правками — полное слияние (local content wins for shared ids)
+ * - без правок — контент remote, но локальные-only сущности (новый пациент и т.п.) не теряются
+ */
 export function mergeRemoteSnapshotForPull(
   remote: ClinicPersistedState,
   local: ClinicPersistedState,
@@ -122,9 +180,9 @@ export function mergeRemoteSnapshotForPull(
       ...(local.deletedWorkActIds ?? []),
     ]),
   ];
-  const base = !hasUnsavedUserEdits
-    ? remote
-    : mergeClinicSnapshotWithLocal(remote, local);
+  const base = hasUnsavedUserEdits
+    ? mergeClinicSnapshotWithLocal(remote, local)
+    : preferRemoteKeepLocalOnlyEntities(remote, local);
   const deletedLegalDocumentIds = [
     ...new Set([
       ...(remote.deletedLegalDocumentIds ?? []),
@@ -137,16 +195,51 @@ export function mergeRemoteSnapshotForPull(
       ...(local.deletedServiceIds ?? []),
     ]),
   ];
-  const withTombstones = applyDeletedWorkActTombstones(
-    applyDeletedServiceTombstones(
-      applyDeletedLegalDocumentTombstones(
-        { ...base, deletedWorkActIds, deletedLegalDocumentIds, deletedServiceIds },
-        deletedLegalDocumentIds
+  const deletedPatientIds = [
+    ...new Set([
+      ...(remote.deletedPatientIds ?? []),
+      ...(local.deletedPatientIds ?? []),
+    ]),
+  ];
+  const deletedAppointmentIds = [
+    ...new Set([
+      ...(remote.deletedAppointmentIds ?? []),
+      ...(local.deletedAppointmentIds ?? []),
+    ]),
+  ];
+  const deletedMedicalRecordIds = [
+    ...new Set([
+      ...(remote.deletedMedicalRecordIds ?? []),
+      ...(local.deletedMedicalRecordIds ?? []),
+    ]),
+  ];
+  const deletedTreatmentPlanIds = [
+    ...new Set([
+      ...(remote.deletedTreatmentPlanIds ?? []),
+      ...(local.deletedTreatmentPlanIds ?? []),
+    ]),
+  ];
+  const withTombstones = applyAllDeletionTombstones({
+    ...applyDeletedWorkActTombstones(
+      applyDeletedServiceTombstones(
+        applyDeletedLegalDocumentTombstones(
+          {
+            ...base,
+            deletedWorkActIds,
+            deletedLegalDocumentIds,
+            deletedServiceIds,
+            deletedPatientIds,
+            deletedAppointmentIds,
+            deletedMedicalRecordIds,
+            deletedTreatmentPlanIds,
+          },
+          deletedLegalDocumentIds
+        ),
+        deletedServiceIds
       ),
-      deletedServiceIds
+      deletedWorkActIds
     ),
-    deletedWorkActIds
-  );
+  });
   return hasUnsavedUserEdits ? repairIfOrphans(withTombstones) : withTombstones;
 }
 

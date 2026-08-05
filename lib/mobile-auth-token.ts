@@ -13,6 +13,8 @@ export interface MobileTokenPayload {
   clinicSlug: string;
   patientId?: string;
   staffId?: string;
+  /** Инвалидация при смене пароля/роли (как web sessionVersion). */
+  sessionVersion?: number;
   exp: number;
 }
 
@@ -33,5 +35,10 @@ export function validateMobileTokenPayload(parsed: unknown): MobileTokenPayload 
   if (p.kind !== "patient" && p.kind !== "staff") return null;
   if (!p.role) return null;
   if (p.kind === "patient" && !p.patientId) return null;
-  return p;
+  if (p.sessionVersion != null && !Number.isFinite(Number(p.sessionVersion))) return null;
+  return {
+    ...p,
+    sessionVersion:
+      p.sessionVersion == null ? undefined : Math.max(0, Math.floor(Number(p.sessionVersion))),
+  };
 }

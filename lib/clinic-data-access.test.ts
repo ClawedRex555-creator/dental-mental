@@ -51,16 +51,34 @@ describe("clinic data sync access", () => {
         snils: "111-222-333 44",
         birthDate: "1985-05-05",
         gender: "female",
-        source: "walk_in",
+        source: "Google",
         status: "active",
         balance: 1500,
         totalSpent: 12000,
         disability: "none",
+        createdAt: "2026-01-01",
         notes: "секрет",
         diagnosis: "K04",
       },
     ];
     state.payments = [{ id: "pay1", patientId: "p1", amount: 1000, method: "cash", status: "paid", date: "2026-01-01" }];
+    state.appointments = [
+      {
+        id: "a1",
+        patientId: "p1",
+        doctorId: "d1",
+        date: "2026-01-02",
+        startTime: "10:00",
+        endTime: "10:30",
+        durationMinutes: 30,
+        status: "completed",
+        price: 1000,
+        paymentStatus: "paid",
+        complaints: "секретная жалоба",
+        reason: "клинический reason",
+        comment: "комментарий",
+      },
+    ];
     state.medicalRecords = [
       {
         id: "mr1",
@@ -72,7 +90,7 @@ describe("clinic data sync access", () => {
         createdAt: "2026-01-01",
       },
     ];
-    state.warehouse = [{ id: "w1", name: "Материал", category: "c", quantity: 1, unit: "шт", minStock: 0, price: 100 }];
+    state.warehouse = [{ id: "w1", name: "Материал", category: "c", quantity: 1, unit: "шт", minQuantity: 0, purchasePrice: 100, supplier: "t" }];
 
     const filtered = filterClinicSnapshotForAccountant(state);
     assert.equal(filtered.payments.length, 1);
@@ -85,9 +103,13 @@ describe("clinic data sync access", () => {
     assert.equal((p as { phone?: string }).phone, undefined);
     assert.equal((p as { snils?: string }).snils, undefined);
     assert.equal((p as { notes?: string }).notes, undefined);
+    assert.equal(filtered.appointments.length, 1);
+    assert.equal(filtered.appointments[0]?.complaints, undefined);
+    assert.equal(filtered.appointments[0]?.reason, undefined);
+    assert.equal(filtered.appointments[0]?.comment, undefined);
   });
 
-  it("preserveServicesForReadOnlyRoles keeps server services for doctor", () => {
+  it("preserveServicesForReadOnlyRoles keeps server services for doctor and assistant", () => {
     const existing = createFreshPersistedState();
     existing.services = [
       { id: "s1", name: "Консультация", category: "Терапия", price: 2000 },
@@ -99,6 +121,8 @@ describe("clinic data sync access", () => {
     const result = preserveServicesForReadOnlyRoles("doctor", incoming, existing);
     assert.equal(result.services.length, 1);
     assert.equal(result.services[0]?.id, "s1");
+    const assistantResult = preserveServicesForReadOnlyRoles("assistant", incoming, existing);
+    assert.equal(assistantResult.services[0]?.id, "s1");
     const ownerResult = preserveServicesForReadOnlyRoles("owner", incoming, existing);
     assert.equal(ownerResult.services[0]?.id, "s2");
   });

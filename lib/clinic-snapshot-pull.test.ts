@@ -13,9 +13,13 @@ describe("mergeRemoteSnapshotForPull", () => {
       doctorId: "d1",
       actDate: "2026-07-01",
       actNumber: "0001",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 5000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
     };
     const remote = { ...base, workActs: [serverAct] };
@@ -34,9 +38,13 @@ describe("mergeRemoteSnapshotForPull", () => {
       doctorId: "d1",
       actDate: "2026-07-01",
       actNumber: "0001",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 5000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
     };
     const localAct: WorkAct = {
@@ -44,6 +52,7 @@ describe("mergeRemoteSnapshotForPull", () => {
       id: "wa-local",
       actNumber: "0002",
       patientId: "p2",
+      createdAt: "2026-06-20",
       paymentStatus: "pending",
     };
     const remote = { ...base, workActs: [serverAct] };
@@ -113,9 +122,13 @@ describe("mergeRemoteSnapshotForPull", () => {
       doctorId: "d1",
       actDate: "2026-07-01",
       actNumber: "0001",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 5000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
     };
     const remote = { ...base, workActs: [serverAct] };
@@ -138,9 +151,13 @@ describe("mergeRemoteSnapshotForPull", () => {
       doctorId: "d1",
       actDate: "2026-07-01",
       actNumber: "0001",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 5000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
     };
     const remote = { ...base, workActs: [serverAct] };
@@ -178,6 +195,37 @@ describe("mergeRemoteSnapshotForPull", () => {
     assert.equal(merged.deletedLegalDocumentIds?.includes("ld-1"), true);
   });
 
+  it("keeps local-only patient on fast pull even without unsaved edits flag", () => {
+    const base = createFreshPersistedState();
+    const serverPatient = {
+      id: "p-server",
+      firstName: "S",
+      lastName: "Server",
+      phone: "+79001111111",
+      birthDate: "1990-01-01",
+      gender: "male" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const localPatient = {
+      ...serverPatient,
+      id: "p-local-new",
+      firstName: "Local",
+      lastName: "New",
+      phone: "+79002222222",
+    };
+    const remote = { ...base, patients: [serverPatient] };
+    const local = { ...base, patients: [serverPatient, localPatient] };
+
+    const merged = mergeRemoteSnapshotForPull(remote, local, false);
+    assert.equal(merged.patients.some((p) => p.id === "p-server"), true);
+    assert.equal(merged.patients.some((p) => p.id === "p-local-new"), true);
+  });
+
   it("clears appointment workActId when act was deleted locally", () => {
     const base = createFreshPersistedState();
     const serverAct: WorkAct = {
@@ -186,9 +234,13 @@ describe("mergeRemoteSnapshotForPull", () => {
       doctorId: "d1",
       actDate: "2026-07-01",
       actNumber: "0068-07/2026",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 5000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
       appointmentId: "apt-1",
     };

@@ -6,9 +6,9 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Уведомления пациентов</h1>
+        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Уведомления</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Напоминания о записи через Telegram, WhatsApp, SMS, e-mail и другие каналы
+          Напоминания пациентам и служебные уведомления сотрудникам через Telegram, WhatsApp, SMS, e-mail и другие каналы
         </p>
       </div>
       <NotificationsPanel />

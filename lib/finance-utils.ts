@@ -2,7 +2,12 @@ import {
   isImplantationServiceCategory,
   resolveCommissionServiceCategory,
 } from "@/lib/service-categories";
-import { calcWorkActAmounts, calcWorkActLine } from "@/lib/work-act-utils";
+import {
+  calcWorkActAmounts,
+  calcWorkActLine,
+  calcWorkActItemTechnicalAmount,
+  calcWorkActTechnicalAmount,
+} from "@/lib/work-act-utils";
 import { getWorkActSalaryAccrualDate } from "@/lib/work-act-payment";
 import {
   type AssistantManualHoursMap,
@@ -22,22 +27,12 @@ import type {
 
 export interface PaymentSplit {
   total: number;
+  technicalAmount: number;
   doctorAmount: number;
   assistantAmount: number;
   clinicAmount: number;
   doctorPercent: number;
   assistantPercent: number;
-}
-
-function lineRevenueInAct(
-  act: WorkAct,
-  item: WorkActItem,
-  actTotal: number,
-  afterRowDiscounts: number
-): number {
-  const line = calcWorkActLine(item);
-  if (afterRowDiscounts <= 0 || actTotal <= 0) return 0;
-  return (actTotal * line.totalAfterDiscount) / afterRowDiscounts;
 }
 
 function doctorLineAmount(
@@ -69,12 +64,8 @@ function calcDoctorAmountOnRevenueBase(
   let doctorAmount = 0;
   for (const item of act.items) {
     const category = resolveCommissionServiceCategory(item, services);
-    const lineRevenue = lineRevenueInAct(
-      { ...act, totalAmount: revenueBase },
-      item,
-      revenueBase,
-      revenueBase
-    );
+    const line = calcWorkActLine(item);
+    const lineRevenue = Math.max(0, line.totalAfterDiscount - calcWorkActItemTechnicalAmount(item));
     doctorAmount += doctorLineAmount(item, lineRevenue, category, doctor);
   }
   return Math.min(doctorAmount, revenueBase);
@@ -126,13 +117,15 @@ export function calcDoctorPaymentForAct(
   doctor?: Doctor,
   services: Service[] = []
 ): PaymentSplit {
-  const total = act.totalAmount;
+  const total = Math.max(0, act.totalAmount);
+  const technicalAmount = Math.min(total, calcWorkActTechnicalAmount(act.items));
   if (!doctor || doctor.role !== "doctor") {
     return {
       total,
+      technicalAmount,
       doctorAmount: 0,
       assistantAmount: 0,
-      clinicAmount: total,
+      clinicAmount: total - technicalAmount,
       doctorPercent: 0,
       assistantPercent: 0,
     };
@@ -143,23 +136,28 @@ export function calcDoctorPaymentForAct(
     act.discountType ?? "rubles",
     act.discount ?? 0
   );
+  const technicalBase = calcWorkActTechnicalAmount(act.items);
+  const splitTechnical = Math.min(Math.max(0, totalAmount), technicalBase);
+  const revenueBaseAfterTechnical = Math.max(0, afterRowDiscounts - technicalBase);
+  const splitTotal = Math.max(0, totalAmount - splitTechnical);
 
   const doctorAmountFull = calcDoctorAmountOnRevenueBase(
     act,
     doctor,
     services,
-    afterRowDiscounts
+    revenueBaseAfterTechnical
   );
   const { doctorAmount, clinicAmount } = applyActDiscountBearer(
     doctorAmountFull,
-    afterRowDiscounts,
+    revenueBaseAfterTechnical,
     discountValue,
-    totalAmount,
+    splitTotal,
     act.discountBearer
   );
 
   return {
     total,
+    technicalAmount: splitTechnical,
     doctorAmount,
     assistantAmount: 0,
     clinicAmount,
@@ -179,12 +177,16 @@ export function calcPaymentSplit(
     const fromAct = calcDoctorPaymentForAct(act, doctor, services);
     if (assistant?.role === "assistant") {
       const assistantPercent = assistant.commissionPercent;
-      const assistantAmount = Math.round((total * assistantPercent) / 100);
+      const assistantBase = Math.max(0, total - fromAct.technicalAmount);
+      const assistantAmount = Math.round((assistantBase * assistantPercent) / 100);
       return {
         ...fromAct,
         assistantAmount,
         assistantPercent,
-        clinicAmount: Math.max(0, total - fromAct.doctorAmount - assistantAmount),
+        clinicAmount: Math.max(
+          0,
+          total - fromAct.technicalAmount - fromAct.doctorAmount - assistantAmount
+        ),
       };
     }
     return fromAct;
@@ -197,6 +199,7 @@ export function calcPaymentSplit(
   const clinicAmount = Math.max(0, total - doctorAmount - assistantAmount);
   return {
     total,
+    technicalAmount: 0,
     doctorAmount,
     assistantAmount,
     clinicAmount,
@@ -220,6 +223,7 @@ export interface StaffSalariesSummary {
   doctorSalary: number;
   assistantSalary: number;
   totalSalaries: number;
+  technicalCosts: number;
   actsTurnover: number;
   clinicShareFromActs: number;
 }
@@ -228,6 +232,7 @@ export const EMPTY_STAFF_SALARIES: StaffSalariesSummary = {
   doctorSalary: 0,
   assistantSalary: 0,
   totalSalaries: 0,
+  technicalCosts: 0,
   actsTurnover: 0,
   clinicShareFromActs: 0,
 };
@@ -259,6 +264,11 @@ export function computeStaffSalariesForRange(
   let doctorSalary = 0;
   let actsTurnover = 0;
   let clinicShareFromActs = 0;
+  const technicalCosts = acts.reduce(
+    (sum, act) =>
+      sum + Math.min(Math.max(0, act.totalAmount), calcWorkActTechnicalAmount(act.items)),
+    0
+  );
 
   for (const doctor of doctors.filter((d) => d.role === "doctor")) {
     const doctorActs = acts.filter((a) => a.doctorId === doctor.id);
@@ -291,6 +301,7 @@ export function computeStaffSalariesForRange(
     doctorSalary,
     assistantSalary,
     totalSalaries: doctorSalary + assistantSalary,
+    technicalCosts,
     actsTurnover,
     clinicShareFromActs,
   };
@@ -311,7 +322,7 @@ export function calcClinicNetAfterSalaries(
   revenue: number,
   salaries: StaffSalariesSummary
 ): number {
-  return revenue - salaries.totalSalaries;
+  return revenue - salaries.totalSalaries - salaries.technicalCosts;
 }
 
 export function sumClinicExpensesInRange(
@@ -340,5 +351,5 @@ export function calcClinicNetAfterSalariesAndExpenses(
   salaries: StaffSalariesSummary,
   expensesTotal: number
 ): number {
-  return revenue - salaries.totalSalaries - expensesTotal;
+  return revenue - salaries.totalSalaries - salaries.technicalCosts - expensesTotal;
 }

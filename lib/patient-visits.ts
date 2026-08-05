@@ -150,7 +150,12 @@ export function buildRestoredPatientStub(
 export function repairMissingPatientsInSnapshot(
   state: ClinicPersistedState
 ): ClinicPersistedState {
-  const orphanIds = findOrphanPatientIds(state);
+  const deletedPatients = new Set(state.deletedPatientIds ?? []);
+  const deletedAppointments = new Set(state.deletedAppointmentIds ?? []);
+  const orphanIds = findOrphanPatientIds({
+    ...state,
+    appointments: state.appointments.filter((a) => !deletedAppointments.has(a.id)),
+  }).filter((id) => !deletedPatients.has(id));
   if (!orphanIds.length) return state;
 
   const stubs = orphanIds.map((id) => {

@@ -10,6 +10,7 @@ import { dispatchNotificationDelivery } from "@/lib/notifications/dispatch.serve
 import { insertNotificationDelivery } from "@/lib/notifications/db.server";
 import type { NotificationChannel } from "@/lib/notifications/types";
 import { parseNotificationChannel } from "@/lib/notifications/defaults";
+import { getNotificationConfig } from "@/lib/notifications/settings.server";
 
 export async function POST(request: Request) {
   if (!verifySameOrigin(request)) {
@@ -46,6 +47,8 @@ export async function POST(request: Request) {
   }
 
   const channel = parseNotificationChannel(body.channel) ?? ("mock" as NotificationChannel);
+  const config = await getNotificationConfig(ctx.clinicId);
+  const isTestSend = config.settings.testMode;
 
   const deliveryId = await insertNotificationDelivery({
     clinicId: ctx.clinicId,
@@ -55,8 +58,10 @@ export async function POST(request: Request) {
     eventType: "appointment_reminder",
     reminderOffsetMinutes: 0,
     scheduledAt: new Date(),
-    isTest: true,
-    messagePreview: "Тестовое уведомление",
+    isTest: isTestSend,
+    messagePreview: isTestSend
+      ? "Тестовое уведомление (mock)"
+      : "Проверочное уведомление (реальный канал)",
   });
 
   if (!deliveryId) {
@@ -73,6 +78,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: result.ok,
     deliveryId,
+    mode: isTestSend ? "mock" : "live",
     error: result.error,
   });
 }

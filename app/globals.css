@@ -99,7 +99,8 @@ body {
 }
 
 [data-theme="dark"] .bg-slate-50,
-[data-theme="dark"] .bg-slate-50\/50 {
+[data-theme="dark"] .bg-slate-50\/50,
+[data-theme="dark"] .bg-slate-50\/70 {
   background-color: var(--callout-neutral-bg) !important;
 }
 

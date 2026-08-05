@@ -32,7 +32,7 @@ export const NAV_ITEMS = [
   { href: "/staff", label: "Сотрудники", icon: "UserCog", roles: ["owner", "admin"] as UserRole[] },
   { href: "/legal", label: "Юр. отдел", icon: "FileText", roles: ["owner", "admin"] as UserRole[] },
   { href: "/online-booking", label: "Онлайн-запись", icon: "Globe", roles: ["owner", "admin"] as UserRole[] },
-  { href: "/notifications", label: "Уведомления", icon: "Bell", roles: ["owner", "admin"] as UserRole[] },
+  { href: "/notifications", label: "Уведомления", icon: "Bell", roles: ["owner", "admin", "doctor"] as UserRole[] },
   { href: "/settings", label: "Настройки", icon: "Settings", roles: ["owner", "admin", "doctor", "assistant", "accountant"] as UserRole[] },
 ] as const;
 

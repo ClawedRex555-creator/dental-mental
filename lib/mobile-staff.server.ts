@@ -126,6 +126,10 @@ export async function getMobileStaffAppointments(
   }
 
   let appointments = data.appointments.filter((a) => !a.isOtherClinicVisit);
+  // Mobile schedule grid: hide cancelled / no-show by default
+  appointments = appointments.filter(
+    (a) => a.status !== "cancelled" && a.status !== "no_show"
+  );
   if (filterDoctorId) {
     appointments = appointments.filter((a) => a.doctorId === filterDoctorId);
   }

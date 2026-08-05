@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 import {
   findMedicalRecordForAppointment,
   findWorkActForAppointment,
-} from "./visit-work-act.ts";
-import type { Appointment, MedicalRecord, WorkAct } from "./types.ts";
+} from "./visit-work-act";
+import type { Appointment, MedicalRecord, WorkAct } from "./types";
 
 const apt: Appointment = {
   id: "apt-1",

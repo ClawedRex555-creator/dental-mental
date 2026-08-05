@@ -34,14 +34,37 @@ describe("phi-crypto", () => {
         email: "ivan@example.com",
         birthDate: "1990-01-01",
         gender: "male",
-        source: "walk_in",
+        source: "Google",
         status: "active",
         balance: 0,
         totalSpent: 0,
         disability: "none",
+        createdAt: "2026-01-01",
         snils: "123-456-789 00",
         notes: "Конфиденциально",
         diagnosis: "K02.1",
+      },
+    ];
+
+    state.medicalRecords = [
+      {
+        id: "mr1",
+        patientId: "p1",
+        doctorId: "d1",
+        complaints: "Боль",
+        diagnosis: "K02.1",
+        treatment: "Пломба",
+        createdAt: "2026-01-01",
+      },
+    ];
+    state.patientNotes = [
+      {
+        id: "n1",
+        patientId: "p1",
+        author: "Доктор",
+        role: "doctor",
+        text: "Конфиденциальная заметка",
+        createdAt: "2026-01-01",
       },
     ];
 
@@ -50,11 +73,15 @@ describe("phi-crypto", () => {
     assert.notEqual(patient.phone, "+79991234567");
     assert.ok(patient.phone.startsWith("enc:v1:"));
     assert.notEqual(patient.firstName, "Иван");
+    assert.ok(encrypted.medicalRecords[0]?.complaints.startsWith("enc:v1:"));
+    assert.ok(encrypted.patientNotes[0]?.text.startsWith("enc:v1:"));
 
     const decrypted = decryptClinicSnapshotPhi(encrypted);
     assert.equal(decrypted.patients[0]?.phone, "+79991234567");
     assert.equal(decrypted.patients[0]?.firstName, "Иван");
     assert.equal(decrypted.patients[0]?.notes, "Конфиденциально");
     assert.equal(decrypted.patients[0]?.diagnosis, "K02.1");
+    assert.equal(decrypted.medicalRecords[0]?.complaints, "Боль");
+    assert.equal(decrypted.patientNotes[0]?.text, "Конфиденциальная заметка");
   });
 });

@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import type { Service } from "@/lib/types";
 import { DENTAL_SERVICE_NAMES } from "@/lib/catalogs";
 import {
+  getClinicBillableServices,
+  getTechnicalServices,
+  isTechnicalService,
+  SERVICE_CATEGORY_TECHNICAL,
   SERVICE_CATEGORIES,
   normalizeServiceCategory,
   type ServiceCategory,
@@ -16,6 +20,7 @@ import {
   suggestNmuCodeFromName,
 } from "@/lib/egisz/cda/nsi-display-names";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
+import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { UI } from "@/lib/constants";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId, serviceNotes } from "@/lib/utils";
@@ -34,10 +39,18 @@ interface ServiceModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   service?: Service | null;
+  createMode?: "clinic" | "technical";
+  defaultTechnicianName?: string;
 }
 
-export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps) {
-  const { addService, updateService, removeService } = useClinicStore();
+export function ServiceModal({
+  open,
+  onOpenChange,
+  service,
+  createMode = "clinic",
+  defaultTechnicianName,
+}: ServiceModalProps) {
+  const { addService, updateService, removeService, services } = useClinicStore();
   const isEdit = !!service;
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ServiceCategory>(SERVICE_CATEGORIES[0]);
@@ -45,11 +58,35 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
   const [priceIsFrom, setPriceIsFrom] = useState(false);
   const [notes, setNotes] = useState("");
   const [nmuCode, setNmuCode] = useState("");
+  const [technicianName, setTechnicianName] = useState("");
+  const [linkedClinicServiceId, setLinkedClinicServiceId] = useState("");
+  const [linkedClinicServiceName, setLinkedClinicServiceName] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const initialized = useRef(false);
 
   const nmuOptions = useMemo(() => listNmuDentalOptions(), []);
+  const clinicServices = useMemo(
+    () => getClinicBillableServices(services),
+    [services]
+  );
+  const knownTechnicians = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          getTechnicalServices(services)
+            .map((s) => s.technicianName?.trim())
+            .filter((value): value is string => Boolean(value))
+        )
+      ).sort((a, b) => a.localeCompare(b, "ru")),
+    [services]
+  );
+  const mode: "clinic" | "technical" = service
+    ? isTechnicalService(service)
+      ? "technical"
+      : "clinic"
+    : createMode;
+  const isTechnicalMode = mode === "technical";
 
   useEffect(() => {
     if (!open) {
@@ -65,22 +102,31 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
       setPriceIsFrom(Boolean(service.priceIsFrom));
       setNotes(serviceNotes(service) ?? "");
       setNmuCode(service.nmuCode?.trim() ?? "");
+      setTechnicianName(service.technicianName?.trim() ?? "");
+      setLinkedClinicServiceId(service.linkedClinicServiceId?.trim() ?? "");
+      setLinkedClinicServiceName(service.linkedClinicServiceName?.trim() ?? "");
       setDeleteConfirmOpen(false);
       setDeleteConfirmText("");
     } else {
       setName("");
-      setCategory(SERVICE_CATEGORIES[0]);
+      setCategory(
+        (isTechnicalMode ? SERVICE_CATEGORY_TECHNICAL : SERVICE_CATEGORIES[0]) as ServiceCategory
+      );
       setPrice("");
       setPriceIsFrom(false);
       setNotes("");
       setNmuCode("");
+      setTechnicianName(defaultTechnicianName?.trim() ?? "");
+      setLinkedClinicServiceId("");
+      setLinkedClinicServiceName("");
       setDeleteConfirmOpen(false);
       setDeleteConfirmText("");
     }
-  }, [open, service]);
+  }, [open, service, isTechnicalMode, defaultTechnicianName]);
 
   const handleNameChange = (next: string) => {
     setName(next);
+    if (isTechnicalMode) return;
     if (!nmuCode.trim()) {
       const suggested = suggestNmuCodeFromName(next);
       if (suggested) setNmuCode(suggested);
@@ -88,35 +134,75 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
   };
 
   const handleSave = () => {
-    if (!name.trim() || !price.trim()) {
+    if (isTechnicalMode) {
+      if (!price.trim()) {
+        toast.error("Укажите стоимость технички");
+        return;
+      }
+    } else if (!name.trim() || !price.trim()) {
       toast.error("Заполните название и цену");
       return;
     }
 
     const trimmedNotes = notes.trim();
     const trimmedNmu = nmuCode.trim();
-    if (trimmedNmu && !getNmuDisplayName(trimmedNmu)) {
+    const amount = Number(price) || 0;
+    if (amount <= 0) {
+      toast.error("Цена должна быть больше 0");
+      return;
+    }
+
+    const payload: Service = {
+      id: service?.id ?? generateId("srv"),
+      name: name.trim(),
+      category: normalizeServiceCategory(
+        isTechnicalMode ? SERVICE_CATEGORY_TECHNICAL : category
+      ),
+      price: amount,
+      priceIsFrom: isTechnicalMode ? false : priceIsFrom,
+      notes: trimmedNotes || undefined,
+      nmuCode: isTechnicalMode ? undefined : trimmedNmu || undefined,
+      linkedClinicServiceId: undefined,
+      linkedClinicServiceName: undefined,
+      technicianName: undefined,
+      active: true,
+    };
+
+    if (isTechnicalMode) {
+      const techName = technicianName.trim();
+      if (!techName) {
+        toast.error("Укажите имя техника");
+        return;
+      }
+      if (!linkedClinicServiceId) {
+        toast.error("Привяжите техничку к услуге клиники");
+        return;
+      }
+      const linked = clinicServices.find((s) => s.id === linkedClinicServiceId);
+      if (!linked) {
+        toast.error("Привязанная услуга клиники не найдена. Выберите заново.");
+        return;
+      }
+      if (amount > linked.price) {
+        toast.error("Техничка не может быть больше стоимости услуги клиники");
+        return;
+      }
+      payload.name = linked.name;
+      payload.technicianName = techName;
+      payload.linkedClinicServiceId = linked.id;
+      payload.linkedClinicServiceName = linked.name;
+    } else if (trimmedNmu && !getNmuDisplayName(trimmedNmu)) {
       toast.error(
         "Код НМУ не из встроенного справочника. Выберите код из списка — иначе ЕГИСЗ отклонит документ."
       );
       return;
     }
 
-    const payload = {
-      name: name.trim(),
-      category: normalizeServiceCategory(category),
-      price: Number(price) || 0,
-      priceIsFrom,
-      notes: trimmedNotes || undefined,
-      nmuCode: trimmedNmu || undefined,
-      active: true,
-    };
-
     if (isEdit && service) {
       updateService(service.id, payload);
       toast.success("Услуга обновлена");
     } else {
-      addService({ id: generateId("srv"), ...payload });
+      addService(payload);
       toast.success("Услуга добавлена");
     }
     onOpenChange(false);
@@ -134,70 +220,139 @@ export function ServiceModal({ open, onOpenChange, service }: ServiceModalProps)
   };
 
   const selectedNmuName = nmuCode.trim() ? getNmuDisplayName(nmuCode) : undefined;
+  const linkedClinicService = clinicServices.find((s) => s.id === linkedClinicServiceId);
+  const linkedClinicLabel = linkedClinicService?.name ?? linkedClinicServiceName;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Редактировать услугу" : "Добавить услугу"}</DialogTitle>
+          <DialogTitle>
+            {isEdit
+              ? isTechnicalMode
+                ? "Редактировать техничку"
+                : "Редактировать услугу"
+              : isTechnicalMode
+                ? "Добавить техничку"
+                : "Добавить услугу"}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <SearchAutocomplete
-            label="Название услуги"
-            value={name}
-            onChange={handleNameChange}
-            catalog={DENTAL_SERVICE_NAMES}
-            placeholder="гигиена, имплант, коронка..."
-            required
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Категория</Label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ServiceCategory)}
-              >
-                {SERVICE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>{priceIsFrom ? "Цена от, ₽" : "Цена, ₽"}</Label>
-              <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
-            </div>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--foreground)]">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-[var(--border)]"
-              checked={priceIsFrom}
-              onChange={(e) => setPriceIsFrom(e.target.checked)}
-            />
-            Цена «от» (минимальная, итоговая может быть выше)
-          </label>
-          <div className="space-y-2">
-            <Label>Код НМУ для ЕГИСЗ</Label>
-            <select
-              className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
-              value={nmuCode}
-              onChange={(e) => setNmuCode(e.target.value)}
-            >
-              <option value="">Не задан (подберётся по названию)</option>
-              {nmuOptions.map((opt) => (
-                <option key={opt.code} value={opt.code}>
-                  {opt.code} — {opt.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-[var(--muted)]">
-              В СЭМД уходит код и точное наименование из справочника НСИ 1070
-              {selectedNmuName ? `: «${selectedNmuName}»` : ""}.
-            </p>
-          </div>
+          {isTechnicalMode ? (
+            <>
+              <div className="space-y-2">
+                <Label>Техник</Label>
+                <Input
+                  value={technicianName}
+                  onChange={(e) => setTechnicianName(e.target.value)}
+                  placeholder="Например, Иван Петров"
+                  list="known-technicians"
+                />
+                <datalist id="known-technicians">
+                  {knownTechnicians.map((tech) => (
+                    <option key={tech} value={tech} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="space-y-2">
+                <Label>Привязка к услуге клиники</Label>
+                <ClinicServiceSearch
+                  services={clinicServices}
+                  selectedServiceId={linkedClinicServiceId}
+                  onSelect={(linked) => {
+                    setLinkedClinicServiceId(linked.id);
+                    setLinkedClinicServiceName(linked.name);
+                    setName(linked.name);
+                  }}
+                  placeholder="Найдите услугу клиники..."
+                />
+                {linkedClinicLabel && (
+                  <p className="text-xs text-[var(--muted)]">
+                    Привязано к: {linkedClinicLabel}
+                    {linkedClinicService
+                      ? ` · максимум технички ${linkedClinicService.price.toLocaleString("ru-RU")} ₽`
+                      : " · исходная услуга удалена из прайса"}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Стоимость технички, ₽</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+                <p className="text-xs text-[var(--muted)]">
+                  В акте сумма технички вычитается до расчёта ЗП врача и доли клиники.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <SearchAutocomplete
+                label="Название услуги"
+                value={name}
+                onChange={handleNameChange}
+                catalog={DENTAL_SERVICE_NAMES}
+                placeholder="гигиена, имплант, коронка..."
+                required
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Категория</Label>
+                  <select
+                    className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+                  >
+                    {SERVICE_CATEGORIES.filter((c) => c !== SERVICE_CATEGORY_TECHNICAL).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{priceIsFrom ? "Цена от, ₽" : "Цена, ₽"}</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                  />
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--foreground)]">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-[var(--border)]"
+                  checked={priceIsFrom}
+                  onChange={(e) => setPriceIsFrom(e.target.checked)}
+                />
+                Цена «от» (минимальная, итоговая может быть выше)
+              </label>
+              <div className="space-y-2">
+                <Label>Код НМУ для ЕГИСЗ</Label>
+                <select
+                  className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
+                  value={nmuCode}
+                  onChange={(e) => setNmuCode(e.target.value)}
+                >
+                  <option value="">Не задан (подберётся по названию)</option>
+                  {nmuOptions.map((opt) => (
+                    <option key={opt.code} value={opt.code}>
+                      {opt.code} — {opt.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-[var(--muted)]">
+                  В СЭМД уходит код и точное наименование из справочника НСИ 1070
+                  {selectedNmuName ? `: «${selectedNmuName}»` : ""}.
+                </p>
+              </div>
+            </>
+          )}
           <div className="space-y-2">
             <Label>Примечания</Label>
             <Textarea

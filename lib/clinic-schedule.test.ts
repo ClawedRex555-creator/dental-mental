@@ -4,7 +4,7 @@ import {
   formatScheduleMonthLabel,
   needsScheduleReminder,
   shouldPromptForNextMonthSchedule,
-} from "./clinic-schedule.ts";
+} from "./clinic-schedule";
 
 describe("shouldPromptForNextMonthSchedule", () => {
   it("does not prompt before the 21st", () => {
@@ -34,7 +34,7 @@ describe("needsScheduleReminder", () => {
 
   it("returns null when next month schedule exists", () => {
     const result = needsScheduleReminder(
-      [{ doctorId: "doctor-1", month: "2026-08", days: {} }],
+      [{ doctorId: "doctor-1", month: "2026-08", days: {}, updatedAt: "2026-07-01T00:00:00.000Z" }],
       ["doctor-1"],
       new Date("2026-07-21")
     );

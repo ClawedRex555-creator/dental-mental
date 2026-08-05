@@ -19,6 +19,10 @@ import {
   filterClinicSnapshotForAccountant,
   preserveServicesForReadOnlyRoles,
 } from "@/lib/clinic-data-access";
+import {
+  enforceClinicSnapshotWritePolicy,
+  filterClinicSnapshotForDoctor,
+} from "@/lib/clinic-snapshot-write-policy";
 import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
@@ -96,18 +100,22 @@ export async function GET(request: Request) {
       database: true,
       updatedAt: record.updatedAt,
       version: record.version,
+      revision: record.revision,
     }, { headers: NO_STORE_HEADERS });
   }
 
   const data =
     role === "accountant"
       ? filterClinicSnapshotForAccountant(record.data)
-      : record.data;
+      : role === "doctor"
+        ? filterClinicSnapshotForDoctor(record.data)
+        : record.data;
 
   return NextResponse.json({
     data,
     updatedAt: record.updatedAt,
     version: record.version,
+    revision: record.revision,
     database: true,
   }, { headers: NO_STORE_HEADERS });
 }
@@ -154,7 +162,11 @@ export async function PUT(request: Request) {
     );
   }
 
-  let body: { data?: unknown; expectedUpdatedAt?: unknown };
+  let body: {
+    data?: unknown;
+    expectedUpdatedAt?: unknown;
+    expectedRevision?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -178,6 +190,14 @@ export async function PUT(request: Request) {
       typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
         ? body.expectedUpdatedAt
         : null;
+    const expectedRevision =
+      typeof body.expectedRevision === "number" && Number.isFinite(body.expectedRevision)
+        ? Math.max(0, Math.floor(body.expectedRevision))
+        : typeof body.expectedRevision === "string" &&
+            body.expectedRevision.trim() &&
+            Number.isFinite(Number(body.expectedRevision))
+          ? Math.max(0, Math.floor(Number(body.expectedRevision)))
+          : null;
 
     // Hard guard: never accept writes from tabs that do not carry
     // a sync baseline when snapshot already exists on server.
@@ -194,27 +214,30 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Hard guard: reject stale baseline instead of silently merge-overwriting.
-    if (existing?.data && expectedUpdatedAt && existing.updatedAt > expectedUpdatedAt) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "CONFLICT_VERSION_MISMATCH",
-          error:
-            "Данные клиники уже изменились в другой вкладке/на другом устройстве. Обновите страницу.",
-          serverUpdatedAt: existing.updatedAt,
-        },
-        { status: 409, headers: NO_STORE_HEADERS }
-      );
-    }
     let toPersist = parsed;
     toPersist = preserveServicesForReadOnlyRoles(
       role,
       toPersist,
       existing?.data ?? null
     );
+    const policy = enforceClinicSnapshotWritePolicy(
+      role,
+      existing?.data ?? null,
+      toPersist
+    );
+    if (!policy.ok) {
+      return NextResponse.json(
+        { ok: false, error: policy.error },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
+    }
+    toPersist = policy.data;
 
-    const saved = await saveClinicDataDb(session.clinicId, toPersist);
+    const saved = await saveClinicDataDb(session.clinicId, toPersist, {
+      expectedUpdatedAt,
+      expectedRevision,
+      autoMergeOnVersionConflict: true,
+    });
 
     if (existing?.data) {
       const modules = await getClinicModules(session.clinicId);
@@ -224,22 +247,27 @@ export async function PUT(request: Request) {
         await maybeAutoQueueMedicalRecords(
           session.clinicId,
           existing.data.medicalRecords,
-          toPersist.medicalRecords,
-          toPersist
+          saved.data.medicalRecords,
+          saved.data
         ).catch(() => undefined);
-        await maybeAutoQueuePaidWorkActs(session.clinicId, existing.data, toPersist).catch(
+        await maybeAutoQueuePaidWorkActs(session.clinicId, existing.data, saved.data).catch(
           () => undefined
         );
       }
       if (isModuleEnabled(modules, "notifications")) {
-        const { maybeSyncAppointmentNotifications } = await import(
+        const { maybeSyncAppointmentNotifications, maybeNotifyClinicStaffEvents } = await import(
           "@/lib/notifications/worker.server"
         );
         await maybeSyncAppointmentNotifications(
           session.clinicId,
           existing.data.appointments,
-          toPersist.appointments
+          saved.data.appointments
         ).catch(() => undefined);
+        await maybeNotifyClinicStaffEvents({
+          clinicId: session.clinicId,
+          prevSnapshot: existing.data,
+          nextSnapshot: saved.data,
+        }).catch(() => undefined);
       }
     }
 
@@ -247,7 +275,8 @@ export async function PUT(request: Request) {
       ok: true,
       updatedAt: saved.updatedAt,
       version: saved.version,
-      merged: false,
+      revision: saved.revision,
+      merged: saved.mergedOnConflict,
     }, { headers: NO_STORE_HEADERS });
   } catch (e) {
     if (e instanceof PatientMassLossGuardError) {

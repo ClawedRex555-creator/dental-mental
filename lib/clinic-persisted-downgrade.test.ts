@@ -303,11 +303,37 @@ describe("isSuspiciousClinicDataDowngrade", () => {
       ...existing,
       patients: [patient("p1")],
       appointments: [],
+      deletedPatientIds: ["p2"],
     };
 
     const saved = mergeClinicDataForSave(existing, incoming);
     assert.equal(saved.patients.some((p) => p.id === "p2"), false);
     assert.equal(saved.appointments.some((a) => a.patientId === "p2"), false);
+  });
+
+  it("mergeClinicDataForSave keeps server-only patient without tombstone", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [patient("p1"), patient("p-new")];
+    existing.doctors = [
+      {
+        id: "d1",
+        name: "Doc",
+        specialization: "T",
+        phone: "",
+        email: "",
+        cabinet: "—",
+        commissionPercent: 0,
+        status: "active",
+        role: "doctor",
+      },
+    ];
+    const incoming = {
+      ...existing,
+      patients: [patient("p1")],
+    };
+    const saved = mergeClinicDataForSave(existing, incoming);
+    assert.equal(saved.patients.some((p) => p.id === "p-new"), true);
+    assert.equal((saved.deletedPatientIds ?? []).includes("p-new"), false);
   });
 
   it("mergeClinicDataForSave persists medical record deletion", () => {
@@ -334,6 +360,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
       diagnosis: `Diag ${i}`,
       complaints: "—",
       treatment: "—",
+      createdAt: "2026-06-01",
     }));
 
     const incoming = {
@@ -371,6 +398,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
       diagnosis: `Diag ${i}`,
       complaints: "—",
       treatment: "—",
+      createdAt: "2026-06-01",
     }));
 
     // Имитируем устаревшую вкладку после деплоя: отправляет старый урезанный снимок медкарты.
@@ -407,6 +435,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
       diagnosis: `Diag ${i}`,
       complaints: "—",
       treatment: "—",
+      createdAt: "2026-06-01",
     }));
     const incoming = {
       ...existing,
@@ -426,6 +455,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
       diagnosis: `Diag ${i}`,
       complaints: "—",
       treatment: "—",
+      createdAt: "2026-06-01",
     }));
 
     const local = {
@@ -449,10 +479,10 @@ describe("isSuspiciousClinicDataDowngrade", () => {
         patientId: "p1",
         items: [],
         subtotalAmount: 5000,
-        discountType: "percent",
+        discountType: "percent" as const,
         discount: 0,
         totalAmount: 5000,
-        paymentStatus: "paid",
+        paymentStatus: "paid" as const,
         createdAt: "2026-06-29",
       },
     ];
@@ -478,17 +508,19 @@ describe("isSuspiciousClinicDataDowngrade", () => {
           patientId: "p1",
           items: [],
           subtotalAmount: 7000,
-          discountType: "percent",
+          discountType: "percent" as const,
           discount: 0,
           totalAmount: 7000,
-          paymentStatus: "pending",
+          paymentStatus: "pending" as const,
           createdAt: "2026-06-15",
         },
       ],
       payments: [],
+      deletedWorkActIds: ["act-old"],
     };
 
-    const merged = mergeClinicSnapshotWithLocal(client, server);
+    // pull: remote=server (ещё со старым актом), local=client (замена + tombstone)
+    const merged = mergeClinicSnapshotWithLocal(server, client);
     assert.equal(merged.workActs.some((a) => a.id === "act-old"), false);
     assert.equal(merged.workActs.some((a) => a.id === "act-new"), true);
     assert.equal(merged.payments.length, 0);

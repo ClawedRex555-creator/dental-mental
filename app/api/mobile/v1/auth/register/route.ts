@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import {
-  checkLoginRateLimit,
-  clearLoginAttempts,
+  checkLoginRateLimitAsync,
+  clearLoginAttemptsAsync,
+  clientIpFromRequest,
   loginRateLimitKey,
   loginRateLimitResponse,
-  recordLoginFailure,
+  recordLoginFailureAsync,
 } from "@/lib/login-rate-limit";
 import { mobileAuthFromPatient } from "@/lib/mobile-auth-service.server";
 import { resolveMobileClinicFromRequest } from "@/lib/mobile-clinic-context.server";
@@ -43,8 +44,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const rateKey = loginRateLimitKey(`mobile-register:${clinic.slug}`, email);
-  const rate = checkLoginRateLimit(rateKey);
+  const rateKey = loginRateLimitKey(
+    `mobile-register:${clinic.slug}`,
+    email,
+    clientIpFromRequest(request)
+  );
+  const rate = await checkLoginRateLimitAsync(rateKey);
   if (!rate.allowed) {
     return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
@@ -58,11 +63,11 @@ export async function POST(request: Request) {
       phone,
       birthDate,
     });
-    clearLoginAttempts(rateKey);
+    await clearLoginAttemptsAsync(rateKey);
     const auth = mobileAuthFromPatient(account, clinic.slug);
     return NextResponse.json(auth, { status: 201 });
   } catch (e) {
-    recordLoginFailure(rateKey);
+    await recordLoginFailureAsync(rateKey);
     const message = e instanceof Error ? e.message : "Не удалось зарегистрироваться";
     return NextResponse.json({ error: message }, { status: 400 });
   }

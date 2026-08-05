@@ -183,4 +183,23 @@ describe("calcDoctorPaymentForAct", () => {
     assert.equal(split.doctorAmount, 2400);
     assert.equal(split.clinicAmount, 5600);
   });
+
+  it("subtracts technical cost before doctor salary", () => {
+    const act = makeAct([
+      {
+        id: "i1",
+        serviceId: "s2",
+        serviceName: "Пломба",
+        serviceCategory: "Терапия",
+        quantity: 1,
+        price: 10000,
+        total: 10000,
+        technicalUnitPrice: 3000,
+      },
+    ]);
+    const split = calcDoctorPaymentForAct(act, doctor, services);
+    assert.equal(split.technicalAmount, 3000);
+    assert.equal(split.doctorAmount, 2100);
+    assert.equal(split.clinicAmount, 4900);
+  });
 });

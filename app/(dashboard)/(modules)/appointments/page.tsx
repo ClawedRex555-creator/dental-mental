@@ -507,12 +507,25 @@ export default function AppointmentsPage() {
           setModalOpen(false);
           setViewActId(actId);
         }}
+        onGoToPayment={(actId) => {
+          setModalOpen(false);
+          setViewActId(null);
+          window.setTimeout(() => {
+            window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+          }, 50);
+        }}
       />
       <WorkActModal
         open={!!viewActId}
         onOpenChange={(open) => !open && setViewActId(null)}
         existingActId={viewActId ?? undefined}
         mode="admin_view"
+        onGoToPayment={(actId) => {
+          setViewActId(null);
+          window.setTimeout(() => {
+            window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+          }, 50);
+        }}
       />
     </div>
   );

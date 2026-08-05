@@ -69,9 +69,13 @@ describe("mergeClinicDataOnWriteConflict", () => {
       doctorId: "d1",
       actDate: "2026-06-20",
       actNumber: "1",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 1000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
     };
     const act2: WorkAct = {
@@ -96,9 +100,13 @@ describe("mergeClinicDataOnWriteConflict", () => {
       doctorId: "d1",
       actDate: "2026-07-08",
       actNumber: "0069",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 1000,
+      createdAt: "2026-06-20",
       paymentStatus: "pending",
     };
     const existing = {
@@ -125,9 +133,13 @@ describe("mergeClinicDataOnWriteConflict", () => {
       doctorId: "d1",
       actDate: "2026-07-08",
       actNumber: "0069",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 1000,
+      createdAt: "2026-06-20",
       paymentStatus: "pending",
     };
     const existing = {
@@ -171,6 +183,60 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(merged.deletedServiceIds?.includes("srv-cleaning"), true);
   });
 
+  it("keeps patient and appointment tombstones when stale client still has them", () => {
+    const base = createFreshPersistedState();
+    const appointment: Appointment = {
+      id: "apt-gone",
+      patientId: "p-gone",
+      doctorId: "d1",
+      date: "2026-08-01",
+      startTime: "10:00",
+      endTime: "11:00",
+      durationMinutes: 60,
+      status: "scheduled",
+      price: 0,
+      paymentStatus: "pending",
+    };
+    const patient = {
+      id: "p-gone",
+      firstName: "Иван",
+      lastName: "Удалённый",
+      phone: "+79001112233",
+      birthDate: "1990-01-01",
+      gender: "male" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const existing = {
+      ...base,
+      patients: [],
+      appointments: [],
+      deletedPatientIds: ["p-gone"],
+      deletedAppointmentIds: ["apt-gone"],
+    };
+    const incoming = {
+      ...base,
+      patients: [patient],
+      appointments: [appointment],
+      deletedPatientIds: [],
+      deletedAppointmentIds: [],
+    };
+
+    const forSave = mergeClinicDataForSave(existing, incoming);
+    assert.equal(forSave.patients.some((p) => p.id === "p-gone"), false);
+    assert.equal(forSave.appointments.some((a) => a.id === "apt-gone"), false);
+    assert.equal(forSave.deletedPatientIds?.includes("p-gone"), true);
+    assert.equal(forSave.deletedAppointmentIds?.includes("apt-gone"), true);
+
+    const onConflict = mergeClinicDataOnWriteConflict(existing, incoming);
+    assert.equal(onConflict.patients.some((p) => p.id === "p-gone"), false);
+    assert.equal(onConflict.appointments.some((a) => a.id === "apt-gone"), false);
+  });
+
   it("keeps server work acts when stale client sends empty list on write conflict", () => {
     const base = createFreshPersistedState();
     const act: WorkAct = {
@@ -179,9 +245,13 @@ describe("mergeClinicDataOnWriteConflict", () => {
       doctorId: "d1",
       actDate: "2026-06-20",
       actNumber: "1",
-      actType: "service",
+      actType: "services",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 1000,
+      createdAt: "2026-06-20",
       paymentStatus: "paid",
     };
     const existing = { ...base, workActs: [act] };
@@ -224,6 +294,9 @@ describe("mergeClinicDataOnWriteConflict", () => {
       createdAt: "2026-07-25T11:00:00.000Z",
       actNumber: "0095-07/2026",
       items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 1000,
       paymentStatus: "paid",
     };
@@ -235,6 +308,9 @@ describe("mergeClinicDataOnWriteConflict", () => {
       createdAt: "2026-07-25T13:00:00.000Z",
       actNumber: "0095-07/2026",
       items: [],
+      subtotalAmount: 2000,
+      discountType: "percent",
+      discount: 0,
       totalAmount: 2000,
       paymentStatus: "pending",
     };

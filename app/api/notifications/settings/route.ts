@@ -24,6 +24,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     config,
     providers: listNotificationProviderStatus(),
+    cronConfigured: Boolean(
+      process.env.NOTIFICATIONS_CRON_SECRET?.trim()
+    ),
     clinic: {
       name: clinicSettings?.name ?? "",
       phone: clinicSettings?.phone ?? "",

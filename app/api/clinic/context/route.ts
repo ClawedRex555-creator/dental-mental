@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { findClinicBySlug, listClinics } from "@/lib/clinic-db.server";
-import { clinicBaseUrl, getAppRootDomain, parseClinicSlugFromHost } from "@/lib/clinic-host";
+import { findClinicBySlug } from "@/lib/clinic-db.server";
+import { getAppRootDomain, parseClinicSlugFromHost } from "@/lib/clinic-host";
 import { isDatabaseEnabled } from "@/lib/db";
 
 /** Публичный контекст клиники по Host (поддомен) */
@@ -9,15 +9,11 @@ export async function GET(request: Request) {
   const slug = parseClinicSlugFromHost(host);
 
   if (!slug) {
-    const clinics = isDatabaseEnabled() ? await listClinics() : [];
+    // Публично не отдаём directory всех клиник (tenant enumeration).
     return NextResponse.json({
       mode: "platform" as const,
       rootDomain: getAppRootDomain(),
-      clinics: clinics.map((c) => ({
-        slug: c.slug,
-        name: c.name,
-        url: clinicBaseUrl(c.slug),
-      })),
+      clinics: [],
     });
   }
 

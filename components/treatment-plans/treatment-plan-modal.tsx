@@ -15,6 +15,7 @@ import { calcPlanTotals } from "@/lib/treatment-plan-utils";
 import { printTreatmentPlan } from "@/lib/treatment-plan-print";
 import { logAuditClient } from "@/lib/audit-client";
 import { canDeleteTreatmentPlans } from "@/lib/rbac";
+import { getClinicBillableServices } from "@/lib/service-categories";
 import { syncTreatmentPlanCommentToPatientNotes } from "@/lib/treatment-plan-patient-note";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
@@ -79,6 +80,10 @@ export function TreatmentPlanModal({
   const initialized = useRef(false);
 
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
+  const clinicServices = useMemo(
+    () => getClinicBillableServices(services),
+    [services]
+  );
 
   const patientRecords = useMemo(
     () => medicalRecords.filter((r) => r.patientId === patientId),
@@ -122,7 +127,7 @@ export function TreatmentPlanModal({
   }, [open, plan, defaultPatientId, defaultMedicalRecordId, patients, activeDoctors]);
 
   const addItemFromService = (serviceId: string) => {
-    const service = services.find((s) => s.id === serviceId);
+    const service = clinicServices.find((s) => s.id === serviceId);
     if (!service) return;
     setItems((prev) => {
       const existingIdx = findMatchingPlanItemIndex(prev, service.id);
@@ -149,7 +154,7 @@ export function TreatmentPlanModal({
   };
 
   const selectServiceForItem = (itemId: string, serviceId: string) => {
-    const service = services.find((s) => s.id === serviceId);
+    const service = clinicServices.find((s) => s.id === serviceId);
     if (!service) {
       updateItem(itemId, { serviceId: undefined, serviceName: "", price: 0 });
       return;
@@ -322,11 +327,11 @@ export function TreatmentPlanModal({
           <div className="space-y-2 rounded-lg border border-slate-200 p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <Label className="pt-2">Услуги в плане</Label>
-              {services.length > 0 && (
+              {clinicServices.length > 0 && (
                 <div className="min-w-[240px] flex-1 max-w-md">
                   <ClinicServiceSearch
                     compact
-                    services={services}
+                    services={clinicServices}
                     onSelect={(service) => addItemFromService(service.id)}
                     placeholder="+ из прайса — начните вводить..."
                   />
@@ -336,7 +341,7 @@ export function TreatmentPlanModal({
             <div className="space-y-2">
               {items.length === 0 && (
                 <p className="text-sm text-slate-500">
-                  {services.length === 0
+                  {clinicServices.length === 0
                     ? "Сначала добавьте услуги в разделе «Сотрудники»"
                     : "Добавьте услугу из прайса клиники"}
                 </p>
@@ -347,7 +352,7 @@ export function TreatmentPlanModal({
                     <Label className="text-xs text-slate-500">Услуга из прайса</Label>
                     <ClinicServiceSearch
                       compact
-                      services={services}
+                      services={clinicServices}
                       selectedServiceId={item.serviceId}
                       onSelect={(service) => selectServiceForItem(item.id, service.id)}
                       placeholder="Поиск услуги..."

@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
-import type { Patient } from "@/lib/types";
+import type { MedicalRecord, Patient, PatientNote } from "@/lib/types";
 
 const ALGO = "aes-256-gcm";
 const PREFIX = "enc:v1:";
@@ -22,6 +22,16 @@ const SENSITIVE_PATIENT_FIELDS: (keyof Patient)[] = [
   "address",
   "notes",
   "diagnosis",
+];
+
+const SENSITIVE_RECORD_FIELDS: (keyof MedicalRecord)[] = [
+  "complaints",
+  "anamnesis",
+  "lifeAnamnesis",
+  "objective",
+  "diagnosis",
+  "treatment",
+  "recommendations",
 ];
 
 function resolveKey(): Buffer | null {
@@ -86,6 +96,68 @@ function decryptPatient(patient: Patient, key: Buffer): Patient {
   return out;
 }
 
+function encryptStringField<T extends Record<string, unknown>>(
+  row: T,
+  field: keyof T,
+  key: Buffer
+): T {
+  const val = row[field];
+  if (typeof val === "string" && val && !val.startsWith(PREFIX)) {
+    return { ...row, [field]: encryptField(val, key) };
+  }
+  return row;
+}
+
+function decryptStringField<T extends Record<string, unknown>>(
+  row: T,
+  field: keyof T,
+  key: Buffer
+): T {
+  const val = row[field];
+  if (typeof val === "string" && val.startsWith(PREFIX)) {
+    try {
+      return { ...row, [field]: decryptField(val, key) };
+    } catch {
+      return row;
+    }
+  }
+  return row;
+}
+
+function encryptMedicalRecord(record: MedicalRecord, key: Buffer): MedicalRecord {
+  let out = { ...record } as MedicalRecord & Record<string, unknown>;
+  for (const field of SENSITIVE_RECORD_FIELDS) {
+    out = encryptStringField(out, field, key) as typeof out;
+  }
+  return out;
+}
+
+function decryptMedicalRecord(record: MedicalRecord, key: Buffer): MedicalRecord {
+  let out = { ...record } as MedicalRecord & Record<string, unknown>;
+  for (const field of SENSITIVE_RECORD_FIELDS) {
+    out = decryptStringField(out, field, key) as typeof out;
+  }
+  return out;
+}
+
+function encryptPatientNote(note: PatientNote, key: Buffer): PatientNote {
+  if (typeof note.text === "string" && note.text && !note.text.startsWith(PREFIX)) {
+    return { ...note, text: encryptField(note.text, key) };
+  }
+  return note;
+}
+
+function decryptPatientNote(note: PatientNote, key: Buffer): PatientNote {
+  if (typeof note.text === "string" && note.text.startsWith(PREFIX)) {
+    try {
+      return { ...note, text: decryptField(note.text, key) };
+    } catch {
+      return note;
+    }
+  }
+  return note;
+}
+
 /** Шифрование ПДн пациентов перед записью в БД (152-ФЗ, хранение) */
 export function encryptClinicSnapshotPhi(state: ClinicPersistedState): ClinicPersistedState {
   const key = resolveKey();
@@ -93,6 +165,8 @@ export function encryptClinicSnapshotPhi(state: ClinicPersistedState): ClinicPer
   return {
     ...state,
     patients: state.patients.map((p) => encryptPatient(p, key)),
+    medicalRecords: state.medicalRecords.map((r) => encryptMedicalRecord(r, key)),
+    patientNotes: state.patientNotes.map((n) => encryptPatientNote(n, key)),
   };
 }
 
@@ -103,6 +177,8 @@ export function decryptClinicSnapshotPhi(state: ClinicPersistedState): ClinicPer
   return {
     ...state,
     patients: state.patients.map((p) => decryptPatient(p, key)),
+    medicalRecords: state.medicalRecords.map((r) => decryptMedicalRecord(r, key)),
+    patientNotes: state.patientNotes.map((n) => decryptPatientNote(n, key)),
   };
 }
 

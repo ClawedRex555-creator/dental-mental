@@ -178,8 +178,11 @@ export async function updateAuthUserProfileDb(input: {
 
     await assertAuthLoginAvailable(login, row.id);
 
+    // Смена роли/логина инвалидирует cookie-сессии (session_version).
     await client.query(
-      `UPDATE auth_users SET login = $1, role = $2, name = $3
+      `UPDATE auth_users
+       SET login = $1, role = $2, name = $3,
+           session_version = COALESCE(session_version, 0) + 1
        WHERE clinic_id = $4 AND staff_id = $5`,
       [login, input.role, input.name, input.clinicId, input.staffId]
     );
@@ -223,10 +226,16 @@ export async function updateAuthUserProfileByUserIdDb(input: {
     await assertAuthLoginAvailable(login, row.id);
 
     const passwordHash = input.passwordHash ?? row.password_hash;
+    const passwordChanged = Boolean(input.passwordHash);
     await client.query(
-      `UPDATE auth_users SET login = $1, name = $2, password_hash = $3
+      `UPDATE auth_users
+       SET login = $1, name = $2, password_hash = $3,
+           session_version = CASE
+             WHEN $6::boolean THEN COALESCE(session_version, 0) + 1
+             ELSE COALESCE(session_version, 0)
+           END
        WHERE clinic_id = $4 AND id = $5`,
-      [login, input.name, passwordHash, input.clinicId, input.userId]
+      [login, input.name, passwordHash, input.clinicId, input.userId, passwordChanged]
     );
 
     return {
@@ -289,8 +298,20 @@ export async function upsertAuthUserDb(input: {
   staffId?: string;
 }): Promise<AuthAccountRecord> {
   const login = normalizeAuthLogin(input.login);
+  if (input.role === "owner") {
+    throw new Error("Роль владельца нельзя создать или заменить через этот API");
+  }
   await assertAuthLoginAvailable(login, input.id);
   const saved = await withDb(async (client) => {
+    const blocking = await client.query<{ id: string; role: string }>(
+      `SELECT id, role FROM auth_users
+       WHERE clinic_id = $1 AND (login = $2 OR id = $3)`,
+      [input.clinicId, login, input.id]
+    );
+    if (blocking.rows.some((row) => row.role === "owner")) {
+      throw new Error("Учётную запись владельца нельзя заменить или удалить");
+    }
+
     await client.query(
       `DELETE FROM auth_users WHERE clinic_id = $1 AND (login = $2 OR id = $3)`,
       [input.clinicId, login, input.id]
@@ -327,6 +348,13 @@ export async function removeAuthUserByStaffIdDb(
   staffId: string
 ): Promise<void> {
   await withDb(async (client) => {
+    const existing = await client.query<{ role: string }>(
+      `SELECT role FROM auth_users WHERE clinic_id = $1 AND staff_id = $2 LIMIT 1`,
+      [clinicId, staffId]
+    );
+    if (existing.rows[0]?.role === "owner") {
+      throw new Error("Учётную запись владельца нельзя удалить");
+    }
     await client.query(`DELETE FROM auth_users WHERE clinic_id = $1 AND staff_id = $2`, [
       clinicId,
       staffId,

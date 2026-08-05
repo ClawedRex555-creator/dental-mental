@@ -69,6 +69,12 @@ export interface ClinicPersistedState {
   deletedServiceIds?: string[];
   /** Явно удалённые акты — не поднимать с сервера до повторного создания */
   deletedWorkActIds?: string[];
+  /** Явно удалённые пациенты — защита от воскрешения устаревшей вкладкой */
+  deletedPatientIds?: string[];
+  /** Явно удалённые записи расписания */
+  deletedAppointmentIds?: string[];
+  deletedMedicalRecordIds?: string[];
+  deletedTreatmentPlanIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -105,6 +111,11 @@ export function createFreshPersistedState(): ClinicPersistedState {
     clinicExpenses: [],
     legalDocuments: [],
     deletedServiceIds: [],
+    deletedWorkActIds: [],
+    deletedPatientIds: [],
+    deletedAppointmentIds: [],
+    deletedMedicalRecordIds: [],
+    deletedTreatmentPlanIds: [],
     doctorSchedules: [],
     prepayments: [],
     userThemePreferences: {},
@@ -137,6 +148,10 @@ type PersistPickSource = {
   deletedLegalDocumentIds?: string[];
   deletedServiceIds?: string[];
   deletedWorkActIds?: string[];
+  deletedPatientIds?: string[];
+  deletedAppointmentIds?: string[];
+  deletedMedicalRecordIds?: string[];
+  deletedTreatmentPlanIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -222,6 +237,10 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     deletedLegalDocumentIds: state.deletedLegalDocumentIds ?? [],
     deletedServiceIds: state.deletedServiceIds ?? [],
     deletedWorkActIds: state.deletedWorkActIds ?? [],
+    deletedPatientIds: state.deletedPatientIds ?? [],
+    deletedAppointmentIds: state.deletedAppointmentIds ?? [],
+    deletedMedicalRecordIds: state.deletedMedicalRecordIds ?? [],
+    deletedTreatmentPlanIds: state.deletedTreatmentPlanIds ?? [],
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
@@ -510,6 +529,146 @@ export function applyDeletedWorkActTombstones(
   });
 }
 
+/** Объединить списки tombstone-id без дублей */
+export function unionTombstoneIds(...lists: Array<string[] | undefined>): string[] {
+  return [...new Set(lists.flatMap((list) => list ?? []))];
+}
+
+/**
+ * Слияние списков сущностей с tombstones: удалённые id не воскресают
+ * даже если устаревшая вкладка всё ещё их присылает.
+ */
+export function mergeEntityListWithTombstones<T extends { id: string }>(
+  existing: T[],
+  incoming: T[],
+  existingTombstones: string[] = [],
+  incomingTombstones: string[] = []
+): { items: T[]; deletedIds: string[] } {
+  const deletedIds = unionTombstoneIds(existingTombstones, incomingTombstones);
+  const tombstoneSet = new Set(deletedIds);
+  const items = mergeByIdPreferLocal(existing, incoming).filter(
+    (row) => !tombstoneSet.has(row.id)
+  );
+  return { items, deletedIds };
+}
+
+/**
+ * Финальный фильтр: все tombstones из снимка вычищают сущности
+ * (пациенты / записи / медкарты / планы + каскад по patientId).
+ */
+export function applyAllDeletionTombstones(
+  snapshot: ClinicPersistedState
+): ClinicPersistedState {
+  const deletedPatientIds = unionTombstoneIds(snapshot.deletedPatientIds);
+  const deletedAppointmentIds = unionTombstoneIds(snapshot.deletedAppointmentIds);
+  const deletedMedicalRecordIds = unionTombstoneIds(snapshot.deletedMedicalRecordIds);
+  const deletedTreatmentPlanIds = unionTombstoneIds(snapshot.deletedTreatmentPlanIds);
+  const deletedWorkActIds = unionTombstoneIds(snapshot.deletedWorkActIds);
+  const deletedServiceIds = unionTombstoneIds(snapshot.deletedServiceIds);
+  const deletedLegalDocumentIds = unionTombstoneIds(snapshot.deletedLegalDocumentIds);
+
+  let next = applyDeletedWorkActTombstones(
+    applyDeletedServiceTombstones(
+      applyDeletedLegalDocumentTombstones(
+        {
+          ...snapshot,
+          deletedPatientIds,
+          deletedAppointmentIds,
+          deletedMedicalRecordIds,
+          deletedTreatmentPlanIds,
+          deletedWorkActIds,
+          deletedServiceIds,
+          deletedLegalDocumentIds,
+        },
+        deletedLegalDocumentIds
+      ),
+      deletedServiceIds
+    ),
+    deletedWorkActIds
+  );
+
+  const patientSet = new Set(deletedPatientIds);
+  const appointmentSet = new Set(deletedAppointmentIds);
+  const medicalSet = new Set(deletedMedicalRecordIds);
+  const planSet = new Set(deletedTreatmentPlanIds);
+
+  const filterByPatient = <T extends { patientId?: string }>(rows: T[]) =>
+    rows.filter((row) => !row.patientId || !patientSet.has(row.patientId));
+
+  const teethByPatient = { ...next.teethByPatient };
+  for (const id of deletedPatientIds) {
+    delete teethByPatient[id];
+  }
+
+  next = {
+    ...next,
+    patients: next.patients.filter((p) => !patientSet.has(p.id)),
+    appointments: next.appointments.filter(
+      (a) => !appointmentSet.has(a.id) && !patientSet.has(a.patientId)
+    ),
+    medicalRecords: next.medicalRecords.filter(
+      (r) => !medicalSet.has(r.id) && !patientSet.has(r.patientId)
+    ),
+    treatmentPlans: next.treatmentPlans.filter(
+      (p) => !planSet.has(p.id) && !patientSet.has(p.patientId)
+    ),
+    payments: filterByPatient(next.payments),
+    invoices: filterByPatient(next.invoices),
+    workActs: filterByPatient(next.workActs),
+    prepayments: filterByPatient(next.prepayments),
+    patientFiles: filterByPatient(next.patientFiles),
+    patientNotes: filterByPatient(next.patientNotes),
+    teethByPatient,
+  };
+
+  return repairFinancialCoupling(next);
+}
+
+function withMergedTombstoneIds(
+  existing: ClinicPersistedState,
+  incoming: ClinicPersistedState,
+  merged: ClinicPersistedState
+): ClinicPersistedState {
+  return applyAllDeletionTombstones({
+    ...merged,
+    deletedPatientIds: unionTombstoneIds(
+      existing.deletedPatientIds,
+      incoming.deletedPatientIds,
+      merged.deletedPatientIds
+    ),
+    deletedAppointmentIds: unionTombstoneIds(
+      existing.deletedAppointmentIds,
+      incoming.deletedAppointmentIds,
+      merged.deletedAppointmentIds
+    ),
+    deletedMedicalRecordIds: unionTombstoneIds(
+      existing.deletedMedicalRecordIds,
+      incoming.deletedMedicalRecordIds,
+      merged.deletedMedicalRecordIds
+    ),
+    deletedTreatmentPlanIds: unionTombstoneIds(
+      existing.deletedTreatmentPlanIds,
+      incoming.deletedTreatmentPlanIds,
+      merged.deletedTreatmentPlanIds
+    ),
+    deletedWorkActIds: unionTombstoneIds(
+      existing.deletedWorkActIds,
+      incoming.deletedWorkActIds,
+      merged.deletedWorkActIds
+    ),
+    deletedServiceIds: unionTombstoneIds(
+      existing.deletedServiceIds,
+      incoming.deletedServiceIds,
+      merged.deletedServiceIds
+    ),
+    deletedLegalDocumentIds: unionTombstoneIds(
+      existing.deletedLegalDocumentIds,
+      incoming.deletedLegalDocumentIds,
+      merged.deletedLegalDocumentIds
+    ),
+  });
+}
+
 /** mergeByIdPreferLocal с учётом удалений в local (после reload / до автосохранения) */
 export function mergeByIdPreferLocalRespectingDeletions<T extends { id: string }>(
   remote: T[],
@@ -763,6 +922,31 @@ export function mergeClinicSnapshotWithLocal(
   remote: ClinicPersistedState,
   local: ClinicPersistedState
 ): ClinicPersistedState {
+  const patients = mergeEntityListWithTombstones(
+    remote.patients,
+    local.patients,
+    remote.deletedPatientIds,
+    local.deletedPatientIds
+  );
+  const appointments = mergeEntityListWithTombstones(
+    mergeFinancialEntityList(remote.appointments, local.appointments),
+    [],
+    remote.deletedAppointmentIds,
+    local.deletedAppointmentIds
+  );
+  const medicalRecords = mergeEntityListWithTombstones(
+    mergeByIdPreferLocalRespectingDeletions(remote.medicalRecords, local.medicalRecords),
+    [],
+    remote.deletedMedicalRecordIds,
+    local.deletedMedicalRecordIds
+  );
+  const treatmentPlans = mergeEntityListWithTombstones(
+    mergeByIdPreferLocalRespectingDeletions(remote.treatmentPlans, local.treatmentPlans),
+    [],
+    remote.deletedTreatmentPlanIds,
+    local.deletedTreatmentPlanIds
+  );
+
   const merged: ClinicPersistedState = {
     ...remote,
     doctors: mergeByIdPreferLocal(remote.doctors, local.doctors),
@@ -779,16 +963,14 @@ export function mergeClinicSnapshotWithLocal(
       };
     })(),
     cabinets: mergeByIdPreferLocal(remote.cabinets, local.cabinets),
-    patients: mergeClinicPatients(remote.patients, local.patients),
-    appointments: mergeFinancialEntityList(remote.appointments, local.appointments),
-    medicalRecords: mergeByIdPreferLocalRespectingDeletions(
-      remote.medicalRecords,
-      local.medicalRecords
-    ),
-    treatmentPlans: mergeByIdPreferLocalRespectingDeletions(
-      remote.treatmentPlans,
-      local.treatmentPlans
-    ),
+    patients: patients.items,
+    deletedPatientIds: patients.deletedIds,
+    appointments: appointments.items,
+    deletedAppointmentIds: appointments.deletedIds,
+    medicalRecords: medicalRecords.items,
+    deletedMedicalRecordIds: medicalRecords.deletedIds,
+    treatmentPlans: treatmentPlans.items,
+    deletedTreatmentPlanIds: treatmentPlans.deletedIds,
     payments: mergeFinancialEntityList(remote.payments, local.payments),
     invoices: mergeFinancialEntityList(remote.invoices, local.invoices),
     ...(() => {
@@ -817,8 +999,7 @@ export function mergeClinicSnapshotWithLocal(
       remote.patientNotes,
       local.patientNotes
     ),
-    teethByPatient: { ...remote.teethByPatient, ...local.teethByPatient },
-    documentTemplates: mergeByIdPreferLocalRespectingDeletions(
+    documentTemplates: mergeByIdPreferLocal(
       remote.documentTemplates,
       local.documentTemplates
     ),
@@ -843,24 +1024,29 @@ export function mergeClinicSnapshotWithLocal(
       remote.prepayments,
       local.prepayments
     ),
+    teethByPatient: { ...remote.teethByPatient, ...local.teethByPatient },
     actCounter: Math.max(remote.actCounter, local.actCounter),
+    assistantManualHours: mergeAssistantManualHours(
+      remote.assistantManualHours ?? {},
+      local.assistantManualHours ?? {}
+    ),
     clinicSettings: local.clinicSettings ?? remote.clinicSettings,
     userThemePreferences: {
       ...remote.userThemePreferences,
       ...local.userThemePreferences,
     },
-    assistantManualHours: mergeAssistantManualHours(
-      remote.assistantManualHours ?? {},
-      local.assistantManualHours ?? {}
-    ),
   };
-  const repaired = repairFinancialCoupling(merged);
-  const withActs = withUniqueWorkActNumbers(
-    repaired,
-    new Set(remote.workActs.map((a) => a.id))
-  );
-  if (!findOrphanPatientIds(withActs).length) return withActs;
-  return repairMissingPatientsInSnapshot(withActs);
+
+  return (() => {
+    const withTombstones = withMergedTombstoneIds(remote, local, merged);
+    const repaired = repairFinancialCoupling(withTombstones);
+    const withActs = withUniqueWorkActNumbers(
+      repaired,
+      new Set(remote.workActs.map((a) => a.id))
+    );
+    if (!findOrphanPatientIds(withActs).length) return withActs;
+    return repairMissingPatientsInSnapshot(withActs);
+  })();
 }
 
 /** Перед записью в БД: не терять записи при урезанном снимке без явного удаления */
@@ -875,20 +1061,14 @@ export function mergeClinicDataForSave(
   ) => mergeEntityArraysForSave(ex, inc, opts);
   const protect = { protectMassLoss: true as const };
 
-  // Если пользователь удалил пациента через UI, вместе с ним легитимно удаляются
-  // связанные сущности (приёмы/акты/платежи/медкарта и т.д.). Такие удаления нельзя
-  // "восстанавливать" защитой от массовой потери — иначе появятся заглушки.
-  const existingPatientIds = new Set(existing.patients.map((p) => p.id));
-  const incomingPatientIds = new Set(incoming.patients.map((p) => p.id));
-  const deletedPatientIds = new Set<string>();
-  for (const id of existingPatientIds) {
-    if (!incomingPatientIds.has(id)) deletedPatientIds.add(id);
-  }
+  // Удаление пациента — только по явному tombstone (deletedPatientIds).
+  // Absence во входящем snapshot ≠ delete: иначе устаревшая вкладка стирает
+  // пациентов, созданных на другом устройстве.
+  const deletedPatientIds = new Set<string>([
+    ...(existing.deletedPatientIds ?? []),
+    ...(incoming.deletedPatientIds ?? []),
+  ]);
   const hasPatientDeletion = deletedPatientIds.size > 0;
-  const hasLegalDocumentDeletion = hasEntityListDeletion(
-    existing.legalDocuments,
-    incoming.legalDocuments
-  );
   const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
   const hasTreatmentPlanDeletion = hasEntityListDeletion(
     existing.treatmentPlans,
@@ -915,12 +1095,9 @@ export function mergeClinicDataForSave(
       };
     })(),
     cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
-    patients: mergeArr(existing.patients, incoming.patients, protect),
-    appointments: mergeArr(
-      existing.appointments,
-      incoming.appointments,
-      hasPatientDeletion ? undefined : protect
-    ),
+    // Union по id: absence ≠ delete (delete только через deletedPatientIds / cascade).
+    patients: mergeByIdPreferLocal(existing.patients, incoming.patients),
+    appointments: mergeByIdPreferLocal(existing.appointments, incoming.appointments),
     medicalRecords: mergeArr(
       existing.medicalRecords,
       incoming.medicalRecords,
@@ -994,9 +1171,13 @@ export function mergeClinicDataForSave(
   };
 
   if (!hasPatientDeletion) {
-    return withUniqueWorkActNumbers(
-      repairFinancialCoupling(repairMissingPatientsInSnapshot(merged)),
-      new Set(existing.workActs.map((a) => a.id))
+    return withMergedTombstoneIds(
+      existing,
+      incoming,
+      withUniqueWorkActNumbers(
+        repairFinancialCoupling(repairMissingPatientsInSnapshot(merged)),
+        new Set(existing.workActs.map((a) => a.id))
+      )
     );
   }
 
@@ -1009,23 +1190,29 @@ export function mergeClinicDataForSave(
     delete nextTeeth[id];
   }
 
-  return withUniqueWorkActNumbers(
-    repairFinancialCoupling(
-      repairMissingPatientsInSnapshot({
-        ...merged,
-        appointments: filterByPatient(merged.appointments),
-        medicalRecords: filterByPatient(merged.medicalRecords),
-        treatmentPlans: filterByPatient(merged.treatmentPlans),
-        payments: filterByPatient(merged.payments),
-        invoices: filterByPatient(merged.invoices),
-        workActs: filterByPatient(merged.workActs),
-        prepayments: filterByPatient(merged.prepayments),
-        patientFiles: filterByPatient(merged.patientFiles),
-        patientNotes: filterByPatient(merged.patientNotes),
-        teethByPatient: nextTeeth,
-      })
-    ),
-    new Set(existing.workActs.map((a) => a.id))
+  return withMergedTombstoneIds(
+    existing,
+    incoming,
+    withUniqueWorkActNumbers(
+      repairFinancialCoupling(
+        repairMissingPatientsInSnapshot({
+          ...merged,
+          deletedPatientIds: [...deletedPatientIds],
+          patients: merged.patients.filter((p) => !deletedPatientIds.has(p.id)),
+          appointments: filterByPatient(merged.appointments),
+          medicalRecords: filterByPatient(merged.medicalRecords),
+          treatmentPlans: filterByPatient(merged.treatmentPlans),
+          payments: filterByPatient(merged.payments),
+          invoices: filterByPatient(merged.invoices),
+          workActs: filterByPatient(merged.workActs),
+          prepayments: filterByPatient(merged.prepayments),
+          patientFiles: filterByPatient(merged.patientFiles),
+          patientNotes: filterByPatient(merged.patientNotes),
+          teethByPatient: nextTeeth,
+        })
+      ),
+      new Set(existing.workActs.map((a) => a.id))
+    )
   );
 }
 
@@ -1040,12 +1227,11 @@ export function mergeClinicDataOnWriteConflict(
   const preferServer = <T extends { id: string }>(server: T[], client: T[]) =>
     mergeByIdPreferServerRespectingClientDeletions(server, client);
 
-  const existingPatientIds = new Set(existing.patients.map((p) => p.id));
-  const incomingPatientIds = new Set(incoming.patients.map((p) => p.id));
-  const deletedPatientIds = new Set<string>();
-  for (const id of existingPatientIds) {
-    if (!incomingPatientIds.has(id)) deletedPatientIds.add(id);
-  }
+  // Только explicit tombstones — иначе stale client «удаляет» чужие creates.
+  const deletedPatientIds = new Set<string>([
+    ...(existing.deletedPatientIds ?? []),
+    ...(incoming.deletedPatientIds ?? []),
+  ]);
   const hasPatientDeletion = deletedPatientIds.size > 0;
 
   const merged: ClinicPersistedState = {
@@ -1064,10 +1250,12 @@ export function mergeClinicDataOnWriteConflict(
       };
     })(),
     cabinets: preferServer(existing.cabinets, incoming.cabinets),
-    patients: preferServer(existing.patients, incoming.patients),
-    appointments: hasPatientDeletion
-      ? preferServer(existing.appointments, incoming.appointments)
-      : mergeFinancialArraysForSave(existing.appointments, incoming.appointments),
+    // Union по id: absence ≠ delete (delete только через deletedPatientIds).
+    patients: mergeByIdPreferLocal(incoming.patients, existing.patients),
+    appointments:
+      incoming.appointments.length === 0 && existing.appointments.length > 0
+        ? existing.appointments
+        : mergeByIdPreferLocal(incoming.appointments, existing.appointments),
     medicalRecords: preferServer(existing.medicalRecords, incoming.medicalRecords),
     treatmentPlans: preferServer(existing.treatmentPlans, incoming.treatmentPlans),
     payments: hasPatientDeletion
@@ -1077,18 +1265,19 @@ export function mergeClinicDataOnWriteConflict(
       ? preferServer(existing.invoices, incoming.invoices)
       : mergeFinancialArraysForSave(existing.invoices, incoming.invoices),
     ...(() => {
-      const acts = mergeWorkActsState(
-        existing.workActs,
-        incoming.workActs,
+      const deletedWorkActIds = unionTombstoneIds(
         existing.deletedWorkActIds,
         incoming.deletedWorkActIds
       );
-      const workActs = hasPatientDeletion
-        ? preferServer(existing.workActs, incoming.workActs)
-        : mergeFinancialArraysForSave(existing.workActs, acts.workActs);
+      const tombstoneSet = new Set(deletedWorkActIds);
+      const workActs = (
+        hasPatientDeletion
+          ? preferServer(existing.workActs, incoming.workActs)
+          : mergeFinancialArraysForSave(existing.workActs, incoming.workActs)
+      ).filter((act) => !tombstoneSet.has(act.id));
       return {
         workActs,
-        deletedWorkActIds: acts.deletedWorkActIds,
+        deletedWorkActIds,
       };
     })(),
     warehouse: preferServer(existing.warehouse, incoming.warehouse),
@@ -1126,9 +1315,13 @@ export function mergeClinicDataOnWriteConflict(
   };
 
   if (!hasPatientDeletion) {
-    return withUniqueWorkActNumbers(
-      repairMissingPatientsInSnapshot(merged),
-      new Set(existing.workActs.map((a) => a.id))
+    return withMergedTombstoneIds(
+      existing,
+      incoming,
+      withUniqueWorkActNumbers(
+        repairMissingPatientsInSnapshot(merged),
+        new Set(existing.workActs.map((a) => a.id))
+      )
     );
   }
 
@@ -1140,21 +1333,27 @@ export function mergeClinicDataOnWriteConflict(
     delete nextTeeth[id];
   }
 
-  return withUniqueWorkActNumbers(
-    repairMissingPatientsInSnapshot({
-      ...merged,
-      appointments: filterByPatient(merged.appointments),
-      medicalRecords: filterByPatient(merged.medicalRecords),
-      treatmentPlans: filterByPatient(merged.treatmentPlans),
-      payments: filterByPatient(merged.payments),
-      invoices: filterByPatient(merged.invoices),
-      workActs: filterByPatient(merged.workActs),
-      prepayments: filterByPatient(merged.prepayments),
-      patientFiles: filterByPatient(merged.patientFiles),
-      patientNotes: filterByPatient(merged.patientNotes),
-      teethByPatient: nextTeeth,
-    }),
-    new Set(existing.workActs.map((a) => a.id))
+  return withMergedTombstoneIds(
+    existing,
+    incoming,
+    withUniqueWorkActNumbers(
+      repairMissingPatientsInSnapshot({
+        ...merged,
+        deletedPatientIds: [...deletedPatientIds],
+        patients: merged.patients.filter((p) => !deletedPatientIds.has(p.id)),
+        appointments: filterByPatient(merged.appointments),
+        medicalRecords: filterByPatient(merged.medicalRecords),
+        treatmentPlans: filterByPatient(merged.treatmentPlans),
+        payments: filterByPatient(merged.payments),
+        invoices: filterByPatient(merged.invoices),
+        workActs: filterByPatient(merged.workActs),
+        prepayments: filterByPatient(merged.prepayments),
+        patientFiles: filterByPatient(merged.patientFiles),
+        patientNotes: filterByPatient(merged.patientNotes),
+        teethByPatient: nextTeeth,
+      }),
+      new Set(existing.workActs.map((a) => a.id))
+    )
   );
 }
 
@@ -1269,6 +1468,18 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
       : [],
     deletedWorkActIds: Array.isArray(d.deletedWorkActIds)
       ? (d.deletedWorkActIds as string[])
+      : [],
+    deletedPatientIds: Array.isArray(d.deletedPatientIds)
+      ? (d.deletedPatientIds as string[])
+      : [],
+    deletedAppointmentIds: Array.isArray(d.deletedAppointmentIds)
+      ? (d.deletedAppointmentIds as string[])
+      : [],
+    deletedMedicalRecordIds: Array.isArray(d.deletedMedicalRecordIds)
+      ? (d.deletedMedicalRecordIds as string[])
+      : [],
+    deletedTreatmentPlanIds: Array.isArray(d.deletedTreatmentPlanIds)
+      ? (d.deletedTreatmentPlanIds as string[])
       : [],
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],

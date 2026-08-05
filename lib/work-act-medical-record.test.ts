@@ -41,6 +41,7 @@ const appointment: Appointment = {
   date: "2026-06-22",
   startTime: "10:00",
   endTime: "10:30",
+  durationMinutes: 30,
   status: "ready_for_payment",
   complaints: "Болит зуб 16",
   reason: "Болит зуб 16",

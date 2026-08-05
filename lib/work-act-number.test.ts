@@ -37,13 +37,6 @@ describe("work-act-number", () => {
         [act({ id: "a1", actNumber: "0095-07/2026" })],
         [
           {
-            id: "pr1",
-            patientId: "p1",
-            items: [],
-            totalAmount: 1,
-            paidAmount: 1,
-            remainingAmount: 0,
-            date: "2026-07-25",
             actNumber: "ПР-0097-07/2026",
           },
         ],

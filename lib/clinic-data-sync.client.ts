@@ -2,6 +2,24 @@
 
 export const CLINIC_DATA_SYNC_CHANNEL = "dc-clinic-data-sync";
 
+/**
+ * Открытые модалки (пациент, запись): пока редактируют — не применяем фоновый pull
+ * (иначе store меняет doctors/cabinets и формы «обнуляются»).
+ */
+let clinicEditorSessionCount = 0;
+
+export function beginClinicEditorSession(): void {
+  clinicEditorSessionCount += 1;
+}
+
+export function endClinicEditorSession(): void {
+  clinicEditorSessionCount = Math.max(0, clinicEditorSessionCount - 1);
+}
+
+export function isClinicEditorSessionOpen(): boolean {
+  return clinicEditorSessionCount > 0;
+}
+
 let flushClinicDataSave: (() => void) | null = null;
 let flushClinicDataSaveAsync:
   | ((options?: { keepalive?: boolean }) => Promise<void>)

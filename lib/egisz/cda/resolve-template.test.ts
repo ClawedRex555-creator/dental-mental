@@ -8,6 +8,7 @@ const baseRecord = {
   doctorId: "d1",
   complaints: "Жалобы",
   diagnosis: "K02.1",
+  treatment: "",
   createdAt: "2026-07-03",
 };
 

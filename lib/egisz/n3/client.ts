@@ -7,6 +7,7 @@ import type {
   N3MedDocumentDto,
   N3PatientDto,
 } from "@/lib/egisz/n3/types";
+import { assertSafeEgiszGatewayUrl } from "@/lib/egisz/safe-gateway-url";
 import { isAbortTimeoutError, n3TimeoutMs } from "@/lib/egisz/timeouts";
 
 const SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/";
@@ -345,5 +346,8 @@ export function createN3ClientFromConfig(input: {
   password: string;
   stub: boolean;
 }): N3IemkClient {
-  return new N3IemkClient(input);
+  const gatewayUrl = input.stub
+    ? input.gatewayUrl
+    : assertSafeEgiszGatewayUrl(input.gatewayUrl, { requireHttps: true });
+  return new N3IemkClient({ ...input, gatewayUrl });
 }

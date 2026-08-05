@@ -15,6 +15,19 @@ export function calcWorkActLine(item: WorkActItem): WorkActLineCalc {
   return { sum, discountPercent, totalAfterDiscount };
 }
 
+/** Техническая часть по строке акта: не может превышать сумму строки после скидки строки */
+export function calcWorkActItemTechnicalAmount(item: WorkActItem): number {
+  const unit = Math.max(0, item.technicalUnitPrice ?? 0);
+  if (unit <= 0) return 0;
+  const qty = Math.max(1, item.quantity || 1);
+  const line = calcWorkActLine(item);
+  return Math.min(line.totalAfterDiscount, unit * qty);
+}
+
+export function calcWorkActTechnicalAmount(items: WorkActItem[]): number {
+  return items.reduce((sum, item) => sum + calcWorkActItemTechnicalAmount(item), 0);
+}
+
 /** Строка акта с названием и суммой (в т.ч. без serviceId — предоплата, приём без прайса). */
 export function isWorkActLineFilled(item: WorkActItem): boolean {
   return Boolean(item.serviceName?.trim()) && ((item.price ?? 0) > 0 || (item.quantity ?? 0) > 0);

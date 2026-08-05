@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireMobileSession } from "@/lib/mobile-auth-request.server";
+import { requireMobileSessionAsync } from "@/lib/mobile-auth-request.server";
 import { resolveMobileClinicFromRequest } from "@/lib/mobile-clinic-context.server";
 import { isStaffMobileSession } from "@/lib/mobile-staff-auth.server";
 import type { MobileClinicContext } from "@/lib/mobile-clinic-context.server";
@@ -17,7 +17,7 @@ export async function resolveStaffMobileRequest(
     return { error: clinicOrError.error, status: clinicOrError.status };
   }
 
-  const session = requireMobileSession(request);
+  const session = await requireMobileSessionAsync(request);
   if (!session) {
     return { error: "Требуется авторизация", status: 401 };
   }

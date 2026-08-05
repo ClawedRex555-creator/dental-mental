@@ -8,6 +8,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 export interface ClinicDataFetchResult {
   data: ClinicPersistedState | null;
   updatedAt: string | null;
+  revision?: number | null;
   database: boolean;
   /** Нет прав на полный snapshot (врач, ассистент, бухгалтер) */
   forbidden?: boolean;
@@ -15,6 +16,7 @@ export interface ClinicDataFetchResult {
 
 export interface ClinicDataMetaResult {
   updatedAt: string | null;
+  revision?: number | null;
   database: boolean;
   forbidden?: boolean;
 }
@@ -32,12 +34,14 @@ export async function fetchClinicDataMetaFromServer(): Promise<ClinicDataMetaRes
 
   const json = (await res.json()) as {
     updatedAt?: string | null;
+    revision?: number | null;
     database?: boolean;
   };
 
   if (!json.database) return { updatedAt: null, database: false };
   return {
     updatedAt: json.updatedAt ?? null,
+    revision: typeof json.revision === "number" ? json.revision : null,
     database: true,
   };
 }
@@ -56,27 +60,45 @@ export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult
   const json = (await res.json()) as {
     data?: unknown;
     updatedAt?: string;
+    revision?: number | null;
     database?: boolean;
   };
 
   if (!json.database) return { data: null, updatedAt: null, database: false };
 
   if (!json.data) {
-    return { data: null, updatedAt: json.updatedAt ?? null, database: true };
+    return {
+      data: null,
+      updatedAt: json.updatedAt ?? null,
+      revision: typeof json.revision === "number" ? json.revision : null,
+      database: true,
+    };
   }
 
   const parsed = parseClinicPersistedState(json.data);
   return {
     data: parsed,
     updatedAt: json.updatedAt ?? null,
+    revision: typeof json.revision === "number" ? json.revision : null,
     database: true,
   };
 }
 
 export async function saveClinicDataToServer(
   data: ClinicPersistedState,
-  options?: { keepalive?: boolean; expectedUpdatedAt?: string | null }
-): Promise<{ ok: boolean; error?: string; updatedAt?: string; forbidden?: boolean; merged?: boolean }> {
+  options?: {
+    keepalive?: boolean;
+    expectedUpdatedAt?: string | null;
+    expectedRevision?: number | null;
+  }
+): Promise<{
+  ok: boolean;
+  error?: string;
+  updatedAt?: string;
+  revision?: number;
+  forbidden?: boolean;
+  merged?: boolean;
+}> {
   const res = await fetchWithTimeout(
     "/api/clinic/data",
     {
@@ -87,6 +109,10 @@ export async function saveClinicDataToServer(
     body: JSON.stringify({
       data,
       expectedUpdatedAt: options?.expectedUpdatedAt ?? undefined,
+      expectedRevision:
+        typeof options?.expectedRevision === "number"
+          ? options.expectedRevision
+          : undefined,
     }),
     },
     options?.keepalive ? 120_000 : 90_000
@@ -95,6 +121,7 @@ export async function saveClinicDataToServer(
     ok?: boolean;
     error?: string;
     updatedAt?: string;
+    revision?: number;
     merged?: boolean;
   };
   const parsed = parseClinicSaveServerResponse(res, json);
@@ -104,5 +131,10 @@ export async function saveClinicDataToServer(
   if (!parsed.ok) {
     return { ok: false, error: parsed.error ?? "Не удалось сохранить данные" };
   }
-  return { ok: true, updatedAt: parsed.updatedAt, merged: parsed.merged };
+  return {
+    ok: true,
+    updatedAt: parsed.updatedAt,
+    revision: typeof json.revision === "number" ? json.revision : undefined,
+    merged: parsed.merged,
+  };
 }

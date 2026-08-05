@@ -13,6 +13,8 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/migrations:/docker-entrypoint-initdb.d/migrations:ro
+      - ./db/docker-init-migrations.sh:/docker-entrypoint-initdb.d/02-migrations.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mis -d dentalcloud"]
       interval: 5s
@@ -26,7 +28,6 @@ services:
       context: .
       args:
         APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-emkaro.ru}
-        AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
         CACHEBUST: ${DEPLOY_VERSION:-unknown}
     logging:
       driver: json-file
@@ -53,6 +54,24 @@ services:
       EGISZ_WEBHOOK_SECRET: ${EGISZ_WEBHOOK_SECRET:-}
       EGISZ_SIGNING_URL: ${EGISZ_SIGNING_URL:-}
       EGISZ_SIGNING_SECRET: ${EGISZ_SIGNING_SECRET:-}
+      NOTIFICATIONS_CRON_SECRET: ${NOTIFICATIONS_CRON_SECRET:-}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-}
+      NOTIFICATIONS_MOCK_FAIL: ${NOTIFICATIONS_MOCK_FAIL:-0}
+      NOTIFICATIONS_TELEGRAM_BOT_TOKEN: ${NOTIFICATIONS_TELEGRAM_BOT_TOKEN:-}
+      NOTIFICATIONS_WHATSAPP_ACCESS_TOKEN: ${NOTIFICATIONS_WHATSAPP_ACCESS_TOKEN:-}
+      NOTIFICATIONS_WHATSAPP_PHONE_NUMBER_ID: ${NOTIFICATIONS_WHATSAPP_PHONE_NUMBER_ID:-}
+      NOTIFICATIONS_WHATSAPP_API_URL: ${NOTIFICATIONS_WHATSAPP_API_URL:-}
+      NOTIFICATIONS_SMS_API_URL: ${NOTIFICATIONS_SMS_API_URL:-}
+      NOTIFICATIONS_SMS_API_KEY: ${NOTIFICATIONS_SMS_API_KEY:-}
+      NOTIFICATIONS_SMS_SENDER: ${NOTIFICATIONS_SMS_SENDER:-}
+      NOTIFICATIONS_SMTP_URL: ${NOTIFICATIONS_SMTP_URL:-}
+      NOTIFICATIONS_SMTP_API_KEY: ${NOTIFICATIONS_SMTP_API_KEY:-}
+      NOTIFICATIONS_EMAIL_FROM: ${NOTIFICATIONS_EMAIL_FROM:-}
+      NOTIFICATIONS_VK_ACCESS_TOKEN: ${NOTIFICATIONS_VK_ACCESS_TOKEN:-}
+      NOTIFICATIONS_MAX_API_TOKEN: ${NOTIFICATIONS_MAX_API_TOKEN:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,6 +87,36 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  notifications-cron:
+    image: curlimages/curl:8.10.1
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      NOTIFICATIONS_CRON_SECRET: ${NOTIFICATIONS_CRON_SECRET:-}
+    command:
+      - sh
+      - -ceu
+      - |
+        SECRET="${NOTIFICATIONS_CRON_SECRET}"
+        if [ -z "$SECRET" ]; then
+          echo "notifications-cron: NOTIFICATIONS_CRON_SECRET required, disabled"
+          sleep infinity
+        fi
+        while true; do
+          curl -fsS -X POST "http://app:3000/api/notifications/process" \
+            -H "Authorization: Bearer $SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}' >/dev/null || echo "notifications-cron: tick failed"
+          sleep 60
+        done
+    restart: unless-stopped
 
   caddy:
     image: caddy:2-alpine

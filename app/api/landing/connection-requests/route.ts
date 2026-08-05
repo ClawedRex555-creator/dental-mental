@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { createConnectionRequest } from "@/lib/platform-connection-requests.server";
 import { isDatabaseEnabled } from "@/lib/db";
+import {
+  checkLoginRateLimitAsync,
+  clientIpFromRequest,
+  LANDING_RATE_MAX_ATTEMPTS,
+  LANDING_RATE_WINDOW_MS,
+  loginRateLimitResponse,
+  recordLoginFailureAsync,
+} from "@/lib/login-rate-limit";
 
 function invalid(message: string) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
@@ -13,6 +21,15 @@ export async function POST(request: Request) {
       { status: 503 }
     );
   }
+
+  const ip = clientIpFromRequest(request) ?? "unknown";
+  const rateKey = `landing:connection:${ip}`;
+  const rate = await checkLoginRateLimitAsync(rateKey, LANDING_RATE_MAX_ATTEMPTS);
+  if (!rate.allowed) {
+    return loginRateLimitResponse(rate.retryAfterSec ?? 60);
+  }
+  // Считаем каждую заявку как attempt (антиспам), не только ошибки.
+  await recordLoginFailureAsync(rateKey, LANDING_RATE_WINDOW_MS);
 
   let body: {
     clinicName?: string;

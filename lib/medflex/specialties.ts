@@ -19,10 +19,15 @@ export function mapDoctorSpecialtyToMedflex(specialization: string): {
   if (!text) {
     return { id: "48", name: "Стоматолог" };
   }
+  // Самый длинный alias: «стоматолог-ортопед» не должен матчиться на «стоматолог».
+  let best: { id: string; name: string; aliasLen: number } | null = null;
   for (const row of MEDFLEX_DENTAL_SPECIALTIES) {
-    if (row.aliases.some((a) => text.includes(a))) {
-      return { id: row.id, name: row.name };
+    for (const alias of row.aliases) {
+      if (!text.includes(alias)) continue;
+      if (!best || alias.length > best.aliasLen) {
+        best = { id: row.id, name: row.name, aliasLen: alias.length };
+      }
     }
   }
-  return { id: "48", name: "Стоматолог" };
+  return best ? { id: best.id, name: best.name } : { id: "48", name: "Стоматолог" };
 }

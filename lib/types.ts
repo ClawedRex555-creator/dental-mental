@@ -214,6 +214,12 @@ export interface Service {
   name: string;
   category: string;
   price: number;
+  /** Техническая услуга (прайс техника) привязана к услуге клиники */
+  linkedClinicServiceId?: string;
+  /** Снимок названия услуги клиники на момент привязки */
+  linkedClinicServiceName?: string;
+  /** Имя техника для раздела «Техническая» */
+  technicianName?: string;
   /** Примечание к услуге (видно в прайсе и при выборе) */
   notes?: string;
   /** true — в прайсе показывается «от N ₽» (минимальная цена) */
@@ -386,6 +392,8 @@ export interface WorkActItem {
   discountPercent?: number;
   /** Категория прайса на момент добавления в акт */
   serviceCategory?: string;
+  /** Стоимость технички за единицу (без сохранения конкретного техника) */
+  technicalUnitPrice?: number;
 }
 
 export type WorkActType = "services" | "prepayment";

@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Service } from "./types";
 import {
+  getClinicBillableServices,
+  getTechnicalServices,
+  isTechnicalServiceCategory,
   LEGACY_IMPLANT_PROSTHETICS_CATEGORY,
   SERVICE_CATEGORY_IMPLANTATION,
   SERVICE_CATEGORY_PROSTHETICS,
+  SERVICE_CATEGORY_TECHNICAL,
   groupServicesByCategory,
   mergeClinicServices,
   normalizeServiceCategory,
@@ -57,6 +61,23 @@ describe("service categories", () => {
     const groups = groupServicesByCategory(services);
     assert.equal(groups.find((g) => g.category === SERVICE_CATEGORY_IMPLANTATION)?.items.length, 1);
     assert.equal(groups.find((g) => g.category === SERVICE_CATEGORY_PROSTHETICS)?.items.length, 1);
+  });
+
+  it("separates technical services from clinic price list", () => {
+    const services: Service[] = [
+      { id: "1", name: "Пломба", category: "Терапия", price: 3000 },
+      {
+        id: "2",
+        name: "Лабораторный этап",
+        category: SERVICE_CATEGORY_TECHNICAL,
+        price: 1200,
+        technicianName: "Техник",
+        linkedClinicServiceId: "1",
+      },
+    ];
+    assert.equal(isTechnicalServiceCategory("Техническая"), true);
+    assert.equal(getClinicBillableServices(services).length, 1);
+    assert.equal(getTechnicalServices(services).length, 1);
   });
 
   it("merge keeps local services when remote snapshot is shorter", () => {

@@ -4,7 +4,7 @@ import {
   collectPlaceholdersFromDocxXml,
   extractDocxPlainText,
   normalizeDocxPlaceholderXml,
-} from "./legal-docx-xml.ts";
+} from "./legal-docx-xml";
 
 describe("extractDocxPlainText", () => {
   it("joins text split across Word runs", () => {

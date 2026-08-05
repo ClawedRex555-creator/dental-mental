@@ -74,15 +74,14 @@ function loadYandexMetrika(counterId: string) {
 }
 
 export function CookieConsentBanner() {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return readConsent() === null;
+  });
 
   useEffect(() => {
     const existing = readConsent();
-    if (!existing) {
-      setVisible(true);
-      return;
-    }
-    if (existing.analytics && YANDEX_METRIKA_ID) {
+    if (existing?.analytics && YANDEX_METRIKA_ID) {
       loadYandexMetrika(YANDEX_METRIKA_ID);
     }
   }, []);

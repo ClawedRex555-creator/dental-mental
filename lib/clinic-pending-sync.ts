@@ -12,24 +12,53 @@ import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 
 const LEGACY_SESSION_KEY = "dc-clinic-pending-snapshot";
 const PENDING_KEY_PREFIX = "dc-clinic-pending-v1";
+const TAB_ID_KEY = "dc-clinic-tab-id";
 
+function currentTabId(): string {
+  try {
+    if (typeof sessionStorage === "undefined") return "main";
+    let id = sessionStorage.getItem(TAB_ID_KEY);
+    if (!id) {
+      id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `tab_${Date.now().toString(36)}`;
+      sessionStorage.setItem(TAB_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return "main";
+  }
+}
+
+function scopeSlug(slug?: string | null): string {
+  return (slug ?? readClinicStorageScope() ?? "_").trim().toLowerCase();
+}
+
+/** Per-tab pending key — вкладки не затирают чужой буфер (H14). */
 function pendingStorageKey(slug?: string | null): string {
-  const scope = (slug ?? readClinicStorageScope() ?? "_").trim().toLowerCase();
-  return `${PENDING_KEY_PREFIX}:${scope}`;
+  return `${PENDING_KEY_PREFIX}:${scopeSlug(slug)}:${currentTabId()}`;
+}
+
+function legacyPendingKey(slug?: string | null): string {
+  return `${PENDING_KEY_PREFIX}:${scopeSlug(slug)}`;
 }
 
 function pendingStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
   try {
-    return window.localStorage;
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage;
+    }
+    const g = globalThis as { localStorage?: Storage };
+    return g.localStorage ?? null;
   } catch {
     return null;
   }
 }
 
 function migratePendingFromSessionStorage(): void {
-  if (typeof window === "undefined") return;
   try {
+    if (typeof sessionStorage === "undefined") return;
     const legacy = sessionStorage.getItem(LEGACY_SESSION_KEY);
     if (!legacy) return;
     const storage = pendingStorage();
@@ -43,11 +72,49 @@ function migratePendingFromSessionStorage(): void {
   }
 }
 
+function parsePendingRaw(raw: string | null): ClinicPersistedState | null {
+  if (!raw) return null;
+  try {
+    return parseClinicPersistedState(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+/** Все pending-буферы клиники (все вкладки + legacy key) для recovery merge. */
+function readAllPendingForScope(slug?: string | null): ClinicPersistedState | null {
+  const storage = pendingStorage();
+  if (!storage) return null;
+  const scope = scopeSlug(slug);
+  const prefix = `${PENDING_KEY_PREFIX}:${scope}:`;
+  const legacy = legacyPendingKey(slug);
+  let merged: ClinicPersistedState | null = null;
+
+  const absorb = (raw: string | null) => {
+    const snap = parsePendingRaw(raw);
+    if (!snap || !hasClinicData(snap)) return;
+    merged = merged ? mergeClinicSnapshotWithLocal(merged, snap) : snap;
+  };
+
+  absorb(storage.getItem(legacy));
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key || !key.startsWith(prefix)) continue;
+      absorb(storage.getItem(key));
+    }
+  } catch {
+    /* ignore */
+  }
+  return merged;
+}
+
 /** Сохранить PHI из localStorage в буфер до purge (переживает закрытие вкладки) */
 export function backupPhiSnapshotBeforeDbMode(): void {
-  if (typeof window === "undefined") return;
   try {
-    const raw = localStorage.getItem(CLINIC_STORAGE_KEY);
+    const storage = pendingStorage();
+    if (!storage) return;
+    const raw = storage.getItem(CLINIC_STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
     const state = parsed.state ?? (parsed as Record<string, unknown>);
@@ -60,26 +127,29 @@ export function backupPhiSnapshotBeforeDbMode(): void {
 }
 
 export function readPendingClinicSnapshot(): ClinicPersistedState | null {
-  if (typeof window === "undefined") return null;
   migratePendingFromSessionStorage();
   try {
     const storage = pendingStorage();
-    const raw = storage?.getItem(pendingStorageKey()) ?? null;
-    if (!raw) return null;
-    return parseClinicPersistedState(JSON.parse(raw));
+    const own = parsePendingRaw(storage?.getItem(pendingStorageKey()) ?? null);
+    if (own) return own;
+    // Fallback: legacy shared key (до per-tab)
+    return parsePendingRaw(storage?.getItem(legacyPendingKey()) ?? null);
   } catch {
     return null;
   }
 }
 
 export function writePendingClinicSnapshot(snapshot: ClinicPersistedState): boolean {
-  if (typeof window === "undefined") return true;
   if (!hasClinicData(snapshot)) return true;
   try {
     const storage = pendingStorage();
-    if (!storage) return false;
+    if (!storage) return typeof window === "undefined";
     storage.setItem(pendingStorageKey(), JSON.stringify(snapshot));
-    sessionStorage.removeItem(LEGACY_SESSION_KEY);
+    try {
+      sessionStorage.removeItem(LEGACY_SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
     return true;
   } catch {
     return false;
@@ -87,10 +157,16 @@ export function writePendingClinicSnapshot(snapshot: ClinicPersistedState): bool
 }
 
 export function clearPendingClinicSnapshot(slug?: string): void {
-  if (typeof window === "undefined") return;
   try {
-    pendingStorage()?.removeItem(pendingStorageKey(slug));
-    sessionStorage.removeItem(LEGACY_SESSION_KEY);
+    const storage = pendingStorage();
+    storage?.removeItem(pendingStorageKey(slug));
+    // Не трогаем чужие вкладки — только свой ключ + legacy shared
+    storage?.removeItem(legacyPendingKey(slug));
+    try {
+      sessionStorage.removeItem(LEGACY_SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
   } catch {
     /* ignore */
   }
@@ -101,12 +177,12 @@ const PENDING_BUFFER_ERROR =
 
 /**
  * Объединить экран + буфер несохранённых правок (если есть).
- * Используется перед pull с сервера, чтобы не потерять записи, ещё не ушедшие в БД.
+ * При recovery подтягиваем pending со всех вкладок той же клиники.
  */
 export function mergePendingIntoClinicSnapshot(
   local: ClinicPersistedState
 ): ClinicPersistedState {
-  const pending = readPendingClinicSnapshot();
+  const pending = readAllPendingForScope() ?? readPendingClinicSnapshot();
   if (!pending) return local;
   return mergeClinicSnapshotWithLocal(local, pending);
 }
@@ -127,7 +203,7 @@ export function discardStalePendingClinicSnapshot(remote: ClinicPersistedState):
 }
 
 export function hasPendingClinicRecoveryData(): boolean {
-  return readPendingClinicSnapshot() !== null;
+  return readPendingClinicSnapshot() !== null || readAllPendingForScope() !== null;
 }
 
 export { PENDING_BUFFER_ERROR };

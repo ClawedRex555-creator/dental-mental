@@ -55,7 +55,10 @@ export function MedflexSettingsPanel() {
   };
 
   useEffect(() => {
-    void load().finally(() => setLoading(false));
+    const timer = setTimeout(() => {
+      void load().finally(() => setLoading(false));
+    }, 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

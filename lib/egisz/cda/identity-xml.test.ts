@@ -55,6 +55,11 @@ describe("patient IdentityDoc", () => {
     birthDate: "1990-01-01",
     gender: "male" as const,
     createdAt: "2024-01-01",
+    source: "Google" as const,
+    status: "active" as const,
+    balance: 0,
+    totalSpent: 0,
+    disability: "none" as const,
   };
 
   it("uses nullFlavor when passport incomplete", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -48,6 +48,10 @@ import {
   type PatientDuplicateMatch,
 } from "@/lib/patient-duplicate";
 import { formatDate, generateId, getFullName } from "@/lib/utils";
+import {
+  beginClinicEditorSession,
+  endClinicEditorSession,
+} from "@/lib/clinic-data-sync.client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,6 +142,10 @@ export function PatientModal({
   const [withoutDocuments, setWithoutDocuments] = useState(false);
   const [debtAmount, setDebtAmount] = useState("");
   const [duplicateMatch, setDuplicateMatch] = useState<PatientDuplicateMatch | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const formInitialized = useRef(false);
+  const formSessionKey = useRef<string>("");
 
   const clinicVisitCount = patient
     ? countClinicVisits(appointments, patient.id)
@@ -146,8 +154,32 @@ export function PatientModal({
     ? derivePatientVisitFields(patient, appointments).lastVisitDate
     : undefined;
 
+  // Пока модалка открыта — фоновый pull не перетирает store (см. isClinicEditorSessionOpen)
   useEffect(() => {
     if (!open) return;
+    beginClinicEditorSession();
+    return () => endClinicEditorSession();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      formInitialized.current = false;
+      formSessionKey.current = "";
+      return;
+    }
+
+    // Сессия: create | edit:<id>. Не зависеть от doctors/cabinets — pull меняет ссылки.
+    const sessionKey = patient?.id ? `edit:${patient.id}` : "create";
+    if (formInitialized.current && formSessionKey.current === sessionKey) {
+      return;
+    }
+    formInitialized.current = true;
+    formSessionKey.current = sessionKey;
+
+    // Актуальные справочники на момент открытия (не в deps — иначе reset на sync)
+    const storeDoctors = useClinicStore.getState().doctors;
+    const storeCabinets = useClinicStore.getState().cabinets;
+
     setDocErrors({});
     setDuplicateMatch(null);
     if (patient) {
@@ -193,12 +225,12 @@ export function PatientModal({
       const schedule = initialAppointmentSchedule;
       const initialDoctorId =
         schedule?.doctorId ||
-        doctors.find((d) => d.role === "doctor")?.id ||
+        storeDoctors.find((d) => d.role === "doctor")?.id ||
         "";
       const initialCabinetId =
         schedule?.cabinetId ||
-        resolveCabinetIdForDoctor(initialDoctorId, doctors, cabinets) ||
-        cabinets[0]?.id ||
+        resolveCabinetIdForDoctor(initialDoctorId, storeDoctors, storeCabinets) ||
+        storeCabinets[0]?.id ||
         "";
       setAppointmentFields({
         ...emptyAppointmentFields(),
@@ -207,9 +239,9 @@ export function PatientModal({
         ...schedule,
       });
     }
-    // initialAppointmentSchedule is captured only when the modal opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid resetting form while open
-  }, [open, patient, doctors, cabinets]);
+    // initialAppointmentSchedule читается только при первой init-сессии
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- form session, not store pulls
+  }, [open, patient?.id]);
 
   const set = <K extends keyof typeof fields>(key: K, value: (typeof fields)[K]) => {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -221,6 +253,7 @@ export function PatientModal({
   };
 
   const handleSave = () => {
+    if (savingRef.current) return;
     if (!fields.firstName.trim() || !fields.lastName.trim()) {
       toast.error("Укажите фамилию и имя");
       return;
@@ -410,14 +443,6 @@ export function PatientModal({
         setDuplicateMatch(conflict);
         return;
       }
-      updatePatient(patient.id, payload);
-      syncOtherClinicVisitForPatient(payload);
-      saveAppointmentFor(patient.id);
-      toast.success(
-        appointmentFields.enabled
-          ? "Пациент обновлён и записан на приём"
-          : "Пациент обновлён"
-      );
     } else {
       const duplicate = findDuplicatePatient(patients, {
         phone: payload.phone,
@@ -434,17 +459,36 @@ export function PatientModal({
         setDuplicateMatch(duplicate);
         return;
       }
-      addPatient(payload);
-      syncOtherClinicVisitForPatient(payload);
-      saveAppointmentFor(payload.id);
-      toast.success(
-        appointmentFields.enabled
-          ? "Пациент добавлен и записан на приём"
-          : "Пациент добавлен"
-      );
-      onCreated?.(payload, { appointmentCreated: appointmentFields.enabled });
     }
-    onOpenChange(false);
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      if (patient) {
+        updatePatient(patient.id, payload);
+        syncOtherClinicVisitForPatient(payload);
+        saveAppointmentFor(patient.id);
+        toast.success(
+          appointmentFields.enabled
+            ? "Пациент обновлён и записан на приём"
+            : "Пациент обновлён"
+        );
+      } else {
+        addPatient(payload);
+        syncOtherClinicVisitForPatient(payload);
+        saveAppointmentFor(payload.id);
+        toast.success(
+          appointmentFields.enabled
+            ? "Пациент добавлен и записан на приём"
+            : "Пациент добавлен"
+        );
+        onCreated?.(payload, { appointmentCreated: appointmentFields.enabled });
+      }
+      onOpenChange(false);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   const duplicateName = duplicateMatch
@@ -1005,8 +1049,12 @@ export function PatientModal({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {UI.cancel}
             </Button>
-            <Button onClick={handleSave}>
-              {appointmentFields.enabled ? "Сохранить и записать" : UI.save}
+            <Button onClick={handleSave} disabled={saving}>
+              {saving
+                ? "Сохранение…"
+                : appointmentFields.enabled
+                  ? "Сохранить и записать"
+                  : UI.save}
             </Button>
           </div>
         </div>

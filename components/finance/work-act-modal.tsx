@@ -15,10 +15,16 @@ import type {
 import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
-import { normalizeServiceFields } from "@/lib/service-categories";
+import {
+  getClinicBillableServices,
+  getTechnicalServices,
+  normalizeServiceFields,
+} from "@/lib/service-categories";
 import {
   buildWorkActMedicalRecommendations,
   calcWorkActAmounts,
+  calcWorkActItemTechnicalAmount,
+  calcWorkActTechnicalAmount,
   getWorkActCustomerName,
   isWorkActLineFilled,
   workActHasFilledItems,
@@ -62,6 +68,8 @@ interface WorkActModalProps {
   mode?: WorkActModalMode;
   existingActId?: string;
   onSubmitted?: () => void;
+  /** Закрыть родительские модалки и перейти в финансы (из расписания) */
+  onGoToPayment?: (actId: string) => void;
 }
 
 const selectClass =
@@ -80,6 +88,7 @@ export function WorkActModal({
   mode = "standard",
   existingActId,
   onSubmitted,
+  onGoToPayment,
 }: WorkActModalProps) {
   const router = useRouter();
   const {
@@ -104,6 +113,34 @@ export function WorkActModal({
     currentUser,
   } = useClinicStore();
   const activeDoctors = doctors.filter((d) => d.role === "doctor");
+  const clinicServices = useMemo(
+    () => getClinicBillableServices(services),
+    [services]
+  );
+  const technicalServices = useMemo(
+    () => getTechnicalServices(services),
+    [services]
+  );
+  const technicalByClinicServiceId = useMemo(() => {
+    const map = new Map<string, typeof technicalServices>();
+    for (const tech of technicalServices) {
+      const linkedServiceId = tech.linkedClinicServiceId?.trim();
+      if (!linkedServiceId) continue;
+      const list = map.get(linkedServiceId) ?? [];
+      list.push(tech);
+      map.set(linkedServiceId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => {
+        const byTech = (a.technicianName ?? "").localeCompare(b.technicianName ?? "", "ru");
+        if (byTech !== 0) return byTech;
+        const byService = a.name.localeCompare(b.name, "ru");
+        if (byService !== 0) return byService;
+        return a.price - b.price;
+      });
+    }
+    return map;
+  }, [technicalServices]);
   const isAdminOrOwner = currentUser.role === "admin" || currentUser.role === "owner";
 
   const existingAct = existingActId
@@ -149,6 +186,9 @@ export function WorkActModal({
   const [discountBearer, setDiscountBearer] = useState<DiscountBearer>("shared");
   const [notes, setNotes] = useState("");
   const [savedActId, setSavedActId] = useState<string | null>(null);
+  const [technicalSelectionByItemId, setTechnicalSelectionByItemId] = useState<
+    Record<string, string>
+  >({});
   const savedActIdRef = useRef<string | null>(null);
   const initialized = useRef(false);
 
@@ -163,9 +203,11 @@ export function WorkActModal({
     () => calcWorkActAmounts(items, discountType, Number(discount) || 0),
     [items, discountType, discount]
   );
+  const technicalTotal = useMemo(() => calcWorkActTechnicalAmount(items), [items]);
+  const technicalTotalCapped = Math.min(Math.max(0, totalAmount), technicalTotal);
 
   const paymentPreview = useMemo(() => {
-    if (!doctorId || discountValue <= 0) return null;
+    if (!doctorId) return null;
     const doctor = doctors.find((d) => d.id === doctorId);
     if (!doctor) return null;
     const draftAct: WorkAct = {
@@ -186,7 +228,6 @@ export function WorkActModal({
     return calcDoctorPaymentForAct(draftAct, doctor, services);
   }, [
     doctorId,
-    discountValue,
     doctors,
     services,
     actDate,
@@ -204,6 +245,7 @@ export function WorkActModal({
     setDoctorId(act.doctorId ?? "");
     setActDate(act.actDate);
     setItems(act.items);
+    setTechnicalSelectionByItemId({});
     setDiscountType(act.discountType ?? "percent");
     setDiscount(String(act.discount ?? 0));
     setDiscountBearer(act.discountBearer ?? "shared");
@@ -216,6 +258,7 @@ export function WorkActModal({
       initialized.current = false;
       savedActIdRef.current = null;
       setSavedActId(null);
+      setTechnicalSelectionByItemId({});
       setPrepayPath("pending");
       setLinkedPrepaymentId(null);
       return;
@@ -249,6 +292,7 @@ export function WorkActModal({
     setDiscountBearer("shared");
     savedActIdRef.current = null;
     setSavedActId(null);
+    setTechnicalSelectionByItemId({});
     setLinkedPrepaymentId(null);
 
     const openPrepays = getOpenPrepaidSources(
@@ -278,7 +322,7 @@ export function WorkActModal({
       setItems(defaultItems.map(mapDefault));
     } else if (aptForDefaults) {
       const svc = aptForDefaults.serviceId
-        ? services.find((s) => s.id === aptForDefaults.serviceId)
+        ? clinicServices.find((s) => s.id === aptForDefaults.serviceId)
         : undefined;
       if (svc) {
         const normalized = normalizeServiceFields(svc);
@@ -308,7 +352,7 @@ export function WorkActModal({
     existingActId,
     patients,
     appointments,
-    services,
+    clinicServices,
     prepayments,
     workActs,
     payments,
@@ -356,6 +400,7 @@ export function WorkActModal({
     setLinkedPrepaymentId(prep.id);
     setPrepayPath("settle");
     setPatientId(prep.patientId);
+    setTechnicalSelectionByItemId({});
     if (prep.discountType) setDiscountType(prep.discountType);
     if (prep.discount != null) setDiscount(String(prep.discount));
     const nextItems = (prep.items ?? []).map((it) => {
@@ -400,12 +445,35 @@ export function WorkActModal({
       .filter(isWorkActLineFilled)
       .map((i) => {
         const quantity = Math.max(1, i.quantity || 1);
+        const technicalUnitPrice =
+          i.technicalUnitPrice != null && i.technicalUnitPrice > 0
+            ? i.technicalUnitPrice
+            : undefined;
         return {
-          ...i,
+          id: i.id,
+          serviceId: i.serviceId,
+          serviceName: i.serviceName,
+          toothNumber: i.toothNumber,
           quantity,
+          price: i.price || 0,
           total: quantity * (i.price || 0),
+          discountPercent: i.discountPercent,
+          serviceCategory: i.serviceCategory,
+          technicalUnitPrice,
         };
       });
+    const invalidTechnicalItem = filledItems.find(
+      (item) =>
+        (item.technicalUnitPrice ?? 0) > 0 &&
+        (item.price ?? 0) > 0 &&
+        (item.technicalUnitPrice ?? 0) > (item.price ?? 0)
+    );
+    if (invalidTechnicalItem) {
+      toast.error(
+        `Техничка по услуге «${invalidTechnicalItem.serviceName}» не может быть выше цены услуги`
+      );
+      return null;
+    }
     if (!patientId || !doctorId || filledItems.length === 0) {
       toast.error("Укажите пациента, врача и услуги");
       return null;
@@ -474,23 +542,37 @@ export function WorkActModal({
     return act;
   };
 
+  const actSaveLock = useRef(false);
+
   const handleSaveOnly = () => {
-    const act = persistAct(mode === "doctor" ? false : undefined);
-    if (!act) return;
-    toast.success(
-      linkedPrepaymentId && prepayPath === "settle"
-        ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
-        : `Акт № ${act.actNumber} сохранён`
-    );
-    if (mode !== "doctor") onOpenChange(false);
+    if (actSaveLock.current) return;
+    actSaveLock.current = true;
+    try {
+      const act = persistAct(mode === "doctor" ? false : undefined);
+      if (!act) return;
+      toast.success(
+        linkedPrepaymentId && prepayPath === "settle"
+          ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
+          : `Акт № ${act.actNumber} сохранён`
+      );
+      if (mode !== "doctor") onOpenChange(false);
+    } finally {
+      actSaveLock.current = false;
+    }
   };
 
   const handleSaveAndPrint = () => {
-    const act = persistAct(mode === "doctor" ? false : undefined);
-    if (!act) return;
-    const patient = patients.find((p) => p.id === patientId);
-    if (patient) printWorkAct(act, patient, clinicSettings);
-    toast.success(`Акт № ${act.actNumber} сохранён и отправлен на печать`);
+    if (actSaveLock.current) return;
+    actSaveLock.current = true;
+    try {
+      const act = persistAct(mode === "doctor" ? false : undefined);
+      if (!act) return;
+      const patient = patients.find((p) => p.id === patientId);
+      if (patient) printWorkAct(act, patient, clinicSettings);
+      toast.success(`Акт № ${act.actNumber} сохранён и отправлен на печать`);
+    } finally {
+      actSaveLock.current = false;
+    }
   };
 
   const handleSubmitToAdmin = () => {
@@ -532,15 +614,29 @@ export function WorkActModal({
     onOpenChange(false);
   };
 
+  const navigateToPayment = (actId: string) => {
+    onOpenChange(false);
+    if (onGoToPayment) {
+      onGoToPayment(actId);
+      return;
+    }
+    // После закрытия диалога — иначе soft-nav может не сработать поверх Radix Dialog
+    window.setTimeout(() => {
+      router.push(`/finance?tab=acts&payAct=${actId}`);
+    }, 50);
+  };
+
   const handleGoToPayment = () => {
     const existingId = savedActIdRef.current;
     const act = existingId
       ? (workActs.find((a) => a.id === existingId) ?? persistAct())
       : persistAct();
     const actId = act?.id ?? savedActIdRef.current;
-    if (!actId) return;
-    onOpenChange(false);
-    router.push(`/finance?tab=acts&payAct=${actId}`);
+    if (!actId) {
+      toast.error("Сначала сохраните акт с услугами");
+      return;
+    }
+    navigateToPayment(actId);
   };
 
   const title =
@@ -768,12 +864,12 @@ export function WorkActModal({
 
           <div className="space-y-3 rounded-lg border border-[var(--border)] p-3">
             <Label>Услуги</Label>
-            {!effectiveReadOnly && services.length > 0 && (
+            {!effectiveReadOnly && clinicServices.length > 0 && (
               <div className="rounded-lg bg-[var(--card)] border border-[var(--border)] p-3">
                 <ClinicServiceSearch
-                  services={services}
+                  services={clinicServices}
                   onSelect={(service) => {
-                    const s = services.find((x) => x.id === service.id);
+                    const s = clinicServices.find((x) => x.id === service.id);
                     if (!s) return;
                     const normalized = normalizeServiceFields(s);
                     setItems((prev) => [
@@ -804,157 +900,251 @@ export function WorkActModal({
                 <span className="col-span-2" />
               </div>
             )}
-            {visibleItems.map((item) => (
-              <div
-                key={item.id}
-                className="grid grid-cols-12 gap-2 items-center border-t border-[var(--border)] pt-3"
-              >
-                <div className="col-span-3 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
-                  {item.serviceName}
-                  {!item.serviceId && !effectiveReadOnly && (
-                    <span className="mt-0.5 block text-xs font-normal text-amber-700">
-                      Не из прайса — замените услугу при необходимости
-                    </span>
-                  )}
-                </div>
-                <div className="col-span-2">
-                  {effectiveReadOnly ? (
-                    <span className="block text-center text-sm">
-                      {item.toothNumber ?? "—"}
-                    </span>
-                  ) : (
-                    <Input
-                      type="number"
-                      placeholder="№"
-                      className={compactNumberInputClass}
-                      value={item.toothNumber ?? ""}
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((it) =>
-                            it.id === item.id
-                              ? {
-                                  ...it,
-                                  toothNumber: e.target.value
-                                    ? Number(e.target.value)
-                                    : undefined,
-                                }
-                              : it
+            {visibleItems.map((item) => {
+              const technicalOptions = item.serviceId
+                ? technicalByClinicServiceId.get(item.serviceId) ?? []
+                : [];
+              const technicalAmount = calcWorkActItemTechnicalAmount(item);
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-12 gap-2 items-center border-t border-[var(--border)] pt-3"
+                >
+                  <div className="col-span-3 min-w-0 self-center text-sm font-medium text-[var(--foreground)]">
+                    {item.serviceName}
+                    {!item.serviceId && !effectiveReadOnly && (
+                      <span className="mt-0.5 block text-xs font-normal text-amber-700">
+                        Не из прайса — замените услугу при необходимости
+                      </span>
+                    )}
+                    {technicalAmount > 0 && (
+                      <span className="mt-0.5 block text-xs font-normal text-red-700">
+                        Техничка: −{formatCurrency(technicalAmount)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    {effectiveReadOnly ? (
+                      <span className="block text-center text-sm">
+                        {item.toothNumber ?? "—"}
+                      </span>
+                    ) : (
+                      <Input
+                        type="number"
+                        placeholder="№"
+                        className={compactNumberInputClass}
+                        value={item.toothNumber ?? ""}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((it) =>
+                              it.id === item.id
+                                ? {
+                                    ...it,
+                                    toothNumber: e.target.value
+                                      ? Number(e.target.value)
+                                      : undefined,
+                                  }
+                                : it
+                            )
                           )
-                        )
-                      }
-                    />
-                  )}
-                </div>
-                <div className="col-span-2">
-                  {effectiveReadOnly ? (
-                    <span className="block text-center text-sm">{item.quantity}</span>
-                  ) : (
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      className={compactNumberInputClass}
-                      value={item.quantity > 0 ? String(item.quantity) : ""}
-                      placeholder="1"
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        const qty =
-                          raw === "" ? 0 : Math.max(0, Number(raw.replace(",", ".")) || 0);
-                        setItems((prev) =>
-                          prev.map((it) =>
-                            it.id === item.id
-                              ? {
-                                  ...it,
-                                  quantity: qty,
-                                  total: qty * (it.price || 0),
-                                }
-                              : it
+                        }
+                      />
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    {effectiveReadOnly ? (
+                      <span className="block text-center text-sm">{item.quantity}</span>
+                    ) : (
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        className={compactNumberInputClass}
+                        value={item.quantity > 0 ? String(item.quantity) : ""}
+                        placeholder="1"
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const qty =
+                            raw === "" ? 0 : Math.max(0, Number(raw.replace(",", ".")) || 0);
+                          setItems((prev) =>
+                            prev.map((it) =>
+                              it.id === item.id
+                                ? {
+                                    ...it,
+                                    quantity: qty,
+                                    total: qty * (it.price || 0),
+                                  }
+                                : it
+                            )
+                          );
+                        }}
+                        onBlur={() => {
+                          setItems((prev) =>
+                            prev.map((it) => {
+                              if (it.id !== item.id) return it;
+                              const quantity = Math.max(1, it.quantity || 1);
+                              return {
+                                ...it,
+                                quantity,
+                                total: quantity * (it.price || 0),
+                              };
+                            })
+                          );
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    {effectiveReadOnly ? (
+                      <span className="text-sm">{formatCurrency(item.price)}</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        className={compactNumberInputClass}
+                        value={item.price || ""}
+                        onChange={(e) => {
+                          const nextPrice = Number(e.target.value) || 0;
+                          if ((item.technicalUnitPrice ?? 0) > nextPrice) {
+                            setTechnicalSelectionByItemId((prev) => {
+                              if (!prev[item.id]) return prev;
+                              const next = { ...prev };
+                              delete next[item.id];
+                              return next;
+                            });
+                          }
+                          setItems((prev) =>
+                            prev.map((it) => {
+                              if (it.id !== item.id) return it;
+                              return {
+                                ...it,
+                                price: nextPrice,
+                                total: (it.quantity || 1) * nextPrice,
+                                technicalUnitPrice:
+                                  (it.technicalUnitPrice ?? 0) > nextPrice
+                                    ? undefined
+                                    : it.technicalUnitPrice,
+                              };
+                            })
+                          );
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="col-span-1">
+                    {effectiveReadOnly ? (
+                      <span className="block text-center text-sm">{item.discountPercent ?? 0}%</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        className={compactNumberInputClass}
+                        value={item.discountPercent ?? ""}
+                        placeholder="0"
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((it) =>
+                              it.id === item.id
+                                ? {
+                                    ...it,
+                                    discountPercent: Math.min(
+                                      100,
+                                      Math.max(0, Number(e.target.value) || 0)
+                                    ),
+                                  }
+                                : it
+                            )
                           )
-                        );
+                        }
+                      />
+                    )}
+                  </div>
+                  {!effectiveReadOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="col-span-2 justify-self-end"
+                      onClick={() => {
+                        setItems((prev) => prev.filter((it) => it.id !== item.id));
+                        setTechnicalSelectionByItemId((prev) => {
+                          if (!prev[item.id]) return prev;
+                          const next = { ...prev };
+                          delete next[item.id];
+                          return next;
+                        });
                       }}
-                      onBlur={() => {
-                        setItems((prev) =>
-                          prev.map((it) => {
-                            if (it.id !== item.id) return it;
-                            const quantity = Math.max(1, it.quantity || 1);
-                            return {
-                              ...it,
-                              quantity,
-                              total: quantity * (it.price || 0),
-                            };
-                          })
-                        );
-                      }}
-                    />
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
                   )}
-                </div>
-                <div className="col-span-2">
-                  {effectiveReadOnly ? (
-                    <span className="text-sm">{formatCurrency(item.price)}</span>
-                  ) : (
-                    <Input
-                      type="number"
-                      min={0}
-                      className={compactNumberInputClass}
-                      value={item.price || ""}
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((it) =>
-                            it.id === item.id
-                              ? {
-                                  ...it,
-                                  price: Number(e.target.value) || 0,
-                                  total: (it.quantity || 1) * (Number(e.target.value) || 0),
+                  {!effectiveReadOnly && (
+                    <div className="col-span-12 rounded-md border border-[var(--border)] bg-[var(--muted)]/5 p-2">
+                      <Label className="text-xs">Техническая часть</Label>
+                      {technicalOptions.length === 0 ? (
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          Для этой услуги не задан технический прайс
+                        </p>
+                      ) : (
+                        <>
+                          <select
+                            className={`${selectClass} mt-1 h-9`}
+                            value={technicalSelectionByItemId[item.id] ?? ""}
+                            onChange={(e) => {
+                              const selected = technicalOptions.find(
+                                (opt) => opt.id === e.target.value
+                              );
+                              if (selected && selected.price > (item.price ?? 0)) {
+                                toast.error("Техничка не может быть больше цены услуги в акте");
+                                return;
+                              }
+                              setTechnicalSelectionByItemId((prev) => {
+                                const next = { ...prev };
+                                if (!selected) {
+                                  delete next[item.id];
+                                  return next;
                                 }
-                              : it
-                          )
-                        )
-                      }
-                    />
+                                next[item.id] = selected.id;
+                                return next;
+                              });
+                              setItems((prev) =>
+                                prev.map((it) => {
+                                  if (it.id !== item.id) return it;
+                                  if (!selected) {
+                                    return {
+                                      ...it,
+                                      technicalUnitPrice: undefined,
+                                    };
+                                  }
+                                  return {
+                                    ...it,
+                                    technicalUnitPrice: selected.price,
+                                  };
+                                })
+                              );
+                            }}
+                          >
+                            <option value="">Без технички</option>
+                            {technicalOptions.map((opt) => (
+                              <option key={opt.id} value={opt.id}>
+                                {opt.technicianName || "Техник"} · {opt.name} ·{" "}
+                                {opt.price.toLocaleString("ru-RU")} ₽
+                              </option>
+                            ))}
+                          </select>
+                          {technicalAmount > 0 && (
+                            <p className="mt-1 text-xs text-red-700">
+                              Вычет по строке: −{formatCurrency(technicalAmount)}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-                <div className="col-span-1">
-                  {effectiveReadOnly ? (
-                    <span className="block text-center text-sm">{item.discountPercent ?? 0}%</span>
-                  ) : (
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      className={compactNumberInputClass}
-                      value={item.discountPercent ?? ""}
-                      placeholder="0"
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((it) =>
-                            it.id === item.id
-                              ? {
-                                  ...it,
-                                  discountPercent: Math.min(
-                                    100,
-                                    Math.max(0, Number(e.target.value) || 0)
-                                  ),
-                                }
-                              : it
-                          )
-                        )
-                      }
-                    />
-                  )}
-                </div>
-                {!effectiveReadOnly && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="col-span-2 justify-self-end"
-                    onClick={() => setItems((prev) => prev.filter((it) => it.id !== item.id))}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                )}
-              </div>
-            ))}
+              );
+            })}
             {!effectiveReadOnly && visibleItems.length === 0 && (
               <p className="text-sm text-slate-500">Добавьте услуги из прайса клиники</p>
             )}
@@ -965,6 +1155,18 @@ export function WorkActModal({
               <span className="text-[var(--muted)]">Сумма услуг</span>
               <span>{formatCurrency(afterRowDiscounts)}</span>
             </div>
+            {technicalTotalCapped > 0 && (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--muted)]">Техничка</span>
+                  <span className="text-red-600">−{formatCurrency(technicalTotalCapped)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--muted)]">База для ЗП врача и клиники</span>
+                  <span>{formatCurrency(Math.max(0, totalAmount - technicalTotalCapped))}</span>
+                </div>
+              </>
+            )}
             {discountValue > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-[var(--muted)]">
@@ -981,6 +1183,11 @@ export function WorkActModal({
             {paymentPreview && (
               <div className="rounded-md border border-[var(--border)] bg-[var(--muted)]/5 px-3 py-2 text-xs text-[var(--muted)]">
                 <p>
+                  Техничка:{" "}
+                  <strong className="text-[var(--foreground)]">
+                    −{formatCurrency(paymentPreview.technicalAmount)}
+                  </strong>
+                  {" · "}
                   Врачу: <strong className="text-[var(--foreground)]">{formatCurrency(paymentPreview.doctorAmount)}</strong>
                   {" · "}
                   Клинике: <strong className="text-[var(--foreground)]">{formatCurrency(paymentPreview.clinicAmount)}</strong>
@@ -1074,7 +1281,7 @@ export function WorkActModal({
                   Печать
                 </Button>
                 {!existingActFullyPaid && (
-                  <Button onClick={() => router.push(`/finance?tab=acts&payAct=${existingAct.id}`)}>
+                  <Button onClick={() => navigateToPayment(existingAct.id)}>
                     Перейти к оплате
                   </Button>
                 )}

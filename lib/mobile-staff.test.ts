@@ -13,9 +13,12 @@ const patient: Patient = {
   phone: "+79990001122",
   birthDate: "1990-01-01",
   gender: "male",
-  source: "walk_in",
+  source: "Google",
   status: "active",
   createdAt: "2024-01-01T00:00:00.000Z",
+  balance: 0,
+  totalSpent: 0,
+  disability: "none",
 };
 
 const doctor: Doctor = {

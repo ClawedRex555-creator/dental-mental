@@ -69,6 +69,15 @@ describe("patient-visits", () => {
     assert.equal(countClinicVisits(repaired.appointments, "missing"), 1);
   });
 
+  it("repairMissingPatientsInSnapshot does not revive tombstoned patient", () => {
+    const state = createFreshPersistedState();
+    state.deletedPatientIds = ["missing"];
+    state.deletedAppointmentIds = ["apt-missing"];
+    state.appointments = [{ ...apt("missing", "arrived", "2026-06-10"), id: "apt-missing" }];
+    const repaired = repairMissingPatientsInSnapshot(state);
+    assert.equal(repaired.patients.some((p) => p.id === "missing"), false);
+  });
+
   it("syncOtherClinicVisitsInList adds visit with badge data", () => {
     const p = {
       ...patient("p1"),

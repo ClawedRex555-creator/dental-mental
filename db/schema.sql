@@ -77,3 +77,12 @@ CREATE INDEX IF NOT EXISTS idx_platform_connection_requests_created
   ON platform_connection_requests (created_at DESC);
 
 -- См. db/migrations/002-platform-compliance-egisz.sql (platform_admins, audit_logs, egisz, modules)
+
+-- Distributed rate-limit (login / landing); see migrations/014
+CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+  bucket_key TEXT PRIMARY KEY,
+  attempt_count INT NOT NULL DEFAULT 0,
+  reset_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_buckets_reset
+  ON rate_limit_buckets (reset_at);

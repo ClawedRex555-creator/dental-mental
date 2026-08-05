@@ -20,6 +20,7 @@ export interface MobilePatientAccount {
   fullName: string;
   phone: string;
   fcmToken?: string;
+  sessionVersion?: number;
 }
 
 export async function findMobilePatientByLogin(
@@ -38,8 +39,10 @@ export async function findMobilePatientByLogin(
         full_name: string;
         phone: string;
         fcm_token: string | null;
+        session_version: number | string | null;
       }>(
-        `SELECT id, clinic_id, login, password_hash, patient_id, full_name, phone, fcm_token
+        `SELECT id, clinic_id, login, password_hash, patient_id, full_name, phone, fcm_token,
+                COALESCE(session_version, 0) AS session_version
          FROM mobile_patient_accounts
          WHERE clinic_id = $1 AND login = $2
          LIMIT 1`,
@@ -56,7 +59,27 @@ export async function findMobilePatientByLogin(
         fullName: row.full_name,
         phone: row.phone,
         fcmToken: row.fcm_token ?? undefined,
+        sessionVersion: Number(row.session_version ?? 0),
       };
+    })) ?? null
+  );
+}
+
+export async function getMobilePatientSessionVersion(
+  clinicId: string,
+  userId: string
+): Promise<number | null> {
+  return (
+    (await withDb(async (client) => {
+      const res = await client.query<{ session_version: number | string | null }>(
+        `SELECT COALESCE(session_version, 0) AS session_version
+         FROM mobile_patient_accounts
+         WHERE clinic_id = $1 AND id = $2
+         LIMIT 1`,
+        [clinicId, userId]
+      );
+      const row = res.rows[0];
+      return row ? Number(row.session_version ?? 0) : null;
     })) ?? null
   );
 }

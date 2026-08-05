@@ -7,11 +7,12 @@ import { parseClinicSlugFromHost } from "@/lib/clinic-host";
 import { isDatabaseEnabled } from "@/lib/db";
 import { loginRedirectForRole } from "@/lib/login-redirect";
 import {
-  checkLoginRateLimit,
-  clearLoginAttempts,
+  checkLoginRateLimitAsync,
+  clearLoginAttemptsAsync,
+  clientIpFromRequest,
   loginRateLimitKey,
   loginRateLimitResponse,
-  recordLoginFailure,
+  recordLoginFailureAsync,
 } from "@/lib/login-rate-limit";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { buildSessionCookieOptions } from "@/lib/session-cookie.server";
@@ -64,19 +65,23 @@ export async function POST(request: Request) {
     clinicSlugForSession = clinic.slug;
   }
 
-  const rateKey = loginRateLimitKey(`clinic:${clinicSlug ?? "local"}`, login);
-  const rate = checkLoginRateLimit(rateKey);
+  const rateKey = loginRateLimitKey(
+    `clinic:${clinicSlug ?? "local"}`,
+    login,
+    clientIpFromRequest(request)
+  );
+  const rate = await checkLoginRateLimitAsync(rateKey);
   if (!rate.allowed) {
     return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
 
   const account = await findAccountByLogin(login, clinicId);
   if (!account || !verifyAccountPassword(account, password)) {
-    recordLoginFailure(rateKey);
+    await recordLoginFailureAsync(rateKey);
     return NextResponse.json({ error: "Неверный email или пароль" }, { status: 401 });
   }
 
-  clearLoginAttempts(rateKey);
+  await clearLoginAttemptsAsync(rateKey);
 
   // Audit: фиксируем успешный вход на стороне сервера.
   // Это надёжнее, чем клиентский вызов, и срабатывает даже если UI не успел отрендериться.

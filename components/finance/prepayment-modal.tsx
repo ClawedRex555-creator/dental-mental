@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
+import { getClinicBillableServices } from "@/lib/service-categories";
 import { formatCurrency, generateId } from "@/lib/utils";
 import { calcDiscountTotals } from "@/lib/discount-utils";
 import { normalizePlanItemQuantity } from "@/lib/treatment-plan-item-utils";
@@ -54,7 +54,6 @@ export function PrepaymentModal({
   defaultPatientId,
   defaultTreatmentPlan,
 }: PrepaymentModalProps) {
-  const router = useRouter();
   const {
     patients,
     services,
@@ -72,6 +71,10 @@ export function PrepaymentModal({
   const [discountType, setDiscountType] = useState<DiscountType>("percent");
   const [discount, setDiscount] = useState(0);
   const initialized = useRef(false);
+  const clinicServices = useMemo(
+    () => getClinicBillableServices(services),
+    [services]
+  );
 
   const subtotalAmount = useMemo(() => {
     if (mode === "lump_sum") return Number(lumpSumTotal) || 0;
@@ -120,7 +123,7 @@ export function PrepaymentModal({
   }, [open, defaultPatientId, defaultTreatmentPlan]);
 
   const addService = (serviceId: string) => {
-    const svc = services.find((s) => s.id === serviceId);
+    const svc = clinicServices.find((s) => s.id === serviceId);
     if (!svc) return;
     setItems((prev) => [
       ...prev,
@@ -268,7 +271,9 @@ export function PrepaymentModal({
 
     toast.success("Акт предоплаты создан. Перейдите к оплате внесённой суммы.");
     onOpenChange(false);
-    router.push(`/finance?tab=acts&payAct=${actId}`);
+    window.setTimeout(() => {
+      window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+    }, 50);
   };
 
   return (
@@ -319,7 +324,7 @@ export function PrepaymentModal({
           {mode === "services" ? (
             <div className="space-y-2">
               <Label>Услуги клиники</Label>
-              <ClinicServiceSearch services={services} onSelect={(s) => addService(s.id)} />
+              <ClinicServiceSearch services={clinicServices} onSelect={(s) => addService(s.id)} />
               {items.length > 0 && (
                 <div className="space-y-2">
                   <div className="grid grid-cols-12 gap-2 px-1 text-xs font-medium text-[var(--muted)]">

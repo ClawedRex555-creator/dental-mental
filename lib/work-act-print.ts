@@ -1,5 +1,5 @@
-import { format } from "date-fns";
 import type { ClinicSettings, Patient, WorkAct } from "./types";
+import { isTechnicalServiceCategory } from "./service-categories";
 import {
   calcWorkActLine,
   formatActAmount,
@@ -20,7 +20,13 @@ export function printWorkAct(
   patient: Patient,
   clinic: ClinicSettings
 ) {
-  const totals = resolveWorkActTotals(act);
+  // Пациентская печатная форма не должна показывать внутреннюю «техничку».
+  const printableItems = act.items.filter(
+    (item) => !isTechnicalServiceCategory(item.serviceCategory)
+  );
+  const printableAct: WorkAct =
+    printableItems.length === act.items.length ? act : { ...act, items: printableItems };
+  const totals = resolveWorkActTotals(printableAct);
   const actNo = getActDisplayNumber(act.actNumber, act.actDate);
   const docDiscountLabel = formatDocumentDiscount(
     act.discountType ?? "percent",
@@ -35,10 +41,10 @@ export function printWorkAct(
   const beneficiaryName = patient.isChild
     ? getPatientActName(patient.firstName, patient.lastName, patient.middleName)
     : undefined;
-  const serviceCount = act.items.length;
-  const showToothColumn = act.items.some((item) => item.toothNumber != null);
+  const serviceCount = printableAct.items.length;
+  const showToothColumn = printableAct.items.some((item) => item.toothNumber != null);
 
-  const rows = act.items
+  const rows = printableAct.items
     .map((item, i) => {
       const line = calcWorkActLine(item);
       const discountLabel =

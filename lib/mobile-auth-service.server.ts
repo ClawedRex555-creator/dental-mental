@@ -1,7 +1,7 @@
 import "server-only";
 
 import { findAccountByLogin, verifyAccountPassword } from "@/lib/auth-accounts-server";
-import { createMobileAccessToken } from "@/lib/mobile-auth";
+import { createMobileAccessToken, MOBILE_ACCESS_TOKEN_HOURS } from "@/lib/mobile-auth";
 import type { MobileTokenPayload } from "@/lib/mobile-auth-token";
 import {
   findMobilePatientByLogin,
@@ -28,7 +28,7 @@ export interface MobileAuthResult {
   user: MobileAuthUser;
 }
 
-const MOBILE_TOKEN_DAYS = 30;
+const MOBILE_TOKEN_HOURS = MOBILE_ACCESS_TOKEN_HOURS;
 
 function staffToUser(
   account: AuthAccountRecord,
@@ -63,61 +63,31 @@ function patientToUser(
   };
 }
 
-export async function loginMobileUser(input: {
-  clinicId: string;
-  clinicSlug: string;
-  login: string;
-  password: string;
-}): Promise<MobileAuthResult | null> {
-  const login = input.login.trim().toLowerCase();
-  const password = input.password;
-
-  const staff = await findAccountByLogin(login, input.clinicId);
-  if (staff && verifyAccountPassword(staff, password)) {
-    const user = staffToUser(staff, input.clinicId, input.clinicSlug);
-    const tokenPayload: Omit<MobileTokenPayload, "exp"> = {
-      kind: "staff",
-      userId: user.id,
-      role: staff.role,
-      name: user.name,
-      email: user.email,
-      clinicId: input.clinicId,
-      clinicSlug: input.clinicSlug,
-      staffId: staff.staffId,
-    };
-    const accessToken = createMobileAccessToken(tokenPayload, MOBILE_TOKEN_DAYS);
-    return {
-      accessToken,
-      expiresAt: Date.now() + MOBILE_TOKEN_DAYS * 24 * 60 * 60 * 1000,
-      user,
-    };
-  }
-
-  const patient = await findMobilePatientByLogin(input.clinicId, login);
-  if (patient && verifyMobilePatientPassword(patient, password)) {
-    const user = patientToUser(patient, input.clinicSlug);
-    const tokenPayload: Omit<MobileTokenPayload, "exp"> = {
-      kind: "patient",
-      userId: user.id,
-      role: "patient",
-      name: user.name,
-      email: user.email,
-      clinicId: input.clinicId,
-      clinicSlug: input.clinicSlug,
-      patientId: patient.patientId,
-    };
-    const accessToken = createMobileAccessToken(tokenPayload, MOBILE_TOKEN_DAYS);
-    return {
-      accessToken,
-      expiresAt: Date.now() + MOBILE_TOKEN_DAYS * 24 * 60 * 60 * 1000,
-      user,
-    };
-  }
-
-  return null;
+function staffAuthResult(
+  account: AuthAccountRecord,
+  clinicId: string,
+  clinicSlug: string
+): MobileAuthResult {
+  const user = staffToUser(account, clinicId, clinicSlug);
+  const tokenPayload: Omit<MobileTokenPayload, "exp"> = {
+    kind: "staff",
+    userId: user.id,
+    role: account.role,
+    name: user.name,
+    email: user.email,
+    clinicId,
+    clinicSlug,
+    staffId: account.staffId,
+    sessionVersion: account.sessionVersion ?? 0,
+  };
+  return {
+    accessToken: createMobileAccessToken(tokenPayload, MOBILE_TOKEN_HOURS),
+    expiresAt: Date.now() + MOBILE_TOKEN_HOURS * 60 * 60 * 1000,
+    user,
+  };
 }
 
-export function mobileAuthFromPatient(
+function patientAuthResult(
   account: MobilePatientAccount,
   clinicSlug: string
 ): MobileAuthResult {
@@ -131,11 +101,52 @@ export function mobileAuthFromPatient(
     clinicId: account.clinicId,
     clinicSlug,
     patientId: account.patientId,
+    sessionVersion: account.sessionVersion ?? 0,
   };
-  const accessToken = createMobileAccessToken(tokenPayload, MOBILE_TOKEN_DAYS);
   return {
-    accessToken,
-    expiresAt: Date.now() + MOBILE_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+    accessToken: createMobileAccessToken(tokenPayload, MOBILE_TOKEN_HOURS),
+    expiresAt: Date.now() + MOBILE_TOKEN_HOURS * 60 * 60 * 1000,
     user,
   };
+}
+
+export async function loginMobileUser(input: {
+  clinicId: string;
+  clinicSlug: string;
+  login: string;
+  password: string;
+  /** patient — сначала пациент (вход из приложения пациента); staff — сначала сотрудник */
+  preferredKind?: "patient" | "staff";
+}): Promise<MobileAuthResult | null> {
+  const login = input.login.trim().toLowerCase();
+  const password = input.password;
+  const preferred = input.preferredKind ?? "staff";
+
+  const tryStaff = async (): Promise<MobileAuthResult | null> => {
+    const staff = await findAccountByLogin(login, input.clinicId);
+    if (staff && verifyAccountPassword(staff, password)) {
+      return staffAuthResult(staff, input.clinicId, input.clinicSlug);
+    }
+    return null;
+  };
+
+  const tryPatient = async (): Promise<MobileAuthResult | null> => {
+    const patient = await findMobilePatientByLogin(input.clinicId, login);
+    if (patient && verifyMobilePatientPassword(patient, password)) {
+      return patientAuthResult(patient, input.clinicSlug);
+    }
+    return null;
+  };
+
+  if (preferred === "patient") {
+    return (await tryPatient()) ?? (await tryStaff());
+  }
+  return (await tryStaff()) ?? (await tryPatient());
+}
+
+export function mobileAuthFromPatient(
+  account: MobilePatientAccount,
+  clinicSlug: string
+): MobileAuthResult {
+  return patientAuthResult(account, clinicSlug);
 }

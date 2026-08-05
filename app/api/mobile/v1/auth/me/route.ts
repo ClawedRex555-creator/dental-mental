@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireMobileSession } from "@/lib/mobile-auth-request.server";
+import { requireMobileSessionAsync } from "@/lib/mobile-auth-request.server";
 import { resolveMobileClinicFromRequest } from "@/lib/mobile-clinic-context.server";
 
 export async function GET(request: Request) {
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   }
   const clinic = clinicOrError;
 
-  const session = requireMobileSession(request);
+  const session = await requireMobileSessionAsync(request);
   if (!session) {
     return NextResponse.json({ error: "Требуется авторизация" }, { status: 401 });
   }

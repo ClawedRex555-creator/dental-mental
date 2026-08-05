@@ -3,6 +3,7 @@ import { serviceNotes } from "./utils";
 
 export const SERVICE_CATEGORY_IMPLANTATION = "Имплантация";
 export const SERVICE_CATEGORY_PROSTHETICS = "Протезирование";
+export const SERVICE_CATEGORY_TECHNICAL = "Техническая";
 /** @deprecated миграция в Имплантация / Протезирование */
 export const LEGACY_IMPLANT_PROSTHETICS_CATEGORY = "Имплантация и протезирование";
 
@@ -15,6 +16,7 @@ export const SERVICE_CATEGORIES = [
   "Детская стоматология",
   "Ортодонтия",
   "Диагностика и вспомогательные услуги",
+  SERVICE_CATEGORY_TECHNICAL,
 ] as const;
 
 export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
@@ -51,6 +53,7 @@ const CATEGORY_ALIASES: Record<string, ServiceCategory> = {
   "кт и диагностика": "Диагностика и вспомогательные услуги",
   "детская стоматология": "Детская стоматология",
   ортодонтия: "Ортодонтия",
+  техническая: SERVICE_CATEGORY_TECHNICAL,
 };
 
 function coerceServicePrice(price: unknown): number {
@@ -201,6 +204,23 @@ export function isImplantationServiceCategory(category: string | undefined): boo
   if (normalized === SERVICE_CATEGORY_IMPLANTATION) return true;
   if (normalized === LEGACY_IMPLANT_PROSTHETICS_CATEGORY) return true;
   return false;
+}
+
+export function isTechnicalServiceCategory(category: string | undefined): boolean {
+  if (!category?.trim()) return false;
+  return normalizeServiceCategory(category) === SERVICE_CATEGORY_TECHNICAL;
+}
+
+export function isTechnicalService(service: Pick<Service, "category">): boolean {
+  return isTechnicalServiceCategory(service.category);
+}
+
+export function getClinicBillableServices(services: Service[]): Service[] {
+  return services.filter((s) => !isTechnicalService(s));
+}
+
+export function getTechnicalServices(services: Service[]): Service[] {
+  return services.filter(isTechnicalService);
 }
 
 /** Категория услуги для расчёта комиссии (с учётом legacy и serviceId) */

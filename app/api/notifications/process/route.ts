@@ -7,6 +7,7 @@ import {
 } from "@/lib/notifications/worker.server";
 
 function authorizeCron(request: Request): boolean {
+  // Отдельный секрет обязателен — не расширяем blast radius AUTH_SECRET.
   const secret = process.env.NOTIFICATIONS_CRON_SECRET?.trim();
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";

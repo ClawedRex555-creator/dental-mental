@@ -61,6 +61,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const currentRole = currentUser.role;
   const [sidebarHover, setSidebarHover] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [canHover, setCanHover] = useState(false);
 
   let navItems = navItemsForRole(currentRole, enabledModules);
 
@@ -95,11 +96,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     !navItems.some((item) => item.href === "/settings")
       ? [...navItems, settingsNav]
       : navItems;
-  const sidebarExpanded = sidebarHover || (isMobile && sidebarOpen);
+  const sidebarExpanded =
+    (!canHover && !isMobile) || sidebarHover || (isMobile && sidebarOpen);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
     const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const update = () => setCanHover(mq.matches);
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
@@ -120,8 +130,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             ? "w-64 translate-x-0"
             : "-translate-x-full w-64 lg:w-[4.5rem] lg:translate-x-0"
         )}
-        onMouseEnter={() => setSidebarHover(true)}
-        onMouseLeave={() => setSidebarHover(false)}
+        onMouseEnter={() => {
+          if (canHover) setSidebarHover(true);
+        }}
+        onMouseLeave={() => {
+          if (canHover) setSidebarHover(false);
+        }}
       >
         <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-4">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-teal-600">
@@ -149,10 +163,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             const Icon = ICON_MAP[item.icon as keyof typeof ICON_MAP];
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link
+              <a
                 key={item.href}
                 href={item.href}
-                prefetch
                 title={!sidebarExpanded ? item.label : undefined}
                 onClick={() => {
                   if (isMobile) setSidebarOpen(false);
@@ -171,7 +184,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 >
                   {item.label}
                 </span>
-              </Link>
+              </a>
             );
           })}
         </nav>

@@ -7,6 +7,7 @@ import {
   saveClinicDataDb,
 } from "@/lib/clinic-data-db.server";
 import { createFreshPersistedState } from "@/lib/clinic-persisted-state";
+import { assertMobileSlotAvailable } from "@/lib/mobile-availability.server";
 import type { MobilePatientAccount } from "@/lib/mobile-patient-db.server";
 
 export interface MobileBookingInput {
@@ -36,14 +37,18 @@ export async function createMobileOnlineBooking(
     throw new Error("Врач не найден");
   }
 
+  const date = input.date.trim();
+  const time = input.time.trim();
+  await assertMobileSlotAvailable(clinicId, date, time, input.doctorId);
+
   const booking: OnlineBookingRequest = {
     id: generateId("ob"),
     patientName: patient.fullName,
     phone: patient.phone,
     serviceId: input.serviceId ?? base.services[0]?.id ?? "unknown",
     doctorId: input.doctorId,
-    date: input.date.trim(),
-    time: input.time.trim(),
+    date,
+    time,
     comment: input.comment?.trim() || `Заявка из Tstom (patientId: ${patient.patientId})`,
     status: "new",
     createdAt: new Date().toISOString(),

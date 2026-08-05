@@ -417,15 +417,18 @@ export default function FinancePage() {
         const total = acts.reduce((s, a) => s + a.totalAmount, 0);
         let doctorAmount = 0;
         let clinicAmount = 0;
+        let technicalAmount = 0;
         for (const a of acts) {
           const split = calcDoctorPaymentForAct(a, doctor, services);
           doctorAmount += split.doctorAmount;
           clinicAmount += split.clinicAmount;
+          technicalAmount += split.technicalAmount;
         }
         return {
           doctor,
           acts: acts.length,
           total,
+          technicalAmount,
           doctorAmount,
           assistantAmount: 0,
           clinicAmount,
@@ -747,13 +750,16 @@ export default function FinancePage() {
               </div>
 
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">Врачи (% от актов)</h3>
+                <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">
+                  Врачи (% от актов после технички)
+                </h3>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-slate-500">
                       <th className="px-4 py-3">Врач</th>
                       <th className="px-4 py-3 text-right">Актов</th>
                       <th className="px-4 py-3 text-right">Пациент заплатил</th>
+                      <th className="px-4 py-3 text-right">Техничка</th>
                       <th className="px-4 py-3 text-right">Врачу</th>
                       <th className="px-4 py-3 text-right">Клинике</th>
                     </tr>
@@ -761,7 +767,7 @@ export default function FinancePage() {
                   <tbody>
                     {salaryRows.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                        <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
                           Нет оплаченных актов за период
                         </td>
                       </tr>
@@ -774,6 +780,9 @@ export default function FinancePage() {
                             </td>
                             <td className="px-4 py-3 text-right">{row.acts}</td>
                             <td className="px-4 py-3 text-right">{formatCurrency(row.total)}</td>
+                            <td className="px-4 py-3 text-right text-red-600">
+                              −{formatCurrency(row.technicalAmount)}
+                            </td>
                             <td className="px-4 py-3 text-right salary-accent">
                               {formatCurrency(row.doctorAmount)}
                             </td>
@@ -790,6 +799,12 @@ export default function FinancePage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               {formatCurrency(salaryRows.reduce((s, r) => s + r.total, 0))}
+                            </td>
+                            <td className="px-4 py-3 text-right text-red-600">
+                              −
+                              {formatCurrency(
+                                salaryRows.reduce((s, r) => s + r.technicalAmount, 0)
+                              )}
                             </td>
                             <td className="px-4 py-3 text-right salary-accent">
                               {formatCurrency(salaryPeriodSalaries.doctorSalary)}
@@ -994,13 +1009,14 @@ export default function FinancePage() {
                       <th className="px-4 py-3">{UI.patient}</th>
                       <th className="px-4 py-3">Акт</th>
                       <th className="px-4 py-3 text-right">Сумма</th>
+                      <th className="px-4 py-3 text-right">Техничка</th>
                       <th className="px-4 py-3 text-right">Врачу</th>
                     </tr>
                   </thead>
                   <tbody>
                     {doctorSalaryDetails.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                        <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                           Нет полностью оплаченных актов за выбранный период
                         </td>
                       </tr>
@@ -1021,6 +1037,9 @@ export default function FinancePage() {
                           <td className="px-4 py-3">{row!.act.actNumber}</td>
                           <td className="px-4 py-3 text-right">
                             {formatCurrency(row!.total)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-red-600">
+                            −{formatCurrency(row!.technicalAmount)}
                           </td>
                           <td className="px-4 py-3 text-right salary-accent">
                             {formatCurrency(row!.doctorAmount)}

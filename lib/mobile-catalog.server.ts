@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Doctor, Service } from "@/lib/types";
 import { loadClinicSnapshot } from "@/lib/mobile-clinic-context.server";
+import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 
 export interface MobileCatalogDoctor {
   id: string;
@@ -39,7 +40,7 @@ function mapDoctor(d: Doctor): MobileCatalogDoctor {
     id: d.id,
     name: d.name,
     specialization: d.specialization,
-    photoUrl: d.avatar,
+    photoUrl: sanitizeHttpImageUrl(d.avatar) || undefined,
   };
 }
 
@@ -73,7 +74,7 @@ export async function getMobileCatalog(
           address: settings?.address || undefined,
           description: settings?.workHours || undefined,
           workHours: settings?.workHours || undefined,
-          logoUrl: settings?.logo || undefined,
+          logoUrl: sanitizeHttpImageUrl(settings?.logo) || undefined,
         }
       : undefined;
 

@@ -301,6 +301,14 @@ export function renderArrivalDocumentSectionHtml(
     </section>`;
 }
 
+/** Одна форма (договор/согласие) с шапкой клиники — для превью/печати отдельного документа */
+export function renderMedicalDocumentFormHtml(
+  doc: ArrivalPrintDocument,
+  ctx: ArrivalDocumentContext
+): string {
+  return `${renderClinicLetterheadHtml(ctx)}${renderPartiesSummaryHtml(ctx)}${renderArrivalDocumentSectionHtml(doc, ctx)}`;
+}
+
 export function isPdfArrivalDocument(doc: ArrivalPrintDocument): boolean {
   return isPdfLegalSource(doc);
 }

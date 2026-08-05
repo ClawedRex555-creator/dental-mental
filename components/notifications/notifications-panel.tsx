@@ -24,8 +24,15 @@ import {
   NOTIFICATION_TEMPLATE_VARIABLES,
 } from "@/lib/notifications/types";
 import { renderNotificationTemplate, validateTemplateVariables } from "@/lib/notifications/template-service";
+import {
+  detectBrowserPushCapability,
+  subscribeDeviceToWebPush,
+  unsubscribeDeviceFromWebPush,
+  type BrowserPushCapability,
+} from "@/lib/notifications/web-push-client";
 
 type TabId = "settings" | "templates" | "log" | "test";
+type BrowserNotificationPermission = NotificationPermission | "unsupported";
 
 interface ProviderStatus {
   configured: boolean;
@@ -48,12 +55,27 @@ export function NotificationsPanel() {
   const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState<NotificationClinicConfig | null>(null);
   const [providers, setProviders] = useState<Record<string, ProviderStatus>>({});
+  const [cronConfigured, setCronConfigured] = useState(true);
   const [logs, setLogs] = useState<NotificationDeliveryRow[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [testPatientId, setTestPatientId] = useState("");
   const [testAppointmentId, setTestAppointmentId] = useState("");
   const [testChannel, setTestChannel] = useState<NotificationChannel>("mock");
   const [testLoading, setTestLoading] = useState(false);
+  const [browserPermission, setBrowserPermission] =
+    useState<BrowserNotificationPermission>(() => {
+      if (typeof window === "undefined") return "unsupported";
+      const capability = detectBrowserPushCapability();
+      if (capability !== "supported") return "unsupported";
+      return Notification.permission;
+    });
+  const [browserPushCapability, setBrowserPushCapability] =
+    useState<BrowserPushCapability>(() =>
+      typeof window === "undefined" ? "unsupported" : detectBrowserPushCapability()
+    );
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [requestingBrowserPermission, setRequestingBrowserPermission] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +92,7 @@ export function NotificationsPanel() {
       }
       setConfig(settingsData.config);
       setProviders(settingsData.providers ?? {});
+      setCronConfigured(Boolean(settingsData.cronConfigured));
       if (logsRes.ok) setLogs(logsData.logs ?? []);
     } catch {
       toast.error("Ошибка загрузки модуля уведомлений");
@@ -84,6 +107,26 @@ export function NotificationsPanel() {
     }, 0);
     return () => clearTimeout(timer);
   }, [load]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (browserPushCapability !== "supported") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/notifications/push/subscribe", {
+          credentials: "same-origin",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) setPushSubscribed(Boolean(data.subscribed));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [browserPushCapability]);
 
   const saveConfig = async (next: NotificationClinicConfig) => {
     setSaving(true);
@@ -142,6 +185,15 @@ export function NotificationsPanel() {
       clinicAddress: config?.settings.clinicAddress ?? "ул. Примерная, 1",
     });
   }, [editingTemplate, config]);
+
+  const selectedRealChannels = useMemo(
+    () => (config?.settings.enabledChannels ?? []).filter((c) => c !== "mock"),
+    [config]
+  );
+  const configuredSelectedChannels = useMemo(
+    () => selectedRealChannels.filter((ch) => providers[ch]?.configured),
+    [selectedRealChannels, providers]
+  );
 
   const saveTemplate = async () => {
     if (!editingTemplate) return;
@@ -208,7 +260,11 @@ export function NotificationsPanel() {
         toast.error(data.error ?? "Тест не удался");
         return;
       }
-      toast.success("Тестовое уведомление отправлено (mock или настроенный канал)");
+      toast.success(
+        data.mode === "live"
+          ? "Проверочное уведомление отправлено в реальный канал"
+          : "Тестовое уведомление отправлено через mock"
+      );
       await load();
     } finally {
       setTestLoading(false);
@@ -227,6 +283,70 @@ export function NotificationsPanel() {
     }
     toast.success("Повторная отправка выполнена");
     await load();
+  };
+
+  const requestBrowserPermission = async () => {
+    if (typeof window === "undefined") return;
+    const capability = detectBrowserPushCapability();
+    setBrowserPushCapability(capability);
+    if (capability === "ios_home_screen_required") {
+      toast.info(
+        "На iPhone push работает только в Safari из ярлыка «На экран Домой»: Safari -> Поделиться -> На экран Домой."
+      );
+      return;
+    }
+    if (capability !== "supported") {
+      toast.error(
+        "Push-уведомления браузера недоступны: нужен HTTPS и поддерживаемый браузер."
+      );
+      return;
+    }
+    setRequestingBrowserPermission(true);
+    try {
+      const result = await subscribeDeviceToWebPush();
+      if (result.permission) setBrowserPermission(result.permission);
+      if (!result.ok) {
+        toast.error(result.error ?? "Не удалось включить push");
+        return;
+      }
+      setPushSubscribed(true);
+      toast.success("Push включены: сайт будет присылать уведомления на это устройство");
+    } finally {
+      setRequestingBrowserPermission(false);
+    }
+  };
+
+  const disableBrowserPush = async () => {
+    setRequestingBrowserPermission(true);
+    try {
+      const result = await unsubscribeDeviceFromWebPush();
+      if (!result.ok) {
+        toast.error(result.error ?? "Не удалось отключить push");
+        return;
+      }
+      setPushSubscribed(false);
+      toast.success("Push отключены на этом устройстве");
+    } finally {
+      setRequestingBrowserPermission(false);
+    }
+  };
+
+  const sendTestPush = async () => {
+    setTestingPush(true);
+    try {
+      const res = await fetch("/api/notifications/push/test", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(data.error ?? "Тестовый push не отправился");
+        return;
+      }
+      toast.success("Тестовый push отправлен");
+    } finally {
+      setTestingPush(false);
+    }
   };
 
   if (loading || !config) {
@@ -272,7 +392,7 @@ export function NotificationsPanel() {
                 checked={config.settings.enabled}
                 onChange={(e) => updateSettings({ enabled: e.target.checked })}
               />
-              Включить автоматические уведомления о записи
+              Включить уведомления (push сотрудникам + напоминания пациентам)
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -282,9 +402,115 @@ export function NotificationsPanel() {
               />
               Тестовый режим (всегда mock, без реальных SMS/WhatsApp)
             </label>
+            {config.settings.testMode && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Сейчас включён тестовый режим: реальные SMS/WhatsApp/e-mail не отправляются.
+              </p>
+            )}
+            {config.settings.enabled &&
+              !config.settings.testMode &&
+              selectedRealChannels.length > 0 &&
+              configuredSelectedChannels.length === 0 && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+                  Выбраны каналы отправки, но ни один не настроен на сервере. Сообщения не будут
+                  доставляться.
+                </p>
+              )}
+            {config.settings.enabled && !cronConfigured && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Автообработка очереди напоминаний не настроена (нет секрета cron).
+                Укажите `NOTIFICATIONS_CRON_SECRET` (или используйте `AUTH_SECRET`) и поставьте
+                cron на `/api/notifications/process`, иначе напоминания пациентам не уйдут по
+                расписанию.
+              </p>
+            )}
+
+            <div className="rounded-lg border border-[var(--border)] p-3">
+              <p className="text-sm font-medium">Push с сайта (как в приложении)</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                SMS и WhatsApp не нужны. Сайт сам шлёт уведомления на телефон или ПК, если вы
+                один раз разрешили push на этом устройстве. Работает в фоне, даже когда вкладка
+                закрыта (на iPhone — только из ярлыка «На экран Домой»).
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-[var(--muted)]">
+                  Статус:{" "}
+                  <strong className="text-[var(--foreground)]">
+                    {browserPushCapability === "ios_home_screen_required"
+                      ? "на iPhone только через «На экран Домой»"
+                      : pushSubscribed
+                        ? "подключены на этом устройстве"
+                        : browserPermission === "denied"
+                          ? "запрещены в браузере"
+                          : browserPermission === "granted"
+                            ? "разрешение есть, подписка не сохранена"
+                            : browserPermission === "default"
+                              ? "ещё не включены"
+                              : "не поддерживается"}
+                  </strong>
+                </span>
+                {!pushSubscribed ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      requestingBrowserPermission ||
+                      browserPushCapability === "unsupported"
+                    }
+                    onClick={() => void requestBrowserPermission()}
+                  >
+                    {requestingBrowserPermission
+                      ? "Подключаем…"
+                      : browserPushCapability === "ios_home_screen_required"
+                        ? "Как включить на iPhone"
+                        : "Включить push"}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={testingPush}
+                      onClick={() => void sendTestPush()}
+                    >
+                      {testingPush ? "Отправляем…" : "Тест push"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={requestingBrowserPermission}
+                      onClick={() => void disableBrowserPush()}
+                    >
+                      Отключить
+                    </Button>
+                  </>
+                )}
+              </div>
+              {browserPushCapability === "ios_home_screen_required" && (
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  Откройте этот сайт в Safari и добавьте на экран Домой. Затем запустите как
+                  веб-приложение с иконки и включите уведомления.
+                </p>
+              )}
+              {browserPermission === "denied" && (
+                <p className="mt-2 text-xs text-amber-800">
+                  Браузер уже запретил уведомления для этого сайта — кнопка сама разрешение не
+                  вернёт. В Яндексе: откройте сайт → замок / «i» у адреса → Уведомления →
+                  Разрешить. Либо Настройки Android → Приложения → Браузер Яндекса →
+                  Уведомления. После этого снова нажмите «Включить push».
+                </p>
+              )}
+            </div>
 
             <div>
-              <p className="mb-2 text-sm font-medium">Каналы</p>
+              <p className="mb-2 text-sm font-medium">Каналы для пациентов (опционально)</p>
+              <p className="mb-2 text-xs text-[var(--muted)]">
+                Для push сотрудникам каналы не нужны. Ниже — только напоминания пациентам по
+                SMS/WhatsApp/e-mail, когда настроите провайдеров.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {CHANNELS.filter((c) => c !== "mock").map((ch) => (
                   <label key={ch} className="flex items-center gap-1.5 text-sm">

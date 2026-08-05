@@ -7,7 +7,7 @@ import {
   isMobileModuleEnabled,
   resolveMobileClinicFromRequest,
 } from "@/lib/mobile-clinic-context.server";
-import { requireMobileSession } from "@/lib/mobile-auth-request.server";
+import { requireMobileSessionAsync } from "@/lib/mobile-auth-request.server";
 import { findMobilePatientByLogin } from "@/lib/mobile-patient-db.server";
 
 export async function GET(request: Request) {
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   }
   const clinic = clinicOrError;
 
-  const session = requireMobileSession(request);
+  const session = await requireMobileSessionAsync(request);
   if (!session) {
     return NextResponse.json({ error: "Требуется авторизация" }, { status: 401 });
   }
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   }
   const clinic = clinicOrError;
 
-  const session = requireMobileSession(request);
+  const session = await requireMobileSessionAsync(request);
   if (!session) {
     return NextResponse.json({ error: "Требуется авторизация" }, { status: 401 });
   }
@@ -56,7 +56,10 @@ export async function POST(request: Request) {
   }
   if (session.kind !== "patient" || !session.patientId) {
     return NextResponse.json(
-      { error: "Запись доступна только пациентам приложения" },
+      {
+        error:
+          "Запись доступна только пациентам. Войдите или зарегистрируйтесь как пациент (аккаунт сотрудника клиники для онлайн-записи не подходит).",
+      },
       { status: 403 }
     );
   }

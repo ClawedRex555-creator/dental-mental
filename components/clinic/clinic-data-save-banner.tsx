@@ -15,6 +15,7 @@ export function ClinicDataSaveBanner() {
   const saveStatus = useClinicStore((s) => s.clinicSaveStatus);
   const serverNewer = useClinicStore((s) => s.clinicServerNewerAvailable);
   const saveError = useClinicStore((s) => s.clinicDataSaveError);
+  const clinicDataUnsaved = useClinicStore((s) => s.clinicDataUnsaved);
   const [syncActionLoading, setSyncActionLoading] = useState(false);
 
   const runSyncAction = async (action: () => Promise<void>) => {
@@ -103,7 +104,11 @@ export function ClinicDataSaveBanner() {
     serverNewer &&
     (phase === "ready" || phase === "read_only")
   ) {
-    const hasLocalQueue = saveStatus === "pending" || saveStatus === "saving";
+    const hasLocalQueue =
+      saveStatus === "pending" ||
+      saveStatus === "saving" ||
+      clinicDataUnsaved ||
+      Boolean(saveError);
     return (
       <div
         role="alert"
@@ -112,8 +117,8 @@ export function ClinicDataSaveBanner() {
         <span>
           На сервере более новые данные с другого устройства.
           {hasLocalQueue
-            ? " Дождитесь отправки ваших правок или отмените их."
-            : " Обновите, чтобы увидеть актуальное расписание."}
+            ? " Сначала отправим ваши правки (пациенты, записи), затем обновим."
+            : " Обновите, чтобы увидеть актуальные данные."}
         </span>
         <span className="flex flex-wrap items-center justify-center gap-2">
           {hasLocalQueue ? (

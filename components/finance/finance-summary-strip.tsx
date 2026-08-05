@@ -78,7 +78,7 @@ export function FinanceSummaryStrip({
     <div
       className={cn(
         "grid gap-3 grid-cols-2 md:grid-cols-3",
-        showSalaries ? "xl:grid-cols-6" : "xl:grid-cols-4",
+        showSalaries ? "xl:grid-cols-7" : "xl:grid-cols-4",
         className
       )}
     >
@@ -87,6 +87,7 @@ export function FinanceSummaryStrip({
         <>
           <MetricCard label="Зарплаты врачам" value={salaries.doctorSalary} />
           <MetricCard label="Зарплаты ассистентам" value={salaries.assistantSalary} />
+          <MetricCard label="Техничка" value={salaries.technicalCosts} negative />
         </>
       )}
       <MetricCard label="Расходы клиники" value={expensesTotal} negative />

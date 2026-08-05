@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolveCabinetIdForDoctor } from "./cabinet-utils.ts";
-import type { Cabinet, Doctor } from "./types.ts";
+import { resolveCabinetIdForDoctor } from "./cabinet-utils";
+import type { Cabinet, Doctor } from "./types";
 
 function doctor(overrides: Partial<Doctor> & Pick<Doctor, "id">): Doctor {
   return {

@@ -793,8 +793,23 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
         onOpenChange={(open) => !open && setVisitActId(null)}
         existingActId={visitActId ?? undefined}
         mode="admin_view"
+        onGoToPayment={(actId) => {
+          setVisitActId(null);
+          window.setTimeout(() => {
+            window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+          }, 50);
+        }}
       />
-      <AppointmentModal open={appointmentOpen} onOpenChange={setAppointmentOpen} />
+      <AppointmentModal
+        open={appointmentOpen}
+        onOpenChange={setAppointmentOpen}
+        onGoToPayment={(actId) => {
+          setAppointmentOpen(false);
+          window.setTimeout(() => {
+            window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+          }, 50);
+        }}
+      />
       <MedicalRecordModal
         open={recordOpen}
         onOpenChange={setRecordOpen}

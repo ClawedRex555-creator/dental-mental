@@ -54,6 +54,13 @@ describe("login-rate-limit", () => {
     assert.equal(checkLoginRateLimit(platform).allowed, true);
   });
 
+  it("loginRateLimitKey can include client IP", () => {
+    const withIp = loginRateLimitKey("clinic:demo", "a@b.ru", "1.2.3.4");
+    const without = loginRateLimitKey("clinic:demo", "a@b.ru");
+    assert.notEqual(withIp, without);
+    assert.match(withIp, /ip:1\.2\.3\.4$/);
+  });
+
   it("clearLoginAttempts removes the lockout", () => {
     const key = loginRateLimitKey("clinic:demo", "ok@clinic.ru");
     for (let i = 0; i < LOGIN_RATE_MAX_ATTEMPTS; i++) {

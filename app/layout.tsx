@@ -25,6 +25,12 @@ const inter = localFont({
 export const metadata: Metadata = {
   title: APP_NAME,
   description: APP_TAGLINE,
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: APP_NAME,
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({

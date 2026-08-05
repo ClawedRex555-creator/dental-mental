@@ -15,17 +15,16 @@ RUN if [ -f package-lock.json ]; then \
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG APP_ROOT_DOMAIN=emkaro.ru
-ARG AUTH_SECRET
 ARG CACHEBUST=unknown
 ENV APP_ROOT_DOMAIN=$APP_ROOT_DOMAIN
-ENV AUTH_SECRET=$AUTH_SECRET
+# Не передавать реальный AUTH_SECRET как build ARG — только runtime env.
+ENV AUTH_SECRET=build-time-placeholder-not-for-runtime
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN test -x node_modules/.bin/next || (echo "ERROR: next CLI missing — check .dockerignore (node_modules must be excluded)" && ls -la node_modules/.bin 2>&1 | head -20 && exit 1)
 RUN test -f .deploy-version || echo "local-build" > .deploy-version
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
-RUN test -n "$AUTH_SECRET" || (echo "ERROR: set AUTH_SECRET in /opt/emkaro/.env before docker compose build" && exit 1)
 RUN chmod +x scripts/fix-stale-routes.sh && sh scripts/fix-stale-routes.sh /app
 RUN grep -q 'patientAppointmentSearch' app/api/health/route.ts || (echo "ERROR: stale source — redeploy fresh tar from Mac" && exit 1)
 RUN grep -q 'egiszCdaSnilsDigits' app/api/health/route.ts || (echo "ERROR: health route без egiszCdaSnilsDigits — задеплойте свежий tar" && exit 1)

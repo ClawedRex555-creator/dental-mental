@@ -55,8 +55,5 @@ export function resolveActiveProvider(
   if (!provider) {
     return byChannel.get("mock")!;
   }
-  if (!provider.isConfigured()) {
-    return byChannel.get("mock")!;
-  }
   return provider;
 }

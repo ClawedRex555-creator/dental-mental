@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import {
-  checkLoginRateLimit,
-  clearLoginAttempts,
+  checkLoginRateLimitAsync,
+  clearLoginAttemptsAsync,
+  clientIpFromRequest,
   loginRateLimitKey,
   loginRateLimitResponse,
-  recordLoginFailure,
+  recordLoginFailureAsync,
 } from "@/lib/login-rate-limit";
 import { loginMobileUser } from "@/lib/mobile-auth-service.server";
 import { resolveMobileClinicFromRequest } from "@/lib/mobile-clinic-context.server";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
   }
   const clinic = clinicOrError;
 
-  let body: { login?: string; password?: string };
+  let body: { login?: string; password?: string; preferredKind?: string };
   try {
     body = await request.json();
   } catch {
@@ -29,8 +30,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Введите email и пароль" }, { status: 400 });
   }
 
-  const rateKey = loginRateLimitKey(`mobile:${clinic.slug}`, login);
-  const rate = checkLoginRateLimit(rateKey);
+  const preferredKind =
+    body.preferredKind === "patient" || body.preferredKind === "staff"
+      ? body.preferredKind
+      : undefined;
+
+  const rateKey = loginRateLimitKey(
+    `mobile:${clinic.slug}`,
+    login,
+    clientIpFromRequest(request)
+  );
+  const rate = await checkLoginRateLimitAsync(rateKey);
   if (!rate.allowed) {
     return loginRateLimitResponse(rate.retryAfterSec ?? 60);
   }
@@ -40,13 +50,14 @@ export async function POST(request: Request) {
     clinicSlug: clinic.slug,
     login,
     password,
+    preferredKind,
   });
 
   if (!result) {
-    recordLoginFailure(rateKey);
+    await recordLoginFailureAsync(rateKey);
     return NextResponse.json({ error: "Неверный email или пароль" }, { status: 401 });
   }
 
-  clearLoginAttempts(rateKey);
+  await clearLoginAttemptsAsync(rateKey);
   return NextResponse.json(result);
 }

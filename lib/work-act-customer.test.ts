@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getWorkActCustomerName, getWorkActCustomerPassport, getPatientOrRepresentativeFullName, getPatientOrRepresentativePassport, getLegalRepresentativeFullName, getLegalRepresentativePassport, getLegalRepresentativeBirthDate } from "./work-act-utils.ts";
+import { getWorkActCustomerName, getWorkActCustomerPassport, getPatientOrRepresentativeFullName, getPatientOrRepresentativePassport, getLegalRepresentativeFullName, getLegalRepresentativePassport, getLegalRepresentativeBirthDate } from "./work-act-utils";
 
 describe("getWorkActCustomerName", () => {
   it("uses representative for child patient", () => {

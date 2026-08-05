@@ -56,7 +56,8 @@ import {
   createFreshPersistedState,
   mergeByIdPreferLocal,
   mergeDoctorSchedules,
-  mergeClinicPatients,
+  mergeEntityListWithTombstones,
+  applyAllDeletionTombstones,
   mergeLegalDocumentsState,
   mergeServicesState,
   mergeWorkActsState,
@@ -161,6 +162,10 @@ interface ClinicState {
   deletedLegalDocumentIds: string[];
   deletedServiceIds: string[];
   deletedWorkActIds: string[];
+  deletedPatientIds: string[];
+  deletedAppointmentIds: string[];
+  deletedMedicalRecordIds: string[];
+  deletedTreatmentPlanIds: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   /** Ручные часы ассистента по датам (yyyy-MM-dd), если смена не привязана к приёму */
@@ -298,6 +303,10 @@ export const useClinicStore = create<ClinicState>()(
       deletedLegalDocumentIds: [],
       deletedServiceIds: [],
       deletedWorkActIds: [],
+      deletedPatientIds: [],
+      deletedAppointmentIds: [],
+      deletedMedicalRecordIds: [],
+      deletedTreatmentPlanIds: [],
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
       assistantManualHours: freshState.assistantManualHours,
@@ -572,6 +581,7 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({
           patients: [patient, ...s.patients],
           teethByPatient: { ...s.teethByPatient, [patient.id]: generateDefaultTeeth() },
+          deletedPatientIds: (s.deletedPatientIds ?? []).filter((id) => id !== patient.id),
         }));
         scheduleClinicDataFlush();
       },
@@ -601,6 +611,18 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => {
           const { [id]: _removedTeeth, ...teethByPatient } = s.teethByPatient;
           void _removedTeeth;
+          const removedAppointmentIds = s.appointments
+            .filter((a) => a.patientId === id)
+            .map((a) => a.id);
+          const removedWorkActIds = s.workActs
+            .filter((a) => a.patientId === id)
+            .map((a) => a.id);
+          const removedMedicalRecordIds = s.medicalRecords
+            .filter((r) => r.patientId === id)
+            .map((r) => r.id);
+          const removedTreatmentPlanIds = s.treatmentPlans
+            .filter((p) => p.patientId === id)
+            .map((p) => p.id);
           return {
             patients: s.patients.filter((p) => p.id !== id),
             appointments: s.appointments.filter((a) => a.patientId !== id),
@@ -613,6 +635,19 @@ export const useClinicStore = create<ClinicState>()(
             patientFiles: s.patientFiles.filter((f) => f.patientId !== id),
             patientNotes: s.patientNotes.filter((n) => n.patientId !== id),
             teethByPatient,
+            deletedPatientIds: [...new Set([...(s.deletedPatientIds ?? []), id])],
+            deletedAppointmentIds: [
+              ...new Set([...(s.deletedAppointmentIds ?? []), ...removedAppointmentIds]),
+            ],
+            deletedWorkActIds: [
+              ...new Set([...(s.deletedWorkActIds ?? []), ...removedWorkActIds]),
+            ],
+            deletedMedicalRecordIds: [
+              ...new Set([...(s.deletedMedicalRecordIds ?? []), ...removedMedicalRecordIds]),
+            ],
+            deletedTreatmentPlanIds: [
+              ...new Set([...(s.deletedTreatmentPlanIds ?? []), ...removedTreatmentPlanIds]),
+            ],
           };
         });
         scheduleClinicDataFlush();
@@ -630,7 +665,13 @@ export const useClinicStore = create<ClinicState>()(
                   : p
               )
             : s.patients;
-          return { appointments, patients };
+          return {
+            appointments,
+            patients,
+            deletedAppointmentIds: (s.deletedAppointmentIds ?? []).filter(
+              (tombstoneId) => tombstoneId !== appointment.id
+            ),
+          };
         });
         scheduleClinicDataFlush();
       },
@@ -684,6 +725,7 @@ export const useClinicStore = create<ClinicState>()(
           treatmentPlans: s.treatmentPlans.map((p) =>
             p.medicalRecordId === id ? { ...p, medicalRecordId: undefined } : p
           ),
+          deletedMedicalRecordIds: [...new Set([...(s.deletedMedicalRecordIds ?? []), id])],
         }));
         scheduleClinicDataFlush();
         return true;
@@ -711,6 +753,7 @@ export const useClinicStore = create<ClinicState>()(
           patientNotes: s.patientNotes.filter(
             (n) => n.sourceTreatmentPlanId !== id && n.id !== linkedNoteId
           ),
+          deletedTreatmentPlanIds: [...new Set([...(s.deletedTreatmentPlanIds ?? []), id])],
         }));
         scheduleClinicDataFlush();
         return true;
@@ -948,8 +991,14 @@ export const useClinicStore = create<ClinicState>()(
             : undefined) ??
           state.invoices.find((i) => i.workActId === actId);
 
+        // Идемпотентность double-click / двух вкладок с тем же остатком (M5).
+        const paymentId = `pay_${actId}_${Math.round(alreadyPaid * 100)}_${Math.round(payAmount * 100)}_${method}`;
+        if (state.payments.some((p) => p.id === paymentId)) {
+          return true;
+        }
+
         const payment: Payment = {
-          id: generateId("pay"),
+          id: paymentId,
           patientId: act.patientId,
           workActId: actId,
           amount: payAmount,
@@ -1071,6 +1120,7 @@ export const useClinicStore = create<ClinicState>()(
         const reverseAmount = getWorkActPaidAmount(state.payments, actId);
 
         set((s) => {
+          const beforeIds = new Set(s.appointments.map((a) => a.id));
           const appointments = removeSyntheticVisitForWorkAct(
             s.appointments.map((a) => {
               const linkedByWorkActId = a.workActId === actId;
@@ -1081,17 +1131,40 @@ export const useClinicStore = create<ClinicState>()(
             }),
             actId
           );
+          const removedAppointmentIds = [...beforeIds].filter(
+            (id) => !appointments.some((a) => a.id === id)
+          );
           let patients = s.patients.map((p) => {
-            if (p.id !== act.patientId || reverseAmount <= 0) return p;
+            if (p.id !== act.patientId) return p;
+            // Инверсия payWorkAct: balance += payAmount - actTotal (при первом платеже)
+            const nextBalance =
+              reverseAmount > 0
+                ? p.balance - reverseAmount + act.totalAmount
+                : p.balance;
+            const nextSpent =
+              reverseAmount > 0
+                ? Math.max(0, p.totalSpent - reverseAmount)
+                : p.totalSpent;
+            const status =
+              nextBalance < 0
+                ? ("debtor" as const)
+                : p.status === "debtor" && nextBalance >= 0
+                  ? ("active" as const)
+                  : p.status;
             return {
               ...p,
-              totalSpent: Math.max(0, p.totalSpent - reverseAmount),
+              totalSpent: nextSpent,
+              balance: nextBalance,
+              status,
             };
           });
           patients = withPatientVisitFields(patients, appointments, act.patientId);
           return {
             workActs: s.workActs.filter((a) => a.id !== actId),
             deletedWorkActIds: [...new Set([...(s.deletedWorkActIds ?? []), actId])],
+            deletedAppointmentIds: [
+              ...new Set([...(s.deletedAppointmentIds ?? []), ...removedAppointmentIds]),
+            ],
             invoices: s.invoices.filter(
               (inv) => inv.workActId !== actId && inv.id !== act.invoiceId
             ),
@@ -1181,6 +1254,10 @@ export const useClinicStore = create<ClinicState>()(
           deletedLegalDocumentIds: repaired.deletedLegalDocumentIds ?? [],
           deletedServiceIds: repaired.deletedServiceIds ?? [],
           deletedWorkActIds: repaired.deletedWorkActIds ?? [],
+          deletedPatientIds: repaired.deletedPatientIds ?? [],
+          deletedAppointmentIds: repaired.deletedAppointmentIds ?? [],
+          deletedMedicalRecordIds: repaired.deletedMedicalRecordIds ?? [],
+          deletedTreatmentPlanIds: repaired.deletedTreatmentPlanIds ?? [],
           doctorSchedules: repaired.doctorSchedules ?? [],
           prepayments: repaired.prepayments ?? [],
           assistantManualHours: normalizeAssistantManualHours(repaired.assistantManualHours),
@@ -1193,58 +1270,123 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       hydratePersistedState: (data) =>
-        set((s) => ({
-          doctors: mergeByIdPreferLocal(data.doctors ?? [], s.doctors),
-          ...mergeServicesState(
-            data.services ?? [],
-            s.services,
-            data.deletedServiceIds,
-            s.deletedServiceIds
-          ),
-          cabinets: mergeByIdPreferLocal(data.cabinets ?? [], s.cabinets),
-          patients: mergeClinicPatients(data.patients ?? [], s.patients),
-          appointments: mergeByIdPreferLocal(data.appointments ?? [], s.appointments),
-          medicalRecords: mergeByIdPreferLocal(data.medicalRecords ?? [], s.medicalRecords),
-          treatmentPlans: mergeByIdPreferLocal(data.treatmentPlans ?? [], s.treatmentPlans),
-          payments: mergeByIdPreferLocal(data.payments ?? [], s.payments),
-          invoices: mergeByIdPreferLocal(data.invoices ?? [], s.invoices),
-          ...mergeWorkActsState(
-            data.workActs ?? [],
-            s.workActs,
-            data.deletedWorkActIds,
-            s.deletedWorkActIds
-          ),
-          actCounter: Math.max(data.actCounter ?? 1, s.actCounter),
-          warehouse: mergeByIdPreferLocal(data.warehouse ?? [], s.warehouse),
-          tasks: mergeByIdPreferLocal(data.tasks ?? [], s.tasks),
-          onlineBookings: mergeByIdPreferLocal(data.onlineBookings ?? [], s.onlineBookings),
-          patientFiles: mergeByIdPreferLocal(data.patientFiles ?? [], s.patientFiles),
-          patientNotes: mergeByIdPreferLocal(data.patientNotes ?? [], s.patientNotes),
-          teethByPatient: { ...s.teethByPatient, ...data.teethByPatient },
-          clinicSettings: data.clinicSettings ?? s.clinicSettings,
-          documentTemplates: mergeByIdPreferLocal(
-            data.documentTemplates ?? [],
-            s.documentTemplates
-          ),
-          clinicExpenses: mergeByIdPreferLocal(data.clinicExpenses ?? [], s.clinicExpenses),
-          ...mergeLegalDocumentsState(
-            data.legalDocuments ?? [],
-            s.legalDocuments,
-            data.deletedLegalDocumentIds,
-            s.deletedLegalDocumentIds
-          ),
-          doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
-          prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
-          assistantManualHours: mergeAssistantManualHours(
-            s.assistantManualHours,
-            data.assistantManualHours ?? {}
-          ),
-          userThemePreferences: mergeThemePreferences(
-            data.userThemePreferences,
-            readThemePreferencesFromStorage(),
-            s.userThemePreferences
-          ),
-        })),
+        set((s) => {
+          const patients = mergeEntityListWithTombstones(
+            data.patients ?? [],
+            s.patients,
+            data.deletedPatientIds,
+            s.deletedPatientIds
+          );
+          const appointments = mergeEntityListWithTombstones(
+            data.appointments ?? [],
+            s.appointments,
+            data.deletedAppointmentIds,
+            s.deletedAppointmentIds
+          );
+          const medicalRecords = mergeEntityListWithTombstones(
+            data.medicalRecords ?? [],
+            s.medicalRecords,
+            data.deletedMedicalRecordIds,
+            s.deletedMedicalRecordIds
+          );
+          const treatmentPlans = mergeEntityListWithTombstones(
+            data.treatmentPlans ?? [],
+            s.treatmentPlans,
+            data.deletedTreatmentPlanIds,
+            s.deletedTreatmentPlanIds
+          );
+          const hydrated = applyAllDeletionTombstones({
+            ...s,
+            doctors: mergeByIdPreferLocal(data.doctors ?? [], s.doctors),
+            ...mergeServicesState(
+              data.services ?? [],
+              s.services,
+              data.deletedServiceIds,
+              s.deletedServiceIds
+            ),
+            cabinets: mergeByIdPreferLocal(data.cabinets ?? [], s.cabinets),
+            patients: patients.items,
+            deletedPatientIds: patients.deletedIds,
+            appointments: appointments.items,
+            deletedAppointmentIds: appointments.deletedIds,
+            medicalRecords: medicalRecords.items,
+            deletedMedicalRecordIds: medicalRecords.deletedIds,
+            treatmentPlans: treatmentPlans.items,
+            deletedTreatmentPlanIds: treatmentPlans.deletedIds,
+            payments: mergeByIdPreferLocal(data.payments ?? [], s.payments),
+            invoices: mergeByIdPreferLocal(data.invoices ?? [], s.invoices),
+            ...mergeWorkActsState(
+              data.workActs ?? [],
+              s.workActs,
+              data.deletedWorkActIds,
+              s.deletedWorkActIds
+            ),
+            actCounter: Math.max(data.actCounter ?? 1, s.actCounter),
+            warehouse: mergeByIdPreferLocal(data.warehouse ?? [], s.warehouse),
+            tasks: mergeByIdPreferLocal(data.tasks ?? [], s.tasks),
+            onlineBookings: mergeByIdPreferLocal(data.onlineBookings ?? [], s.onlineBookings),
+            patientFiles: mergeByIdPreferLocal(data.patientFiles ?? [], s.patientFiles),
+            patientNotes: mergeByIdPreferLocal(data.patientNotes ?? [], s.patientNotes),
+            teethByPatient: { ...s.teethByPatient, ...data.teethByPatient },
+            clinicSettings: data.clinicSettings ?? s.clinicSettings,
+            documentTemplates: mergeByIdPreferLocal(
+              data.documentTemplates ?? [],
+              s.documentTemplates
+            ),
+            clinicExpenses: mergeByIdPreferLocal(data.clinicExpenses ?? [], s.clinicExpenses),
+            ...mergeLegalDocumentsState(
+              data.legalDocuments ?? [],
+              s.legalDocuments,
+              data.deletedLegalDocumentIds,
+              s.deletedLegalDocumentIds
+            ),
+            doctorSchedules: mergeDoctorSchedules(data.doctorSchedules ?? [], s.doctorSchedules),
+            prepayments: mergeByIdPreferLocal(data.prepayments ?? [], s.prepayments),
+            assistantManualHours: mergeAssistantManualHours(
+              s.assistantManualHours,
+              data.assistantManualHours ?? {}
+            ),
+            userThemePreferences: mergeThemePreferences(
+              data.userThemePreferences,
+              readThemePreferencesFromStorage(),
+              s.userThemePreferences
+            ),
+          });
+          return {
+            doctors: hydrated.doctors,
+            services: hydrated.services,
+            cabinets: hydrated.cabinets,
+            patients: hydrated.patients,
+            appointments: hydrated.appointments,
+            medicalRecords: hydrated.medicalRecords,
+            treatmentPlans: hydrated.treatmentPlans,
+            payments: hydrated.payments,
+            invoices: hydrated.invoices,
+            workActs: hydrated.workActs,
+            actCounter: hydrated.actCounter,
+            warehouse: hydrated.warehouse,
+            tasks: hydrated.tasks,
+            onlineBookings: hydrated.onlineBookings,
+            patientFiles: hydrated.patientFiles,
+            patientNotes: hydrated.patientNotes,
+            teethByPatient: hydrated.teethByPatient,
+            clinicSettings: hydrated.clinicSettings,
+            documentTemplates: hydrated.documentTemplates,
+            clinicExpenses: hydrated.clinicExpenses,
+            legalDocuments: hydrated.legalDocuments,
+            deletedLegalDocumentIds: hydrated.deletedLegalDocumentIds ?? [],
+            deletedServiceIds: hydrated.deletedServiceIds ?? [],
+            deletedWorkActIds: hydrated.deletedWorkActIds ?? [],
+            deletedPatientIds: hydrated.deletedPatientIds ?? [],
+            deletedAppointmentIds: hydrated.deletedAppointmentIds ?? [],
+            deletedMedicalRecordIds: hydrated.deletedMedicalRecordIds ?? [],
+            deletedTreatmentPlanIds: hydrated.deletedTreatmentPlanIds ?? [],
+            doctorSchedules: hydrated.doctorSchedules,
+            prepayments: hydrated.prepayments,
+            assistantManualHours: hydrated.assistantManualHours,
+            userThemePreferences: hydrated.userThemePreferences,
+          };
+        }),
 
       resetAllData: () => {
         const savedThemes = mergeThemePreferences(

@@ -10,9 +10,14 @@ const patient = {
   middleName: "Петровна",
   phone: "+79001234567",
   birthDate: "1985-03-15",
-  gender: "female",
+  gender: "female" as const,
   snils: "123-456-789 01",
   createdAt: "2024-01-01",
+  source: "Google" as const,
+  status: "active" as const,
+  balance: 0,
+  totalSpent: 0,
+  disability: "none" as const,
 };
 
 const doctor = {
@@ -26,6 +31,8 @@ const doctor = {
   positionCode: "100",
   cabinet: "1",
   commissionPercent: 30,
+  status: "active" as const,
+  role: "doctor" as const,
 };
 
 const record = {
