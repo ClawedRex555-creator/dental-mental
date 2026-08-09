@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ONLINE_BOOKING_STATUS_LABELS } from "@/lib/constants";
+import { canViewPatientPhone } from "@/lib/rbac";
 import { formatDate } from "@/lib/utils";
 import { useClinicStore } from "@/store/useClinicStore";
 import { toast } from "sonner";
@@ -33,7 +34,9 @@ export default function OnlineBookingPage() {
     patients,
     doctors,
     services,
+    currentUser,
   } = useClinicStore();
+  const showPhone = canViewPatientPhone(currentUser.role);
 
   const medflexAppointments = appointments
     .filter(
@@ -83,7 +86,9 @@ export default function OnlineBookingPage() {
           )}
           {medflexAppointments.map((apt) => {
             const doctor = doctors.find((d) => d.id === apt.doctorId);
-            const phone = patients.find((p) => p.id === apt.patientId)?.phone;
+            const phone = showPhone
+              ? patients.find((p) => p.id === apt.patientId)?.phone
+              : undefined;
             return (
               <div
                 key={apt.id}
@@ -155,7 +160,9 @@ export default function OnlineBookingPage() {
               >
                 <div>
                   <p className="font-medium text-slate-900">{booking.patientName}</p>
-                  <p className="text-sm text-slate-500">{booking.phone}</p>
+                  {showPhone && (
+                    <p className="text-sm text-slate-500">{booking.phone}</p>
+                  )}
                   <p className="mt-1 text-sm">
                     {service?.name} - {formatDate(booking.date)} {booking.time}
                     {doctor ? ` - ${doctor.name}` : ""}

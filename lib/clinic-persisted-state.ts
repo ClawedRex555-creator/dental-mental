@@ -400,6 +400,63 @@ export function mergeByIdPreferLocal<T extends { id: string }>(remote: T[], loca
   return Array.from(map.values());
 }
 
+const PATIENT_PHI_MERGE_KEYS = [
+  "phone",
+  "email",
+  "snils",
+  "passportSeries",
+  "passportNumber",
+  "address",
+  "birthCertificateSeries",
+  "birthCertificateNumber",
+  "representativePassportSeries",
+  "representativePassportNumber",
+] as const satisfies ReadonlyArray<keyof Patient>;
+
+function isEmptyPatientPhiValue(value: unknown): boolean {
+  return value == null || (typeof value === "string" && value.trim() === "");
+}
+
+/**
+ * Local wins, но пустой PHI из local не затирает непустой remote
+ * (типичный след редакции врача / битого кэша).
+ */
+export function mergePatientPreferLocalPreservePhi(
+  remote: Patient,
+  local: Patient
+): Patient {
+  const merged: Patient = { ...remote, ...local };
+  for (const key of PATIENT_PHI_MERGE_KEYS) {
+    if (isEmptyPatientPhiValue(local[key]) && !isEmptyPatientPhiValue(remote[key])) {
+      (merged as unknown as Record<string, unknown>)[key] = remote[key];
+    }
+  }
+  if (
+    isEmptyPatientPhiValue(local.notificationPrefs?.telegramChatId) &&
+    !isEmptyPatientPhiValue(remote.notificationPrefs?.telegramChatId)
+  ) {
+    merged.notificationPrefs = {
+      ...remote.notificationPrefs!,
+      ...local.notificationPrefs,
+      telegramChatId: remote.notificationPrefs!.telegramChatId,
+    };
+  }
+  return merged;
+}
+
+export function mergePatientsPreferLocalPreservePhi(
+  remote: Patient[],
+  local: Patient[]
+): Patient[] {
+  const map = new Map<string, Patient>();
+  for (const x of remote) map.set(x.id, x);
+  for (const x of local) {
+    const prev = map.get(x.id);
+    map.set(x.id, prev ? mergePatientPreferLocalPreservePhi(prev, x) : x);
+  }
+  return Array.from(map.values());
+}
+
 /** Явное удаление в local: не поднимать строки, которых уже нет в local */
 export function hasEntityListDeletion<T extends { id: string }>(
   existing: T[],
@@ -732,7 +789,7 @@ export function mergeDoctorSchedules(
 
 /** Пациенты из текущей сессии не затираются устаревшим remote-снимком */
 export function mergeClinicPatients(remote: Patient[], local: Patient[]): Patient[] {
-  return mergeByIdPreferLocal(remote, local);
+  return mergePatientsPreferLocalPreservePhi(remote, local);
 }
 
 const MASS_ENTITY_LOSS_MIN_EXISTING = 4;
@@ -922,12 +979,16 @@ export function mergeClinicSnapshotWithLocal(
   remote: ClinicPersistedState,
   local: ClinicPersistedState
 ): ClinicPersistedState {
-  const patients = mergeEntityListWithTombstones(
+  const patientsMerged = mergeEntityListWithTombstones(
     remote.patients,
     local.patients,
     remote.deletedPatientIds,
     local.deletedPatientIds
   );
+  const patients = {
+    ...patientsMerged,
+    items: mergePatientsPreferLocalPreservePhi(remote.patients, patientsMerged.items),
+  };
   const appointments = mergeEntityListWithTombstones(
     mergeFinancialEntityList(remote.appointments, local.appointments),
     [],
@@ -1096,7 +1157,8 @@ export function mergeClinicDataForSave(
     })(),
     cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
     // Union по id: absence ≠ delete (delete только через deletedPatientIds / cascade).
-    patients: mergeByIdPreferLocal(existing.patients, incoming.patients),
+    // Пустой phone из клиента не затирает серверный (редакция врача / stale cache).
+    patients: mergePatientsPreferLocalPreservePhi(existing.patients, incoming.patients),
     appointments: mergeByIdPreferLocal(existing.appointments, incoming.appointments),
     medicalRecords: mergeArr(
       existing.medicalRecords,

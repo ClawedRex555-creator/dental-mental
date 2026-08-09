@@ -158,6 +158,19 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     assert.equal(saved.patients.length, 8);
   });
 
+  it("mergeClinicDataForSave does not let empty client phone wipe server phone", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [{ ...patient("p1"), phone: "+79991112233" }];
+    existing.doctors = [{ id: "d1", name: "Doc", specialization: "T", phone: "", email: "", cabinet: "—", commissionPercent: 0, status: "active", role: "doctor" }];
+    const incoming = {
+      ...existing,
+      patients: [{ ...existing.patients[0]!, phone: "", firstName: "Анна" }],
+    };
+    const saved = mergeClinicDataForSave(existing, incoming);
+    assert.equal(saved.patients[0]?.phone, "+79991112233");
+    assert.equal(saved.patients[0]?.firstName, "Анна");
+  });
+
   it("allows patient delete when server still has orphan appointments (incoming is clean)", () => {
     const existing = createFreshPersistedState();
     existing.patients = [patient("p1"), patient("p2")];

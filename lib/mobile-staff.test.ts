@@ -74,5 +74,30 @@ describe("mobile staff mapping", () => {
     assert.equal(mapped.scheduledAt, "2026-06-22T10:30:00");
     assert.equal(mapped.status, "scheduled");
     assert.equal(mapped.price, 2500);
+    assert.equal(mapped.patientPhone, patient.phone);
+  });
+
+  it("hides patient phone for doctor role", () => {
+    const mapped = mapAppointmentToMobile(
+      baseAppointment,
+      [patient],
+      [doctor],
+      "clinic_1",
+      "Тстом",
+      "doctor"
+    );
+    assert.equal(mapped.patientPhone, "");
+  });
+
+  it("keeps patient phone for owner role", () => {
+    const mapped = mapAppointmentToMobile(
+      baseAppointment,
+      [patient],
+      [doctor],
+      "clinic_1",
+      "Тстом",
+      "owner"
+    );
+    assert.equal(mapped.patientPhone, patient.phone);
   });
 });

@@ -146,9 +146,13 @@ export function canDeleteClinicExpenses(role: UserRole): boolean {
   return role === "owner";
 }
 
-/** Телефоны пациентов: врач не видит (карточка, каталог, поиск, запись) */
+/**
+ * Телефоны пациентов:
+ * - owner / admin (и assistant) — видны в UI
+ * - doctor — скрыты в UI; на GET снимок тоже без телефонов
+ */
 export function canViewPatientPhone(role: UserRole): boolean {
-  return role !== "doctor";
+  return role === "owner" || role === "admin" || role === "assistant";
 }
 
 export function defaultPathForRole(role: UserRole, modules?: ClinicModules): string {

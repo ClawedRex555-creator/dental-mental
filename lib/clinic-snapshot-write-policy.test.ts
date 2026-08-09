@@ -44,7 +44,7 @@ describe("clinic-snapshot-write-policy", () => {
     assert.equal(result.ok, true);
   });
 
-  it("strips phone for doctor filter", () => {
+  it("strips phone for doctor filter helper (not used on sync GET)", () => {
     const state = createFreshPersistedState();
     state.patients = [
       {

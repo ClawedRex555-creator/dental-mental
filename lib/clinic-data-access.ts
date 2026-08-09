@@ -42,6 +42,63 @@ export function preserveServicesForReadOnlyRoles(
   };
 }
 
+const PATIENT_PHI_PRESERVE_KEYS = [
+  "phone",
+  "email",
+  "snils",
+  "passportSeries",
+  "passportNumber",
+  "address",
+  "birthCertificateSeries",
+  "birthCertificateNumber",
+  "representativePassportSeries",
+  "representativePassportNumber",
+] as const satisfies ReadonlyArray<keyof Patient>;
+
+/**
+ * Врач получает GET без телефонов/документов. Без этого PUT врача
+ * записывал пустые phone и затирал ПДн для owner/admin.
+ */
+export function preservePatientPhiForRedactedRoles(
+  role: UserRole,
+  incoming: ClinicPersistedState,
+  existing: ClinicPersistedState | null | undefined
+): ClinicPersistedState {
+  if (!existing || role !== "doctor") return incoming;
+
+  const existingById = new Map(existing.patients.map((p) => [p.id, p]));
+  return {
+    ...incoming,
+    patients: incoming.patients.map((patient) => {
+      const prev = existingById.get(patient.id);
+      if (!prev) return patient;
+      const next: Patient = { ...patient };
+      for (const key of PATIENT_PHI_PRESERVE_KEYS) {
+        const incomingVal = patient[key];
+        const prevVal = prev[key];
+        const incomingEmpty =
+          incomingVal == null ||
+          (typeof incomingVal === "string" && incomingVal.trim() === "");
+        if (incomingEmpty && prevVal != null && String(prevVal).trim() !== "") {
+          (next as unknown as Record<string, unknown>)[key] = prevVal;
+        }
+      }
+      if (
+        (!patient.notificationPrefs?.telegramChatId ||
+          !String(patient.notificationPrefs.telegramChatId).trim()) &&
+        prev.notificationPrefs?.telegramChatId
+      ) {
+        next.notificationPrefs = {
+          ...prev.notificationPrefs,
+          ...patient.notificationPrefs,
+          telegramChatId: prev.notificationPrefs.telegramChatId,
+        };
+      }
+      return next;
+    }),
+  };
+}
+
 export type AccountantPatientSummary = Pick<
   Patient,
   "id" | "firstName" | "lastName" | "balance" | "totalSpent" | "status"

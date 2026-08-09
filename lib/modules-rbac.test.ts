@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { defaultClinicModules, parseClinicModules } from "./modules";
-import { canAccessPath, filterNavByModules, navItemsForRole } from "./rbac";
+import { canAccessPath, canViewPatientPhone, filterNavByModules, navItemsForRole } from "./rbac";
 import { isPathBlockedByModules, resolveSafeRedirectPath } from "./modules-rbac";
 
 describe("modules-rbac", () => {
+  it("patient phones: hidden for doctor, visible for owner/admin", () => {
+    assert.equal(canViewPatientPhone("doctor"), false);
+    assert.equal(canViewPatientPhone("owner"), true);
+    assert.equal(canViewPatientPhone("admin"), true);
+    assert.equal(canViewPatientPhone("assistant"), true);
+    assert.equal(canViewPatientPhone("accountant"), false);
+  });
+
   it("parseClinicModules always keeps settings enabled", () => {
     const m = parseClinicModules({ settings: false, legal: false });
     assert.equal(m.settings, true);

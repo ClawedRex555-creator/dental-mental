@@ -17,11 +17,11 @@ import {
   canReadClinicDataSync,
   canWriteClinicDataSync,
   filterClinicSnapshotForAccountant,
+  preservePatientPhiForRedactedRoles,
   preserveServicesForReadOnlyRoles,
 } from "@/lib/clinic-data-access";
 import {
   enforceClinicSnapshotWritePolicy,
-  filterClinicSnapshotForDoctor,
 } from "@/lib/clinic-snapshot-write-policy";
 import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
@@ -107,9 +107,9 @@ export async function GET(request: Request) {
   const data =
     role === "accountant"
       ? filterClinicSnapshotForAccountant(record.data)
-      : role === "doctor"
-        ? filterClinicSnapshotForDoctor(record.data)
-        : record.data;
+      : record.data;
+  // Врачу не редактируем PHI в sync-снимке: пустые phone в GET → PUT затирали
+  // номера для owner/admin. Скрытие телефонов — только в UI (canViewPatientPhone).
 
   return NextResponse.json({
     data,
@@ -216,6 +216,11 @@ export async function PUT(request: Request) {
 
     let toPersist = parsed;
     toPersist = preserveServicesForReadOnlyRoles(
+      role,
+      toPersist,
+      existing?.data ?? null
+    );
+    toPersist = preservePatientPhiForRedactedRoles(
       role,
       toPersist,
       existing?.data ?? null

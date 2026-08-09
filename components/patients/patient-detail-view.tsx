@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -190,9 +189,15 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <Link href="/patients" className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700">
+        <button
+          type="button"
+          className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700"
+          onClick={() => {
+            window.location.assign("/patients");
+          }}
+        >
           <ArrowLeft className="h-4 w-4" /> К списку пациентов
-        </Link>
+        </button>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-3">

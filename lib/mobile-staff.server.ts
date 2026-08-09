@@ -146,7 +146,14 @@ export async function getMobileStaffAppointments(
   });
 
   return appointments.map((a) =>
-    mapAppointmentToMobile(a, data.patients, data.doctors, clinicId, clinicName)
+    mapAppointmentToMobile(
+      a,
+      data.patients,
+      data.doctors,
+      clinicId,
+      clinicName,
+      session.role
+    )
   );
 }
 

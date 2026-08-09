@@ -6,6 +6,7 @@ import {
   canReadClinicDataSync,
   canWriteClinicDataSync,
   filterClinicSnapshotForAccountant,
+  preservePatientPhiForRedactedRoles,
   preserveServicesForReadOnlyRoles,
 } from "./clinic-data-access";
 import { canManageServices } from "./rbac";
@@ -125,5 +126,50 @@ describe("clinic data sync access", () => {
     assert.equal(assistantResult.services[0]?.id, "s1");
     const ownerResult = preserveServicesForReadOnlyRoles("owner", incoming, existing);
     assert.equal(ownerResult.services[0]?.id, "s2");
+  });
+
+  it("preservePatientPhiForRedactedRoles restores phones wiped by doctor snapshot", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [
+      {
+        id: "p1",
+        firstName: "Анна",
+        lastName: "Смирнова",
+        phone: "+79990001122",
+        email: "anna@example.com",
+        snils: "111-222-333 44",
+        birthDate: "1985-05-05",
+        gender: "female",
+        source: "Google",
+        status: "active",
+        balance: 0,
+        totalSpent: 0,
+        disability: "none",
+        createdAt: "2026-01-01",
+        address: "Москва",
+      },
+    ];
+    const incoming = {
+      ...existing,
+      patients: [
+        {
+          ...existing.patients[0]!,
+          phone: "",
+          email: undefined,
+          snils: undefined,
+          address: undefined,
+          firstName: "Анна",
+        },
+      ],
+    };
+
+    const doctorSave = preservePatientPhiForRedactedRoles("doctor", incoming, existing);
+    assert.equal(doctorSave.patients[0]?.phone, "+79990001122");
+    assert.equal(doctorSave.patients[0]?.email, "anna@example.com");
+    assert.equal(doctorSave.patients[0]?.snils, "111-222-333 44");
+    assert.equal(doctorSave.patients[0]?.address, "Москва");
+
+    const ownerSave = preservePatientPhiForRedactedRoles("owner", incoming, existing);
+    assert.equal(ownerSave.patients[0]?.phone, "");
   });
 });

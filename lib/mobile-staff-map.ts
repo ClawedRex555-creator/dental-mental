@@ -3,7 +3,9 @@ import type {
   AppointmentStatus,
   Doctor,
   Patient,
+  UserRole,
 } from "@/lib/types";
+import { canViewPatientPhone } from "@/lib/rbac";
 
 export interface MobileStaffAppointment {
   id: string;
@@ -54,15 +56,18 @@ export function mapAppointmentToMobile(
   patients: Patient[],
   doctors: Doctor[],
   clinicId: string,
-  clinicName: string
+  clinicName: string,
+  role?: UserRole | "patient"
 ): MobileStaffAppointment {
   const patient = patients.find((p) => p.id === appointment.patientId);
   const doctor = doctors.find((d) => d.id === appointment.doctorId);
+  const showPhone =
+    role == null ? true : role !== "patient" && canViewPatientPhone(role);
   return {
     id: appointment.id,
     patientId: appointment.patientId,
     patientName: patientDisplayName(patient),
-    patientPhone: patient?.phone ?? "",
+    patientPhone: showPhone ? patient?.phone ?? "" : "",
     doctorId: appointment.doctorId ?? "",
     doctorName: doctor?.name ?? "—",
     clinicId,

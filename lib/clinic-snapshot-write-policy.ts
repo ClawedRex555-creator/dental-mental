@@ -65,7 +65,8 @@ export function enforceClinicSnapshotWritePolicy(
   return { ok: true, data };
 }
 
-/** Редакция PHI для врача на GET (телефоны/документы скрыты как в UI). */
+/** @deprecated Не использовать на sync GET — пустой phone в ответе затирался при PUT врача.
+ *  Скрытие телефонов — canViewPatientPhone в UI. */
 export function filterClinicSnapshotForDoctor(
   state: ClinicPersistedState
 ): ClinicPersistedState {

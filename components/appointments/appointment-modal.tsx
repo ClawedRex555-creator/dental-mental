@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
@@ -405,7 +404,8 @@ export function AppointmentModal({
                         )}
                       </p>
                       <p className="text-slate-600">
-                        {canViewPatientPhone(currentUser.role)
+                        {canViewPatientPhone(currentUser.role) &&
+                        selectedPatient.phone?.trim()
                           ? formatPhone(selectedPatient.phone)
                           : "—"}
                       </p>
@@ -421,8 +421,23 @@ export function AppointmentModal({
                         </p>
                       )}
                     </div>
-                    <Button variant="outline" size="sm" className="shrink-0" asChild>
-                      <Link href={`/patients/${selectedPatient.id}`}>Карточка</Link>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const patientCardId = selectedPatient.id;
+                        onOpenChange(false);
+                        // Как переход к оплате: soft router.push ломается на teardown Dialog
+                        window.setTimeout(() => {
+                          window.location.assign(`/patients/${patientCardId}`);
+                        }, 50);
+                      }}
+                    >
+                      Карточка
                     </Button>
                   </div>
                 </div>
