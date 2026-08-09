@@ -11,13 +11,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PATIENT_STATUS_LABELS, UI } from "@/lib/constants";
 import type { Patient, PatientStatus } from "@/lib/types";
-import { cn, formatCurrency, formatDate, getAge, getFullName } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { canDeletePatients, canViewPatientPhone } from "@/lib/rbac";
 import { logAuditClient } from "@/lib/audit-client";
 import { useClinicStore } from "@/store/useClinicStore";
 
 export default function PatientsPage() {
-  const { patients, currentUser, deletePatient } = useClinicStore();
+  const patients = useClinicStore((s) => s.patients);
+  const currentUser = useClinicStore((s) => s.currentUser);
+  const deletePatient = useClinicStore((s) => s.deletePatient);
   const canDelete = canDeletePatients(currentUser.role);
   const showPhone = canViewPatientPhone(currentUser.role);
   const [search, setSearch] = useState("");
@@ -106,7 +108,11 @@ export default function PatientsPage() {
                         {name}
                       </Link>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                        {showPhone && <span className="tabular-nums">{p.phone}</span>}
+                        {showPhone && (
+                          <span className="tabular-nums">
+                            {p.phone?.trim() ? formatPhone(p.phone) : "—"}
+                          </span>
+                        )}
                         {showPhone && <span>·</span>}
                         <span>{getAge(p.birthDate)} лет</span>
                       </div>
@@ -197,7 +203,11 @@ export default function PatientsPage() {
                       {getFullName(p.firstName, p.lastName, p.middleName)}
                     </Link>
                   </td>
-                  {showPhone && <td className="px-4 py-3">{p.phone}</td>}
+                  {showPhone && (
+                    <td className="px-4 py-3 tabular-nums">
+                      {p.phone?.trim() ? formatPhone(p.phone) : "—"}
+                    </td>
+                  )}
                   <td className="px-4 py-3">{getAge(p.birthDate)}</td>
                   <td className="px-4 py-3">
                     <Badge variant="secondary">{PATIENT_STATUS_LABELS[p.status]}</Badge>

@@ -115,10 +115,10 @@ export function ClinicDataSaveBanner() {
         className="relative z-30 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
       >
         <span>
-          На сервере более новые данные с другого устройства.
+          На сервере более новые данные с другого устройства или вкладки.
           {hasLocalQueue
-            ? " Сначала отправим ваши правки (пациенты, записи), затем обновим."
-            : " Обновите, чтобы увидеть актуальные данные."}
+            ? " Не закрывайте вкладку: сначала «Отправить и обновить» (сохранит ваши записи/пациентов), иначе правки могут не уйти на сервер."
+            : " Нажмите «Обновить с сервера», чтобы увидеть актуальное расписание и карточки."}
         </span>
         <span className="flex flex-wrap items-center justify-center gap-2">
           {hasLocalQueue ? (

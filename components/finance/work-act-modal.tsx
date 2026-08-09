@@ -546,37 +546,45 @@ export function WorkActModal({
   const handleSaveOnly = () => {
     if (actSaveLock.current) return;
     actSaveLock.current = true;
-    try {
-      const act = persistAct(mode === "doctor" ? false : undefined);
-      if (!act) return;
-      toast.success(
-        linkedPrepaymentId && prepayPath === "settle"
-          ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
-          : `Акт № ${act.actNumber} сохранён`
-      );
-      if (mode !== "doctor") onOpenChange(false);
-    } finally {
+    const act = persistAct(mode === "doctor" ? false : undefined);
+    if (!act) {
       actSaveLock.current = false;
+      return;
     }
+    toast.success(
+      linkedPrepaymentId && prepayPath === "settle"
+        ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
+        : `Акт № ${act.actNumber} сохранён`
+    );
+    if (mode !== "doctor") {
+      onOpenChange(false);
+      return;
+    }
+    actSaveLock.current = false;
   };
 
   const handleSaveAndPrint = () => {
     if (actSaveLock.current) return;
     actSaveLock.current = true;
-    try {
-      const act = persistAct(mode === "doctor" ? false : undefined);
-      if (!act) return;
-      const patient = patients.find((p) => p.id === patientId);
-      if (patient) printWorkAct(act, patient, clinicSettings);
-      toast.success(`Акт № ${act.actNumber} сохранён и отправлен на печать`);
-    } finally {
+    const act = persistAct(mode === "doctor" ? false : undefined);
+    if (!act) {
       actSaveLock.current = false;
+      return;
     }
+    const patient = patients.find((p) => p.id === patientId);
+    if (patient) printWorkAct(act, patient, clinicSettings);
+    toast.success(`Акт № ${act.actNumber} сохранён и отправлен на печать`);
+    actSaveLock.current = false;
   };
 
   const handleSubmitToAdmin = () => {
+    if (actSaveLock.current) return;
+    actSaveLock.current = true;
     const act = persistAct(true);
-    if (!act || !linkedAppointmentId) return;
+    if (!act || !linkedAppointmentId) {
+      actSaveLock.current = false;
+      return;
+    }
     updateWorkAct(act.id, { submittedToAdmin: true });
     updateAppointment(linkedAppointmentId, {
       status: "ready_for_payment",

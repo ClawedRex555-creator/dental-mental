@@ -98,11 +98,10 @@ import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-a
 import {
   syncAppointmentsAfterActPaid,
 } from "@/lib/appointment-act-payment";
+import { applyPayWorkActToPersistedState } from "@/lib/apply-pay-work-act";
 import {
   getWorkActPaidAmount,
-  getWorkActRemainingAmount,
   isWorkActFullyPaid,
-  resolvePatientBalanceAfterActPayment,
 } from "@/lib/work-act-payment";
 import {
   detachAppointmentFromWorkAct,
@@ -872,219 +871,21 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       payWorkAct: (actId, method = "cash", amount?: number) => {
-        const state = get();
-        const act = state.workActs.find((a) => a.id === actId);
-        if (!act) return false;
-
-        const alreadyPaid = getWorkActPaidAmount(state.payments, actId);
-        const remaining = getWorkActRemainingAmount(act, state.payments);
-
-        const applyFullyPaidState = (
-          s: typeof state,
-          medicalSync: { records: MedicalRecord[]; actMedicalRecordId?: string }
-        ) => {
-          const workActs = s.workActs.map((a) => {
-            if (a.id !== actId) return a;
-            const next: WorkAct = { ...a, paymentStatus: "paid" as const };
-            if (medicalSync.actMedicalRecordId) {
-              next.medicalRecordId = medicalSync.actMedicalRecordId;
-            }
-            return next;
-          });
-          const paidAct = workActs.find((a) => a.id === actId)!;
-          const currentTeeth =
-            s.teethByPatient[paidAct.patientId] ?? generateDefaultTeeth();
-          const teethWithAct =
-            paidAct.actType === "prepayment"
-              ? currentTeeth
-              : applyWorkActItemsToTeeth(currentTeeth, paidAct.items, {
-                  actNumber: paidAct.actNumber,
-                  actDate: paidAct.actDate,
-                });
-          let appointments = syncVisitForWorkAct(s.appointments, paidAct, s.payments);
-          appointments = syncAppointmentsAfterActPaid(appointments, paidAct);
-          return {
-            workActs,
-            medicalRecords: medicalSync.records,
-            appointments,
-            patients: withPatientVisitFields(s.patients, appointments, paidAct.patientId),
-            ...(teethWithAct !== currentTeeth
-              ? {
-                  teethByPatient: {
-                    ...s.teethByPatient,
-                    [paidAct.patientId]: teethWithAct,
-                  },
-                }
-              : {}),
-          };
-        };
-
-        if (remaining <= 0) {
-          // Уже полностью оплачен — досинхронизировать статус/приём
-          if (isWorkActFullyPaid(act, state.payments)) {
-            const appointment = act.appointmentId
-              ? state.appointments.find((a) => a.id === act.appointmentId)
-              : undefined;
-            const medicalSync = ensureMedicalRecordForWorkAct(
-              act,
-              state.medicalRecords,
-              appointment,
-              state.services
-            );
-            set((s) => applyFullyPaidState(s, medicalSync));
-            scheduleClinicDataFlush();
-            return true;
-          }
-          // Нулевой акт (например 100% скидка клиники) — закрыть без платежа
-          if (act.totalAmount <= 0) {
-            const appointment = act.appointmentId
-              ? state.appointments.find((a) => a.id === act.appointmentId)
-              : undefined;
-            const medicalSync = ensureMedicalRecordForWorkAct(
-              act,
-              state.medicalRecords,
-              appointment,
-              state.services
-            );
-            set((s) => {
-              const base = applyFullyPaidState(s, medicalSync);
-              return {
-                ...base,
-                invoices: s.invoices.map((inv) => {
-                  const linked =
-                    inv.workActId === actId ||
-                    inv.id === act.invoiceId ||
-                    inv.description.includes(act.actNumber);
-                  if (!linked) return inv;
-                  return { ...inv, workActId: actId, status: "paid" as const, paid: 0 };
-                }),
-              };
-            });
-            scheduleClinicDataFlush();
-            return true;
-          }
-          return false;
-        }
-
-        const payAmount =
-          amount != null && amount > 0 ? Math.min(amount, remaining) : remaining;
-        if (payAmount <= 0) return false;
-
-        const newTotalPaid = alreadyPaid + payAmount;
-        const fullyPaid = newTotalPaid >= act.totalAmount;
-
-        const appointment = act.appointmentId
-          ? state.appointments.find((a) => a.id === act.appointmentId)
-          : undefined;
-        const medicalSync = fullyPaid
-          ? ensureMedicalRecordForWorkAct(
-              act,
-              state.medicalRecords,
-              appointment,
-              state.services
-            )
-          : { records: state.medicalRecords, actMedicalRecordId: undefined };
-
-        const invoice =
-          (act.invoiceId
-            ? state.invoices.find((i) => i.id === act.invoiceId)
-            : undefined) ??
-          state.invoices.find((i) => i.workActId === actId);
-
-        // Идемпотентность double-click / двух вкладок с тем же остатком (M5).
-        const paymentId = `pay_${actId}_${Math.round(alreadyPaid * 100)}_${Math.round(payAmount * 100)}_${method}`;
-        if (state.payments.some((p) => p.id === paymentId)) {
-          return true;
-        }
-
-        const payment: Payment = {
-          id: paymentId,
-          patientId: act.patientId,
-          workActId: actId,
-          amount: payAmount,
+        const result = applyPayWorkActToPersistedState(pickPersistedState(get()), {
+          actId,
           method,
-          status: "paid",
-          date: act.actDate,
-          comment: fullyPaid
-            ? `Оплата по акту ${act.actNumber}`
-            : `Предоплата по акту ${act.actNumber}`,
-        };
-
-        set((s) => {
-          const workActs = s.workActs.map((a) => {
-            if (a.id !== actId) return a;
-            const next: WorkAct = {
-              ...a,
-              paymentStatus: fullyPaid ? ("paid" as const) : ("partial" as const),
-            };
-            if (fullyPaid && medicalSync.actMedicalRecordId) {
-              next.medicalRecordId = medicalSync.actMedicalRecordId;
-            }
-            return next;
-          });
-          const paidAct = workActs.find((a) => a.id === actId)!;
-          const paymentsNext = [payment, ...s.payments];
-
-          let appointments = syncVisitForWorkAct(s.appointments, paidAct, paymentsNext);
-          let teethPatch: Record<string, ToothRecord[]> | undefined;
-          let medicalRecords = medicalSync.records;
-
-          if (fullyPaid) {
-            const full = applyFullyPaidState(
-              { ...s, workActs, payments: paymentsNext },
-              ensureMedicalRecordForWorkAct(act, s.medicalRecords, appointment, s.services)
-            );
-            appointments = full.appointments;
-            medicalRecords = full.medicalRecords;
-            teethPatch = full.teethByPatient;
-          }
-
-          const patientBefore = s.patients.find((p) => p.id === act.patientId);
-          const newBalance = resolvePatientBalanceAfterActPayment(
-            patientBefore?.balance ?? 0,
-            act.totalAmount,
-            alreadyPaid,
-            payAmount
-          );
-
-          let patients = s.patients.map((p) => {
-            if (p.id !== act.patientId) return p;
-            const status =
-              newBalance < 0
-                ? ("debtor" as const)
-                : p.status === "debtor" && newBalance >= 0
-                  ? ("active" as const)
-                  : p.status;
-            return {
-              ...p,
-              totalSpent: p.totalSpent + payAmount,
-              balance: newBalance,
-              status,
-            };
-          });
-          patients = withPatientVisitFields(patients, appointments, act.patientId);
-
-          return {
-            workActs,
-            medicalRecords,
-            appointments,
-            ...(teethPatch ? { teethByPatient: teethPatch } : {}),
-            invoices: s.invoices.map((inv) => {
-              const linked =
-                inv.id === invoice?.id ||
-                inv.workActId === actId ||
-                inv.description.includes(act.actNumber);
-              if (!linked) return inv;
-              return {
-                ...inv,
-                workActId: actId,
-                status: fullyPaid ? ("paid" as const) : ("partial" as const),
-                paid: newTotalPaid,
-              };
-            }),
-            payments: paymentsNext,
-            patients,
-          };
+          amount,
+        });
+        if (!result.ok) return false;
+        const n = result.state;
+        set({
+          workActs: n.workActs,
+          payments: n.payments,
+          invoices: n.invoices,
+          patients: n.patients,
+          appointments: n.appointments,
+          medicalRecords: n.medicalRecords,
+          teethByPatient: n.teethByPatient,
         });
         scheduleClinicDataFlush();
         return true;

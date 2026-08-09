@@ -259,12 +259,22 @@ export default function TreatmentPlansPage() {
         open={!!payAct}
         onOpenChange={(open) => !open && setPayAct(null)}
         onConfirm={(actId, method: PaymentMethod, amount: number) => {
-          if (payWorkAct(actId, method, amount)) {
+          void (async () => {
+            const { payWorkActViaCommandApi } = await import(
+              "@/lib/clinic-work-act-pay.client"
+            );
+            const viaApi = await payWorkActViaCommandApi({
+              actId,
+              method,
+              amount,
+            });
+            if (!viaApi.ok && !payWorkAct(actId, method, amount)) {
+              toast.error(viaApi.error ?? "Не удалось провести оплату");
+              return;
+            }
             toast.success("План лечения оплачен");
             setPayAct(null);
-          } else {
-            toast.error("Не удалось провести оплату");
-          }
+          })();
         }}
       />
     </div>

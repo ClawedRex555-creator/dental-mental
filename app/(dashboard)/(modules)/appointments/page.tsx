@@ -56,8 +56,16 @@ import type { Appointment } from "@/lib/types";
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
-  const { appointments, patients, doctors, cabinets, doctorSchedules, workActs, deletedWorkActIds, payments, currentUser, repairPaidActAppointments } =
-    useClinicStore();
+  const appointments = useClinicStore((s) => s.appointments);
+  const patients = useClinicStore((s) => s.patients);
+  const doctors = useClinicStore((s) => s.doctors);
+  const cabinets = useClinicStore((s) => s.cabinets);
+  const doctorSchedules = useClinicStore((s) => s.doctorSchedules);
+  const workActs = useClinicStore((s) => s.workActs);
+  const deletedWorkActIds = useClinicStore((s) => s.deletedWorkActIds);
+  const payments = useClinicStore((s) => s.payments);
+  const currentUser = useClinicStore((s) => s.currentUser);
+  const repairPaidActAppointments = useClinicStore((s) => s.repairPaidActAppointments);
   const isAssistant = currentUser.role === "assistant";
   const assistantProfile = useMemo(
     () => (isAssistant ? resolveAssistantRecord(currentUser, doctors) : undefined),

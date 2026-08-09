@@ -58,14 +58,15 @@ bash scripts/prod-observe-checklist.sh
 - Точечно (телефоны/PHI): `bash scripts/restore-patient-phones-from-backup.sh backups/….sql --apply`
 - Полный restore БД — только при катастрофе и с подтверждением `yes`
 
-## Отложено до стабильной недели + отдельного окна
+## Волна 3 платформы (отложено)
 
-Не начинать, пока нет 3–5 спокойных рабочих дней на текущем билде и явного окна (вечер/суббота):
+Не стартовать в том же деплое, что command pay API; только по запросу клиники / spare capacity:
 
-- Command API (оплаты / сущности вне full snapshot PUT)
-- SSE `snapshot.updated`
+- SSE `snapshot.updated` (`lib/sync-feature-flags.ts`)
 - Schema migrations вокруг `clinic_snapshots`
-- Вынос файлов из JSONB
-- Крупные EGISZ / mobile write API
+- Вынос `patientFiles.dataUrl` из JSONB
+- Крупные EGISZ (CryptoPro live / новые SEMD) и mobile staff write API
+
+Оплата акта уже может идти через `POST /api/clinic/work-acts/pay` (с fallback на snapshot).
 
 См. также [DEPLOY.md](./DEPLOY.md).

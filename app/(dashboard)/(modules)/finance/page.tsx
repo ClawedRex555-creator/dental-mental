@@ -41,6 +41,7 @@ import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
 import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
 import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
 import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
+import { payWorkActViaCommandApi } from "@/lib/clinic-work-act-pay.client";
 import { useClinicStore } from "@/store/useClinicStore";
 
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
@@ -65,27 +66,25 @@ function compareWorkActsNewestFirst(a: WorkAct, b: WorkAct): number {
 }
 
 export default function FinancePage() {
-  const {
-    payments,
-    invoices,
-    workActs,
-    patients,
-    doctors,
-    appointments,
-    updateAppointment,
-    payWorkAct,
-    clinicSettings,
-    clinicExpenses,
-    addClinicExpense,
-    removeClinicExpense,
-    prepayments,
-    deleteWorkAct,
-    currentUser,
-    services,
-    assistantManualHours,
-    setAssistantManualHours,
-    repairPaidActAppointments,
-  } = useClinicStore();
+  const payments = useClinicStore((s) => s.payments);
+  const invoices = useClinicStore((s) => s.invoices);
+  const workActs = useClinicStore((s) => s.workActs);
+  const patients = useClinicStore((s) => s.patients);
+  const doctors = useClinicStore((s) => s.doctors);
+  const appointments = useClinicStore((s) => s.appointments);
+  const updateAppointment = useClinicStore((s) => s.updateAppointment);
+  const payWorkAct = useClinicStore((s) => s.payWorkAct);
+  const clinicSettings = useClinicStore((s) => s.clinicSettings);
+  const clinicExpenses = useClinicStore((s) => s.clinicExpenses);
+  const addClinicExpense = useClinicStore((s) => s.addClinicExpense);
+  const removeClinicExpense = useClinicStore((s) => s.removeClinicExpense);
+  const prepayments = useClinicStore((s) => s.prepayments);
+  const deleteWorkAct = useClinicStore((s) => s.deleteWorkAct);
+  const currentUser = useClinicStore((s) => s.currentUser);
+  const services = useClinicStore((s) => s.services);
+  const assistantManualHours = useClinicStore((s) => s.assistantManualHours);
+  const setAssistantManualHours = useClinicStore((s) => s.setAssistantManualHours);
+  const repairPaidActAppointments = useClinicStore((s) => s.repairPaidActAppointments);
   const salaryModuleEnabled = useIsModuleEnabled("my_salary");
   const visibleTabs = useMemo(
     () => FINANCE_TABS.filter((t) => t !== "salaries" || salaryModuleEnabled),
@@ -1568,30 +1567,42 @@ export default function FinancePage() {
         open={!!payAct}
         onOpenChange={(open) => !open && setPayAct(null)}
         onConfirm={(actId, method: PaymentMethod, amount: number) => {
-          const act = workActs.find((a) => a.id === actId);
-          if (act && getActPaymentStatus(act) === "paid") {
-            if (payWorkAct(actId, method, amount)) {
-              toast.info("Акт уже был оплачен — статус приёма в расписании обновлён");
-            }
-            setPayAct(null);
-            return;
-          }
-          if (payWorkAct(actId, method, amount)) {
-            const actRow = workActs.find((a) => a.id === actId);
-            const dueBefore = actRow
-              ? actRow.totalAmount - getWorkActPaidAmount(payments, actId)
+          void (async () => {
+            const act = workActs.find((a) => a.id === actId);
+            const dueBefore = act
+              ? act.totalAmount - getWorkActPaidAmount(payments, actId)
               : 0;
+
+            if (act && getActPaymentStatus(act) === "paid") {
+              if (payWorkAct(actId, method, amount)) {
+                toast.info("Акт уже был оплачен — статус приёма в расписании обновлён");
+              }
+              setPayAct(null);
+              return;
+            }
+
+            const viaApi = await payWorkActViaCommandApi({
+              actId,
+              method,
+              amount,
+            });
+            if (!viaApi.ok) {
+              // Fallback: локальный снимок + обычный sync flush
+              if (!payWorkAct(actId, method, amount)) {
+                toast.error(viaApi.error ?? "Не удалось провести оплату");
+                return;
+              }
+            }
+
             toast.success(
-              actRow && actRow.totalAmount <= 0
+              act && act.totalAmount <= 0
                 ? "Нулевой акт закрыт — ЗП врача начислена"
                 : amount > 0 && amount < dueBefore
                   ? "Предоплата по акту внесена — ЗП начислится после полной оплаты"
                   : "Акт оплачен полностью — ЗП врача начислена"
             );
             setPayAct(null);
-          } else {
-            toast.error("Не удалось провести оплату");
-          }
+          })();
         }}
       />
     </div>
