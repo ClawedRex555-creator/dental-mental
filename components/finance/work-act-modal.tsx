@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import type {
   DiscountBearer,
   DiscountType,
@@ -90,7 +90,6 @@ export function WorkActModal({
   onSubmitted,
   onGoToPayment,
 }: WorkActModalProps) {
-  const router = useRouter();
   const {
     patients,
     doctors,
@@ -615,15 +614,15 @@ export function WorkActModal({
   };
 
   const navigateToPayment = (actId: string) => {
-    onOpenChange(false);
     if (onGoToPayment) {
+      onOpenChange(false);
       onGoToPayment(actId);
       return;
     }
-    // После закрытия диалога — иначе soft-nav может не сработать поверх Radix Dialog
-    window.setTimeout(() => {
-      router.push(`/finance?tab=acts&payAct=${actId}`);
-    }, 50);
+    closeDialogThenNavigate(
+      () => onOpenChange(false),
+      `/finance?tab=acts&payAct=${actId}`
+    );
   };
 
   const handleGoToPayment = () => {

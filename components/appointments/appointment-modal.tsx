@@ -23,6 +23,7 @@ import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
 import { canViewPatientPhone } from "@/lib/rbac";
+import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import {
   beginClinicEditorSession,
   endClinicEditorSession,
@@ -429,12 +430,10 @@ export function AppointmentModal({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        const patientCardId = selectedPatient.id;
-                        onOpenChange(false);
-                        // Как переход к оплате: soft router.push ломается на teardown Dialog
-                        window.setTimeout(() => {
-                          window.location.assign(`/patients/${patientCardId}`);
-                        }, 50);
+                        closeDialogThenNavigate(
+                          () => onOpenChange(false),
+                          `/patients/${selectedPatient.id}`
+                        );
                       }}
                     >
                       Карточка

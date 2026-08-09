@@ -170,6 +170,39 @@ describe("clinic data sync access", () => {
     assert.equal(doctorSave.patients[0]?.address, "Москва");
 
     const ownerSave = preservePatientPhiForRedactedRoles("owner", incoming, existing);
-    assert.equal(ownerSave.patients[0]?.phone, "");
+    assert.equal(ownerSave.patients[0]?.phone, "+79990001122");
+
+    const assistantSave = preservePatientPhiForRedactedRoles(
+      "assistant",
+      incoming,
+      existing
+    );
+    assert.equal(assistantSave.patients[0]?.phone, "+79990001122");
+  });
+
+  it("preservePatientPhiForRedactedRoles keeps intentional non-empty phone updates", () => {
+    const existing = createFreshPersistedState();
+    existing.patients = [
+      {
+        id: "p1",
+        firstName: "Анна",
+        lastName: "Смирнова",
+        phone: "+79990001122",
+        birthDate: "1985-05-05",
+        gender: "female",
+        source: "Google",
+        status: "active",
+        balance: 0,
+        totalSpent: 0,
+        disability: "none",
+        createdAt: "2026-01-01",
+      },
+    ];
+    const incoming = {
+      ...existing,
+      patients: [{ ...existing.patients[0]!, phone: "+79993334455" }],
+    };
+    const saved = preservePatientPhiForRedactedRoles("admin", incoming, existing);
+    assert.equal(saved.patients[0]?.phone, "+79993334455");
   });
 });

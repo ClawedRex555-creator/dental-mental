@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Payment, PaymentMethod, WorkAct } from "@/lib/types";
 import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
 import {
@@ -40,6 +40,8 @@ function PayActDialogContent({
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [mode, setMode] = useState<PayMode>("full");
   const [partialAmount, setPartialAmount] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   const isServiceAct = act.actType !== "prepayment";
   const paidSoFar = getWorkActPaidAmount(payments, act.id);
@@ -51,7 +53,15 @@ function PayActDialogContent({
       ? Math.min(remaining, Math.max(0, Number(partialAmount) || 0))
       : remaining;
 
-  const canConfirm = zeroClose || payAmount > 0;
+  const canConfirm = (zeroClose || payAmount > 0) && !submitting;
+
+  const handleConfirm = () => {
+    if (!(zeroClose || payAmount > 0) || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    onConfirm(act.id, method, payAmount);
+    // submitting остаётся true до закрытия/размонтирования (key на open)
+  };
 
   return (
     <DialogContent className="max-w-sm">
@@ -151,18 +161,21 @@ function PayActDialogContent({
           )}
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              variant="outline"
+              disabled={submitting}
+              onClick={() => onOpenChange(false)}
+            >
               Отмена
             </Button>
-            <Button
-              disabled={!canConfirm}
-              onClick={() => onConfirm(act.id, method, payAmount)}
-            >
-              {zeroClose
-                ? "Закрыть акт (0 ₽)"
-                : mode === "partial" && isServiceAct
-                  ? `Внести ${formatCurrency(payAmount)}`
-                  : "Оплатить полностью"}
+            <Button disabled={!canConfirm} onClick={handleConfirm}>
+              {submitting
+                ? "Сохранение…"
+                : zeroClose
+                  ? "Закрыть акт (0 ₽)"
+                  : mode === "partial" && isServiceAct
+                    ? `Внести ${formatCurrency(payAmount)}`
+                    : "Оплатить полностью"}
             </Button>
           </div>
         </div>

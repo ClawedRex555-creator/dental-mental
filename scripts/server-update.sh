@@ -31,6 +31,7 @@ has_mac_bundle() {
 }
 
 echo "=== Emkaro: обновление ==="
+echo ">>> Safety: docs/PROD-SAFETY.md — бэкап обязателен, wipe/schema запрещены без окна"
 
 echo ">>> Бэкап PostgreSQL (перед деплоем)..."
 bash scripts/backup-db.sh "$ROOT" pre-deploy

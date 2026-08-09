@@ -3,6 +3,8 @@
 Каждая клиника — свой поддомен: `ulybka.emkaro.ru`, `zubki.emkaro.ru`.  
 Корневой домен `emkaro.ru` — портал со списком клиник.
 
+**Перед деплоем на рабочую неделю:** см. [PROD-SAFETY.md](./PROD-SAFETY.md) (freeze пн–вт, бэкап, запрет wipe/schema/command API).
+
 ---
 
 ## 1. DNS (у регистратора домена)

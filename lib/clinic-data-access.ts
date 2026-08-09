@@ -56,15 +56,16 @@ const PATIENT_PHI_PRESERVE_KEYS = [
 ] as const satisfies ReadonlyArray<keyof Patient>;
 
 /**
- * Врач получает GET без телефонов/документов. Без этого PUT врача
- * записывал пустые phone и затирал ПДн для owner/admin.
+ * Пустой PHI с клиента не затирает непустой на сервере (stale cache / бывшая
+ * редакция врача / битый merge). Аддитивно: заполненные поля не очищает.
+ * Параметр role сохранён для совместимости вызовов; защита для всех write-ролей.
  */
 export function preservePatientPhiForRedactedRoles(
-  role: UserRole,
+  _role: UserRole,
   incoming: ClinicPersistedState,
   existing: ClinicPersistedState | null | undefined
 ): ClinicPersistedState {
-  if (!existing || role !== "doctor") return incoming;
+  if (!existing) return incoming;
 
   const existingById = new Map(existing.patients.map((p) => [p.id, p]));
   return {

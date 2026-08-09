@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { DisabilityGroup, Gender, Patient, PatientSource, PatientStatus } from "@/lib/types";
+import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import {
   PatientAppointmentScheduleSection,
   buildAppointmentFromSchedule,
@@ -123,7 +123,6 @@ export function PatientModal({
   initialAppointmentSchedule,
   onCreated,
 }: PatientModalProps) {
-  const router = useRouter();
   const {
     addPatient,
     updatePatient,
@@ -503,8 +502,7 @@ export function PatientModal({
     if (!duplicateMatch) return;
     const id = duplicateMatch.patient.id;
     setDuplicateMatch(null);
-    onOpenChange(false);
-    router.push(`/patients/${id}`);
+    closeDialogThenNavigate(() => onOpenChange(false), `/patients/${id}`);
   };
 
   return (

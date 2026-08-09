@@ -39,6 +39,7 @@ import {
   canDeleteTreatmentPlans,
   canViewPatientPhone,
 } from "@/lib/rbac";
+import { navigateHard } from "@/lib/dialog-navigation";
 import {
   CLINIC_VISIT_STATUSES,
   countClinicVisits,
@@ -192,9 +193,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
         <button
           type="button"
           className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700"
-          onClick={() => {
-            window.location.assign("/patients");
-          }}
+          onClick={() => navigateHard("/patients")}
         >
           <ArrowLeft className="h-4 w-4" /> К списку пациентов
         </button>
