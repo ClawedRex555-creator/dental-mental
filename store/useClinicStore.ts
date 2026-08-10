@@ -100,6 +100,10 @@ import {
 } from "@/lib/appointment-act-payment";
 import { applyPayWorkActToPersistedState } from "@/lib/apply-pay-work-act";
 import {
+  applyCreateAppointmentToPersistedState,
+  applyUpdateAppointmentToPersistedState,
+} from "@/lib/apply-appointment-commands";
+import {
   getWorkActPaidAmount,
   isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
@@ -654,43 +658,35 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       addAppointment: (appointment) => {
-        set((s) => {
-          const appointments = [appointment, ...s.appointments];
-          const patient = s.patients.find((p) => p.id === appointment.patientId);
-          const patients = patient
-            ? s.patients.map((p) =>
-                p.id === appointment.patientId
-                  ? { ...p, ...derivePatientVisitFields(p, appointments) }
-                  : p
-              )
-            : s.patients;
-          return {
-            appointments,
-            patients,
-            deletedAppointmentIds: (s.deletedAppointmentIds ?? []).filter(
-              (tombstoneId) => tombstoneId !== appointment.id
-            ),
-          };
+        const result = applyCreateAppointmentToPersistedState(
+          pickPersistedState(get()),
+          appointment
+        );
+        if (!result.ok || result.alreadyApplied) {
+          if (result.ok && result.alreadyApplied) return;
+          return;
+        }
+        const n = result.state;
+        set({
+          appointments: n.appointments,
+          patients: n.patients,
+          deletedAppointmentIds: n.deletedAppointmentIds ?? [],
         });
         scheduleClinicDataFlush();
       },
 
       updateAppointment: (id, data) => {
-        set((s) => {
-          const appointments = s.appointments.map((a) =>
-            a.id === id ? { ...a, ...data } : a
-          );
-          const updated = appointments.find((a) => a.id === id);
-          const patientId = updated?.patientId ?? data.patientId;
-          const patients =
-            patientId && s.patients.some((p) => p.id === patientId)
-              ? s.patients.map((p) =>
-                  p.id === patientId
-                    ? { ...p, ...derivePatientVisitFields(p, appointments) }
-                    : p
-                )
-              : s.patients;
-          return { appointments, patients };
+        const result = applyUpdateAppointmentToPersistedState(
+          pickPersistedState(get()),
+          id,
+          data
+        );
+        if (!result.ok) return;
+        if (result.alreadyApplied) return;
+        const n = result.state;
+        set({
+          appointments: n.appointments,
+          patients: n.patients,
         });
         scheduleClinicDataFlush();
       },

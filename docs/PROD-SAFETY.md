@@ -77,6 +77,7 @@ bash scripts/prod-observe-checklist.sh
 - Вынос `patientFiles.dataUrl` из JSONB
 - Крупные EGISZ (CryptoPro live / новые SEMD) и mobile staff write API
 
-Оплата акта уже может идти через `POST /api/clinic/work-acts/pay` (с fallback на snapshot).
+Оплата акта: `POST /api/clinic/work-acts/pay` (fallback snapshot).
+Записи расписания: `POST /api/clinic/appointments/create|update|cancel` (fallback snapshot).
 
 См. также [DEPLOY.md](./DEPLOY.md).

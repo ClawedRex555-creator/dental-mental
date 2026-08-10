@@ -28,6 +28,10 @@ import {
   beginClinicEditorSession,
   endClinicEditorSession,
 } from "@/lib/clinic-data-sync.client";
+import {
+  createAppointmentViaCommandApi,
+  updateAppointmentViaCommandApi,
+} from "@/lib/clinic-appointment.client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -274,42 +278,50 @@ export function AppointmentModal({
 
     savingRef.current = true;
     setSaving(true);
-    try {
-      const wasInProgress = appointment?.status === "in_progress";
-      const completingAsDoctor = isDoctor && wasInProgress && status === "completed";
+    void (async () => {
+      try {
+        const wasInProgress = appointment?.status === "in_progress";
+        const completingAsDoctor = isDoctor && wasInProgress && status === "completed";
 
-      if (appointment) {
-        updateAppointment(appointment.id, payload);
-        toast.success("Запись обновлена");
-      } else {
-        addAppointment(payload);
-        toast.success("Запись создана");
-      }
+        if (appointment) {
+          const viaApi = await updateAppointmentViaCommandApi(appointment.id, payload);
+          if (!viaApi.ok) {
+            updateAppointment(appointment.id, payload);
+          }
+          toast.success("Запись обновлена");
+        } else {
+          const viaApi = await createAppointmentViaCommandApi(payload);
+          if (!viaApi.ok) {
+            addAppointment(payload);
+          }
+          toast.success("Запись создана");
+        }
 
-      prevStatus.current = status;
+        prevStatus.current = status;
 
-      if (completingAsDoctor) {
+        if (completingAsDoctor) {
+          onOpenChange(false);
+          openDoctorAct(payload.id);
+          toast.info("Заполните акт оказанных услуг");
+          return;
+        }
+
+        if (isAdmin && paymentStatus === "paid") {
+          setSavedAppointmentId(payload.id);
+          setActMode("standard");
+          setExistingActId(undefined);
+          onOpenChange(false);
+          setActModalOpen(true);
+          toast.info("Оформите акт оказанных услуг");
+          return;
+        }
+
         onOpenChange(false);
-        openDoctorAct(payload.id);
-        toast.info("Заполните акт оказанных услуг");
-        return;
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
       }
-
-      if (isAdmin && paymentStatus === "paid") {
-        setSavedAppointmentId(payload.id);
-        setActMode("standard");
-        setExistingActId(undefined);
-        onOpenChange(false);
-        setActModalOpen(true);
-        toast.info("Оформите акт оказанных услуг");
-        return;
-      }
-
-      onOpenChange(false);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+    })();
   };
 
   const showAppointmentForm = open;

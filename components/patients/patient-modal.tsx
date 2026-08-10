@@ -48,6 +48,8 @@ import {
   type PatientDuplicateMatch,
 } from "@/lib/patient-duplicate";
 import { formatDate, generateId, getFullName } from "@/lib/utils";
+import { createAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
+import type { Appointment } from "@/lib/types";
 import {
   beginClinicEditorSession,
   endClinicEditorSession,
@@ -410,7 +412,7 @@ export function PatientModal({
 
     const saveAppointmentFor = (targetPatientId: string) => {
       if (!appointmentFields.enabled) return;
-      const apt = {
+      const apt: Appointment = {
         id: generateId("apt"),
         ...buildAppointmentFromSchedule(
           targetPatientId,
@@ -418,7 +420,10 @@ export function PatientModal({
           fields.diagnosis
         ),
       };
-      addAppointment(apt);
+      void (async () => {
+        const viaApi = await createAppointmentViaCommandApi(apt);
+        if (!viaApi.ok) addAppointment(apt);
+      })();
       updatePatient(targetPatientId, { nextVisitDate: appointmentFields.date });
     };
 
