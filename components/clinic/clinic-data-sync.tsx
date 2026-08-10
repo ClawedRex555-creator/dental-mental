@@ -211,17 +211,19 @@ export function ClinicDataSync() {
       updatedAt?: string | null,
       options?: { preferServer?: boolean; revision?: number | null }
     ) => {
-      void options?.preferServer;
       const local = mergePendingIntoClinicSnapshot(pickPersistedState(useClinicStore.getState()));
       // Никогда не затираем локальных пациентов/записи: даже «Обновить с сервера»
       // должно смержить сущности, которых ещё нет на сервере.
+      // preferServer=true (command API force-pull): сервер побеждает, иначе
+      // открытая модалка оставляла старый status в store.
       const hasLocalOnly = snapshotHasLocalOnlyEntities(local, remote);
       const hasLocalToProtect =
-        isClinicEditorSessionOpen() ||
-        hasUnsavedUserEdits() ||
-        hasPendingClinicRecoveryData() ||
-        hasLocalOnly;
-      const forceRemoteOnly = !hasLocalToProtect;
+        !options?.preferServer &&
+        (isClinicEditorSessionOpen() ||
+          hasUnsavedUserEdits() ||
+          hasPendingClinicRecoveryData() ||
+          hasLocalOnly);
+      const forceRemoteOnly = Boolean(options?.preferServer) || !hasLocalToProtect;
       const snapshot = mergeRemoteSnapshotForPull(remote, local, !forceRemoteOnly);
       let json: string;
       try {

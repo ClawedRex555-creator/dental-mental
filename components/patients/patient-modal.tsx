@@ -427,8 +427,9 @@ export function PatientModal({
         ),
       };
       void (async () => {
-        const viaApi = await createAppointmentViaCommandApi(apt);
-        if (!viaApi.ok) addAppointment(apt);
+        await createAppointmentViaCommandApi(apt);
+        // Локально всегда — иначе UI не увидит запись, пока модалка держит editor session
+        addAppointment(apt);
       })();
       updatePatient(targetPatientId, { nextVisitDate: appointmentFields.date });
     };

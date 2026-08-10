@@ -108,4 +108,30 @@ describe("apply-appointment-commands", () => {
     if (!updated.ok) return;
     assert.equal(updated.alreadyApplied, true);
   });
+
+  it("allows status change without re-checking slot conflicts", () => {
+    const state = baseState();
+    const created = applyCreateAppointmentToPersistedState(state, sampleApt());
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+
+    // Второй приём на тот же слот (как «грязные» данные) — смена статуса первого всё равно ок
+    const withOverlap = {
+      ...created.state,
+      appointments: [
+        ...created.state.appointments,
+        sampleApt({ id: "apt2", status: "scheduled" }),
+      ],
+    };
+    const updated = applyUpdateAppointmentToPersistedState(withOverlap, "apt1", {
+      status: "arrived",
+    });
+    assert.equal(updated.ok, true);
+    if (!updated.ok) return;
+    assert.equal(updated.alreadyApplied, false);
+    assert.equal(
+      updated.state.appointments.find((a) => a.id === "apt1")?.status,
+      "arrived"
+    );
+  });
 });

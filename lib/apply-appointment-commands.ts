@@ -120,14 +120,26 @@ export function applyUpdateAppointmentToPersistedState(
     };
   }
 
-  const conflictError = validateAppointmentSave(
-    state.appointments,
-    next,
-    state.patients,
-    state.doctors
-  );
-  if (conflictError) {
-    return { ok: false, error: conflictError };
+  // Смена только статуса/полей без сдвига слота — не блокируем конфликтом
+  // (иначе «Пришёл»/«Завершён» молча не применялся при старых пересечениях).
+  const slotChanged =
+    current.date !== next.date ||
+    current.startTime !== next.startTime ||
+    current.endTime !== next.endTime ||
+    current.doctorId !== next.doctorId ||
+    current.cabinetId !== next.cabinetId ||
+    current.patientId !== next.patientId;
+
+  if (slotChanged) {
+    const conflictError = validateAppointmentSave(
+      state.appointments,
+      next,
+      state.patients,
+      state.doctors
+    );
+    if (conflictError) {
+      return { ok: false, error: conflictError };
+    }
   }
 
   const appointments = state.appointments.map((a) => (a.id === id ? next : a));

@@ -284,16 +284,14 @@ export function AppointmentModal({
         const completingAsDoctor = isDoctor && wasInProgress && status === "completed";
 
         if (appointment) {
-          const viaApi = await updateAppointmentViaCommandApi(appointment.id, payload);
-          if (!viaApi.ok) {
-            updateAppointment(appointment.id, payload);
-          }
+          await updateAppointmentViaCommandApi(appointment.id, payload);
+          // Всегда пишем в store: иначе при успешном API + открытой модалке
+          // force-pull оставлял старый status (editor session).
+          updateAppointment(appointment.id, payload);
           toast.success("Запись обновлена");
         } else {
-          const viaApi = await createAppointmentViaCommandApi(payload);
-          if (!viaApi.ok) {
-            addAppointment(payload);
-          }
+          await createAppointmentViaCommandApi(payload);
+          addAppointment(payload);
           toast.success("Запись создана");
         }
 
