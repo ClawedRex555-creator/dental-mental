@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import type { DisabilityGroup, Gender, Patient, PatientSource, PatientStatus } from "@/lib/types";
+import type {
+  Appointment,
+  DisabilityGroup,
+  Gender,
+  Patient,
+  PatientSource,
+  PatientStatus,
+} from "@/lib/types";
 import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import {
   PatientAppointmentScheduleSection,
@@ -49,7 +56,6 @@ import {
 } from "@/lib/patient-duplicate";
 import { formatDate, generateId, getFullName } from "@/lib/utils";
 import { createAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
-import type { Appointment } from "@/lib/types";
 import {
   beginClinicEditorSession,
   endClinicEditorSession,
