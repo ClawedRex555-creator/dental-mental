@@ -55,6 +55,16 @@ export async function fetchClinicDataFromServer(): Promise<ClinicDataFetchResult
   if (res.status === 403) {
     return { data: null, updatedAt: null, database: true, forbidden: true };
   }
+  // 5xx / 401: не ретраим долго как «сеть» — иначе UI навечно в «Загрузка…»
+  if (res.status >= 500 || res.status === 401) {
+    const err = new Error(
+      res.status === 401
+        ? "Сессия истекла — войдите снова"
+        : `Сервер не отдал данные клиники (HTTP ${res.status})`
+    );
+    (err as Error & { fatalSync?: boolean }).fatalSync = true;
+    throw err;
+  }
   if (!res.ok) return null;
 
   const json = (await res.json()) as {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import {
+  clearOversizedPendingBuffers,
   clearPendingClinicSnapshot,
   discardStalePendingClinicSnapshot,
   writePendingClinicSnapshot,
@@ -164,5 +165,46 @@ describe("clinic-pending-sync", () => {
 
     assert.ok(localStorage.getItem(pendingKeyForTab("tab-test")));
     assert.ok(localStorage.getItem(pendingKeyForTab("tab-other")));
+  });
+
+  it("writePendingClinicSnapshot strips huge dataUrl payloads", () => {
+    const snapshot = createFreshPersistedState();
+    snapshot.patients = [
+      {
+        id: "p1",
+        firstName: "A",
+        lastName: "B",
+        phone: "+79001112233",
+        birthDate: "1990-01-01",
+        gender: "male",
+        source: "Сайт",
+        status: "active",
+        disability: "not_specified",
+        createdAt: "2026-01-01",
+        balance: 0,
+        totalSpent: 0,
+      },
+    ];
+    snapshot.patientFiles = [
+      {
+        id: "f1",
+        patientId: "p1",
+        name: "big.pdf",
+        type: "document",
+        uploadedAt: "2026-01-01",
+        dataUrl: `data:application/pdf;base64,${"A".repeat(20_000)}`,
+      },
+    ];
+    assert.equal(writePendingClinicSnapshot(snapshot), true);
+    const raw = localStorage.getItem(pendingKeyForTab("tab-test"));
+    assert.ok(raw);
+    assert.equal(raw.includes("data:application/pdf"), false);
+    assert.ok(raw.includes("big.pdf"));
+  });
+
+  it("clearOversizedPendingBuffers removes huge keys", () => {
+    localStorage.setItem("dc-clinic-pending-v1:tstom:huge", "x".repeat(100));
+    assert.equal(clearOversizedPendingBuffers(50), 1);
+    assert.equal(localStorage.getItem("dc-clinic-pending-v1:tstom:huge"), null);
   });
 });

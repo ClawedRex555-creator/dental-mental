@@ -43,11 +43,13 @@ import {
 } from "@/lib/clinic-snapshot-load";
 import {
   clearPendingClinicSnapshot,
+  clearOversizedPendingBuffers,
   discardStalePendingClinicSnapshot,
   hasPendingClinicRecoveryData,
   mergePendingIntoClinicSnapshot,
   PENDING_BUFFER_ERROR,
   readPendingClinicSnapshot,
+  slimSnapshotForPendingBuffer,
   writePendingClinicSnapshot,
 } from "@/lib/clinic-pending-sync";
 import { resolveClinicBootstrap } from "@/lib/clinic-bootstrap.client";
@@ -124,6 +126,21 @@ export function ClinicDataSync() {
     const finishPhase = (phase: ReturnType<typeof useClinicStore.getState>["clinicSyncPhase"]) => {
       if (!cancelled) setClinicSyncPhase(phase);
     };
+
+    /** Fingerprint без тяжёлых dataUrl — единый для lastTrackedSnap */
+    const snapFingerprint = (snapshot: ClinicPersistedState): string =>
+      JSON.stringify(slimSnapshotForPendingBuffer(snapshot));
+
+    /** Если GET/парсинг зависли — не держим UI в «Загрузка…» бесконечно */
+    const loadingWatchdog = window.setTimeout(() => {
+      if (cancelled) return;
+      if (useClinicStore.getState().clinicSyncPhase !== "loading") return;
+      syncReady.current = false;
+      finishPhase("error");
+      setClinicDataSaveError(
+        "Загрузка данных клиники занимает слишком много времени. Обновите страницу (F5) или очистите данные сайта для этого поддомена."
+      );
+    }, 60_000);
 
     /** Есть ли правки пользователя, ещё не подтверждённые успешным PUT */
     const hasUnsavedUserEdits = () => {
@@ -206,14 +223,20 @@ export function ClinicDataSync() {
         hasLocalOnly;
       const forceRemoteOnly = !hasLocalToProtect;
       const snapshot = mergeRemoteSnapshotForPull(remote, local, !forceRemoteOnly);
-      const json = JSON.stringify(snapshot);
+      let json: string;
+      try {
+        json = JSON.stringify(snapshot);
+      } catch {
+        ackServerSnapshotVersion(updatedAt, options?.revision);
+        return;
+      }
       if (json === lastSavedJson.current) {
         ackServerSnapshotVersion(updatedAt, options?.revision);
         return;
       }
       suppressPersistedChange.current = true;
       try {
-        lastTrackedSnap.current = json;
+        lastTrackedSnap.current = snapFingerprint(snapshot);
         if (forceRemoteOnly) {
           lastSavedJson.current = json;
         }
@@ -224,7 +247,7 @@ export function ClinicDataSync() {
         setClinicDataSaveError(null);
         setClinicSaveStatus(keepDirty ? "pending" : "idle");
         if (keepDirty) {
-          persistPendingSnapshot(snapshot);
+          persistPendingSnapshot(snapshot, { optional: true });
           scheduleDeferredFlush();
         } else {
           clearPendingClinicSnapshot();
@@ -276,18 +299,44 @@ export function ClinicDataSync() {
       }, SAVE_DEBOUNCE_MS);
     };
 
+    const pendingFailureHandling = { current: false };
+    /** В DB-режиме pending — best-effort: не блокируем PUT на сервер */
+    const pendingWriteOptional = () => isClinicServerDatabaseMode();
+
     const handlePendingBufferFailure = () => {
-      markSaveFailed(PENDING_BUFFER_ERROR);
-      toast.error(PENDING_BUFFER_ERROR);
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-      void flushSave();
+      if (pendingFailureHandling.current) return;
+      pendingFailureHandling.current = true;
+      try {
+        clearOversizedPendingBuffers(0);
+        if (pendingWriteOptional()) {
+          // Не красная полоса навечно: сразу шлём на сервер без localStorage-буфера
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+          void flushSave({ skipPendingBuffer: true });
+          return;
+        }
+        markSaveFailed(PENDING_BUFFER_ERROR);
+        toast.error(PENDING_BUFFER_ERROR);
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        void flushSave({ skipPendingBuffer: true });
+      } finally {
+        queueMicrotask(() => {
+          pendingFailureHandling.current = false;
+        });
+      }
     };
 
-    const persistPendingSnapshot = (snapshot: ClinicPersistedState): boolean => {
+    const persistPendingSnapshot = (
+      snapshot: ClinicPersistedState,
+      options?: { optional?: boolean }
+    ): boolean => {
+      if (pendingFailureHandling.current) return Boolean(options?.optional);
       const ok = writePendingClinicSnapshot(snapshot);
-      if (!ok) handlePendingBufferFailure();
-      return ok;
+      if (ok) return true;
+      if (options?.optional || pendingWriteOptional()) return false;
+      handlePendingBufferFailure();
+      return false;
     };
 
     const verifySaveAckOnServer = async (expectedUpdatedAt?: string) => {
@@ -404,9 +453,9 @@ export function ClinicDataSync() {
 
     const armSaveBaseline = () => {
       if (cancelled) return;
-      const json = JSON.stringify(pickPersistedState(useClinicStore.getState()));
-      lastSavedJson.current = json;
-      lastTrackedSnap.current = json;
+      const state = pickPersistedState(useClinicStore.getState());
+      lastSavedJson.current = JSON.stringify(state);
+      lastTrackedSnap.current = snapFingerprint(state);
       markInitialLoadDone();
       setClinicDataUnsaved(false);
       setClinicSaveStatus("idle");
@@ -471,6 +520,8 @@ export function ClinicDataSync() {
       keepalive?: boolean;
       /** Для ручного сценария save+pull: конфликт обрабатывается вызывающим кодом */
       skipStaleLogout?: boolean;
+      /** Не требовать запись pending в localStorage (quota / файлы) */
+      skipPendingBuffer?: boolean;
     }): Promise<{ ok: boolean; conflict?: boolean }> => {
       if (!syncReady.current || syncForbidden.current || !canWrite.current || saving.current) {
         return { ok: false };
@@ -490,7 +541,13 @@ export function ClinicDataSync() {
         setClinicSaveStatus("idle");
         return { ok: true };
       }
-      const json = JSON.stringify(snapshot);
+      let json: string;
+      try {
+        json = JSON.stringify(snapshot);
+      } catch {
+        markSaveFailed("Слишком большой объём данных для отправки. Обновите страницу.");
+        return { ok: false };
+      }
       if (json === lastSavedJson.current) {
         setClinicDataUnsaved(false);
         setClinicSaveStatus("idle");
@@ -501,8 +558,9 @@ export function ClinicDataSync() {
       setClinicDataUnsaved(true);
       setClinicDataSaveError(null);
 
-      if (!persistPendingSnapshot(snapshot)) {
-        return { ok: false };
+      if (!options?.skipPendingBuffer) {
+        // Не блокируем PUT, если localStorage переполнен
+        persistPendingSnapshot(snapshot, { optional: true });
       }
 
       saving.current = true;
@@ -524,7 +582,7 @@ export function ClinicDataSync() {
           }
 
           lastSavedJson.current = json;
-          lastTrackedSnap.current = json;
+          lastTrackedSnap.current = snapFingerprint(snapshot);
           if (saveResult.updatedAt) lastServerUpdatedAt.current = saveResult.updatedAt;
           if (typeof saveResult.revision === "number") {
             lastServerRevision.current = saveResult.revision;
@@ -539,11 +597,10 @@ export function ClinicDataSync() {
             }
             markSaveSuccess();
           } else {
-            if (!persistPendingSnapshot(pickPersistedState(useClinicStore.getState()))) {
-              /* flush already scheduled in handlePendingBufferFailure */
-            } else {
-              scheduleDeferredFlush();
-            }
+            persistPendingSnapshot(pickPersistedState(useClinicStore.getState()), {
+              optional: true,
+            });
+            scheduleDeferredFlush();
           }
           notifyClinicDataChanged();
           return { ok: true };
@@ -704,7 +761,7 @@ export function ClinicDataSync() {
       try {
         const json = JSON.stringify(baseline);
         lastSavedJson.current = json;
-        lastTrackedSnap.current = json;
+        lastTrackedSnap.current = snapFingerprint(baseline);
         useClinicStore.getState().replacePersistedState(baseline);
         setClinicDataUnsaved(false);
         setClinicDataSaveError(null);
@@ -717,9 +774,27 @@ export function ClinicDataSync() {
 
     const onPersistedDataChange = () => {
       if (suppressPersistedChange.current) return;
+      if (pendingFailureHandling.current) return;
 
       const snapshot = pickPersistedState(useClinicStore.getState());
-      if (!persistPendingSnapshot(snapshot)) return;
+
+      let snap: string;
+      try {
+        snap = snapFingerprint(snapshot);
+      } catch {
+        // Даже без fingerprint продолжаем flush на сервер
+        if (!saving.current && syncReady.current && canWrite.current && initialLoadDone.current) {
+          scheduleDeferredFlush();
+        }
+        return;
+      }
+
+      // Сначала сравнение: смена clinicSaveStatus / ошибок не должна
+      // снова сериализовать и писать весь snapshot в localStorage.
+      if (snap === lastTrackedSnap.current) return;
+
+      // pending best-effort; сбой quota не должен рвать UI
+      persistPendingSnapshot(snapshot, { optional: true });
 
       if (saving.current) {
         pendingFlushAfterSave.current = true;
@@ -733,10 +808,7 @@ export function ClinicDataSync() {
         return;
       }
 
-      const snap = JSON.stringify(snapshot);
-      if (snap === lastTrackedSnap.current) return;
       lastTrackedSnap.current = snap;
-
       scheduleDeferredFlush();
     };
 
@@ -886,6 +958,7 @@ export function ClinicDataSync() {
 
     void (async () => {
       try {
+        clearOversizedPendingBuffers();
         const bootstrap = await resolveClinicBootstrap();
         const hostSlug = bootstrap.slug;
         const serverUsesDb = bootstrap.usesDb || isClinicServerDatabaseMode();
@@ -981,7 +1054,7 @@ export function ClinicDataSync() {
                   if (saved.updatedAt) lastServerUpdatedAt.current = saved.updatedAt;
                   const json = JSON.stringify(snapshot);
                   lastSavedJson.current = json;
-                  lastTrackedSnap.current = json;
+                  lastTrackedSnap.current = snapFingerprint(snapshot);
                   const currentJson = JSON.stringify(
                     pickPersistedState(useClinicStore.getState())
                   );
@@ -990,7 +1063,9 @@ export function ClinicDataSync() {
                     clearPendingClinicSnapshot();
                     markSaveSuccess();
                   } else {
-                    persistPendingSnapshot(pickPersistedState(useClinicStore.getState()));
+                    persistPendingSnapshot(pickPersistedState(useClinicStore.getState()), {
+                      optional: true,
+                    });
                     flushAfterBaseline.current = true;
                   }
                   notifyClinicDataChanged();
@@ -1046,7 +1121,7 @@ export function ClinicDataSync() {
                 if (saved.updatedAt) lastServerUpdatedAt.current = saved.updatedAt;
                 const json = JSON.stringify(localSnapshot);
                 lastSavedJson.current = json;
-                lastTrackedSnap.current = json;
+                lastTrackedSnap.current = snapFingerprint(localSnapshot);
                 clearPendingClinicSnapshot();
                 markSaveSuccess();
                 notifyClinicDataChanged();
@@ -1065,6 +1140,7 @@ export function ClinicDataSync() {
         syncReady.current = false;
         finishPhase("error");
       } finally {
+        window.clearTimeout(loadingWatchdog);
         if (
           !cancelled &&
           useClinicStore.getState().clinicSyncPhase === "loading"
@@ -1085,6 +1161,7 @@ export function ClinicDataSync() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingWatchdog);
       registerClinicDataFlush(null);
       registerClinicDataFlushAsync(null);
       registerSaveThenPullClinicData(null);

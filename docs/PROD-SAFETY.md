@@ -58,6 +58,16 @@ bash scripts/prod-observe-checklist.sh
 - Точечно (телефоны/PHI): `bash scripts/restore-patient-phones-from-backup.sh backups/….sql --apply`
 - Полный restore БД — только при катастрофе и с подтверждением `yes`
 
+## Sync / localStorage (elanar-класс сбоев)
+
+Симптом: «Загрузка данных с сервера…» или «Не удалось записать буфер…», стек `Maximum call stack`.
+
+Причина: запись полного snapshot (с `patientFiles.dataUrl`) в `localStorage` pending при каждом `setClinicSaveStatus`.
+
+Защита в коде: pending best-effort (не блокирует PUT), slim dataUrl, очистка oversized pending, fingerprint без файлов.
+
+После деплоя при залипании: очистить данные сайта для поддомена или «Обновить страницу» в красной полоске (чистит `dc-clinic-pending*`).
+
 ## Волна 3 платформы (отложено)
 
 Не стартовать в том же деплое, что command pay API; только по запросу клиники / spare capacity:

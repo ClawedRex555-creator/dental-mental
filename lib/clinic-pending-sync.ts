@@ -139,20 +139,131 @@ export function readPendingClinicSnapshot(): ClinicPersistedState | null {
   }
 }
 
+/**
+ * Убрать тяжёлые data URL из буфера — иначе JSON.stringify/localStorage
+ * на клиниках с файлами даёт RangeError (stack) или QuotaExceeded и вешает sync.
+ */
+export function slimSnapshotForPendingBuffer(
+  snapshot: ClinicPersistedState
+): ClinicPersistedState {
+  const slimFiles = snapshot.patientFiles.some(
+    (f) => typeof f.dataUrl === "string" && f.dataUrl.length > 8_000
+  );
+  const slimLegal = snapshot.legalDocuments.some(
+    (d) => typeof d.fileDataUrl === "string" && d.fileDataUrl.length > 8_000
+  );
+  if (!slimFiles && !slimLegal) return snapshot;
+  return {
+    ...snapshot,
+    patientFiles: slimFiles
+      ? snapshot.patientFiles.map((f) => {
+          if (typeof f.dataUrl !== "string" || f.dataUrl.length <= 8_000) return f;
+          const { dataUrl: _drop, ...rest } = f;
+          return rest;
+        })
+      : snapshot.patientFiles,
+    legalDocuments: slimLegal
+      ? snapshot.legalDocuments.map((d) => {
+          if (typeof d.fileDataUrl !== "string" || d.fileDataUrl.length <= 8_000) {
+            return d;
+          }
+          const { fileDataUrl: _drop, ...rest } = d;
+          return rest;
+        })
+      : snapshot.legalDocuments,
+  };
+}
+
+/** Удалить все pending-ключи клиники (все вкладки) — освобождение quota. */
+export function clearAllPendingForScope(slug?: string | null): void {
+  const storage = pendingStorage();
+  if (!storage) return;
+  const scope = scopeSlug(slug);
+  const prefix = `${PENDING_KEY_PREFIX}:${scope}:`;
+  const legacy = legacyPendingKey(slug);
+  const toRemove: string[] = [legacy];
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key && key.startsWith(prefix)) toRemove.push(key);
+    }
+  } catch {
+    /* ignore */
+  }
+  for (const key of toRemove) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    sessionStorage.removeItem(LEGACY_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Выкинуть слишком большие pending (после сбоев elanar и т.п.). */
+export function clearOversizedPendingBuffers(maxChars = 1_500_000): number {
+  const storage = pendingStorage();
+  if (!storage) return 0;
+  const toRemove: string[] = [];
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key || !key.startsWith(PENDING_KEY_PREFIX)) continue;
+      const val = storage.getItem(key);
+      if (val && val.length > maxChars) toRemove.push(key);
+    }
+  } catch {
+    return 0;
+  }
+  for (const key of toRemove) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+  return toRemove.length;
+}
+
 export function writePendingClinicSnapshot(snapshot: ClinicPersistedState): boolean {
   if (!hasClinicData(snapshot)) return true;
+  const storage = pendingStorage();
+  if (!storage) return typeof window === "undefined";
+
+  let payload: string;
   try {
-    const storage = pendingStorage();
-    if (!storage) return typeof window === "undefined";
-    storage.setItem(pendingStorageKey(), JSON.stringify(snapshot));
+    payload = JSON.stringify(slimSnapshotForPendingBuffer(snapshot));
+  } catch {
+    return false;
+  }
+
+  const key = pendingStorageKey();
+  const write = () => {
+    storage.setItem(key, payload);
     try {
       sessionStorage.removeItem(LEGACY_SESSION_KEY);
     } catch {
       /* ignore */
     }
+  };
+
+  try {
+    write();
     return true;
   } catch {
-    return false;
+    // QuotaExceeded: освобождаем старые буферы и пробуем ещё раз
+    clearOversizedPendingBuffers(0);
+    clearAllPendingForScope();
+    try {
+      write();
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

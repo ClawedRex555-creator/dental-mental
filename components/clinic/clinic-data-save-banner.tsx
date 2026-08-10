@@ -91,11 +91,22 @@ export function ClinicDataSaveBanner() {
             size="sm"
             disabled={syncActionLoading}
             className="h-8 bg-red-700 text-white hover:bg-red-800"
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              try {
+                const keys: string[] = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                  const k = localStorage.key(i);
+                  if (k && k.startsWith("dc-clinic-pending")) keys.push(k);
+                }
+                for (const k of keys) localStorage.removeItem(k);
+              } catch {
+                /* ignore */
+              }
+              window.location.reload();
+            }}
           >
             Обновить страницу
-          </Button>
-        </span>
+          </Button>        </span>
       </div>
     );
   }
