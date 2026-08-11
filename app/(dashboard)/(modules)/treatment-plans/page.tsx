@@ -18,7 +18,11 @@ import { logAuditClient } from "@/lib/audit-client";
 import { canDeleteTreatmentPlans } from "@/lib/rbac";
 import { treatmentPlansForViewer } from "@/lib/treatment-plan-access";
 import { normalizePlanItemQuantity, planItemLineTotal } from "@/lib/treatment-plan-item-utils";
-import { useClinicStore } from "@/store/useClinicStore";
+import { markClinicSyncedAfterCommand } from "@/lib/clinic-data-sync.client";
+import {
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import type { PaymentMethod, TreatmentPlan, WorkAct } from "@/lib/types";
 
 export default function TreatmentPlansPage() {
@@ -268,9 +272,16 @@ export default function TreatmentPlansPage() {
               method,
               amount,
             });
-            if (!viaApi.ok && !payWorkAct(actId, method, amount)) {
-              toast.error(viaApi.error ?? "Не удалось провести оплату");
-              return;
+            if (!viaApi.ok) {
+              if (!payWorkAct(actId, method, amount)) {
+                toast.error(viaApi.error ?? "Не удалось провести оплату");
+                return;
+              }
+            } else {
+              runWithoutClinicFlush(() => {
+                payWorkAct(actId, method, amount);
+              });
+              markClinicSyncedAfterCommand(viaApi.updatedAt, viaApi.revision);
             }
             toast.success("План лечения оплачен");
             setPayAct(null);

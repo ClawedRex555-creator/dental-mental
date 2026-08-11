@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { applyUpdateAppointmentToPersistedState } from "@/lib/apply-appointment-commands";
 import {
   APPOINTMENT_CMD_HEADERS,
-  loadClinicSnapshotForCommand,
-  parseExpectedCas,
   requireAppointmentCommandSession,
   saveAppointmentCommandResult,
 } from "@/lib/clinic-appointment-command.server";
@@ -62,18 +60,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const snap = await loadClinicSnapshotForCommand(auth.clinicId);
-  if (!snap.ok) return snap.response;
-
-  const applied = applyUpdateAppointmentToPersistedState(
-    snap.existing.data,
-    appointmentId,
-    patch
-  );
-  return saveAppointmentCommandResult(
-    auth.clinicId,
-    applied,
-    parseExpectedCas(body),
-    snap.existing
+  return saveAppointmentCommandResult(auth.clinicId, (state) =>
+    applyUpdateAppointmentToPersistedState(state, appointmentId, patch)
   );
 }

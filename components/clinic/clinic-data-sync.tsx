@@ -27,12 +27,15 @@ import {
 import {
   isClinicEditorSessionOpen,
   notifyClinicDataChanged,
+  registerAckClinicServerVersion,
   registerClinicDataFlush,
   registerClinicDataFlushAsync,
   registerClinicDataPull,
   registerDiscardLocalEditsAndPull,
   registerForcePullClinicDataFromServer,
+  registerMarkClinicSyncedAfterCommand,
   registerSaveThenPullClinicData,
+  setCachedClinicCas,
   subscribeClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
 import {
@@ -57,7 +60,11 @@ import { CLINIC_SAVE_RETRY_DELAYS_MS, sleep } from "@/lib/clinic-save-retry";
 import { clinicSaveErrorMessage } from "@/lib/clinic-save-feedback";
 import { CLINIC_STORAGE_KEY } from "@/lib/initial-clinic-data";
 import { ensureClinicStorageScope } from "@/lib/clinic-storage-scope";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  isClinicCommandOptimisticUpdate,
+  onClinicCommandMutationEnded,
+  useClinicStore,
+} from "@/store/useClinicStore";
 
 const SAVE_DEBOUNCE_MS = 400;
 const PERIODIC_FLUSH_MS = 60_000;
@@ -105,8 +112,8 @@ export function ClinicDataSync() {
   const pullAfterCooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushAfterBaseline = useRef(false);
-  const autoSaveThenPullRunning = useRef(false);
-  const lastAutoSaveThenPullAt = useRef(0);
+  const autoResolveServerNewerRunning = useRef(false);
+  const lastAutoResolveServerNewerAt = useRef(0);
   const pendingFlushAfterSave = useRef(false);
   const pendingPullAfterSave = useRef(false);
   const pendingPullAfterPull = useRef(false);
@@ -161,14 +168,19 @@ export function ClinicDataSync() {
       return JSON.stringify(pending) !== lastSavedJson.current;
     };
 
+    /** Очередь локальных правок, которые нужно сначала отправить */
+    const hasLocalSyncQueue = () => {
+      if (hasUnsavedUserEdits() || hasPendingClinicRecoveryData()) return true;
+      const status = useClinicStore.getState().clinicSaveStatus;
+      if (status === "pending" || status === "saving" || status === "failed") return true;
+      return Boolean(useClinicStore.getState().clinicDataUnsaved);
+    };
+
     /** Любые локальные данные, которые опасны потерять при «обновить с сервера» */
     const hasProtectableLocalData = (remote?: ClinicPersistedState | null) => {
       // Открытая форма нового пациента/записи — не трогаем store фоновым pull
       if (isClinicEditorSessionOpen()) return true;
-      if (hasUnsavedUserEdits() || hasPendingClinicRecoveryData()) return true;
-      const status = useClinicStore.getState().clinicSaveStatus;
-      if (status === "pending" || status === "saving") return true;
-      if (useClinicStore.getState().clinicDataUnsaved) return true;
+      if (hasLocalSyncQueue()) return true;
       if (!remote) return false;
       const local = mergePendingIntoClinicSnapshot(
         pickPersistedState(useClinicStore.getState())
@@ -202,6 +214,7 @@ export function ClinicDataSync() {
       if (typeof revision === "number" && Number.isFinite(revision)) {
         lastServerRevision.current = revision;
       }
+      setCachedClinicCas(updatedAt, revision);
       staleSignalCount.current = 0;
       setClinicServerNewerAvailable(false);
     };
@@ -358,6 +371,11 @@ export function ClinicDataSync() {
       allowApplyDespitePending?: boolean;
       allowDuringSaveCooldown?: boolean;
     }) => {
+      // Пока идёт command API (смена статуса) — не затираем optimistic store.
+      if (isClinicCommandOptimisticUpdate()) {
+        pendingPullAfterPull.current = true;
+        return;
+      }
       const now = Date.now();
       if (!options?.allowDuringSaveCooldown && now < saveAckCooldownUntil.current) {
         const waitMs = saveAckCooldownUntil.current - now + 25;
@@ -386,7 +404,7 @@ export function ClinicDataSync() {
           if (!meta || cancelled || meta.forbidden) return;
           if (serverSnapshotIsNewer(meta.updatedAt) && hasProtectableLocalData()) {
             setClinicServerNewerAvailable(true);
-            maybeAutoSaveThenPull();
+            maybeAutoResolveServerNewer();
             if (
               maybeAutoReloadStaleTab(
                 "Вкладка устарела относительно сервера. Перезагружаем, чтобы избежать рассинхронизации."
@@ -417,7 +435,7 @@ export function ClinicDataSync() {
 
         if (!userForcedPull && hasProtectableLocalData(remote.data)) {
           setClinicServerNewerAvailable(true);
-          maybeAutoSaveThenPull();
+          maybeAutoResolveServerNewer();
           if (
             maybeAutoReloadStaleTab(
               "Обнаружены старые данные вкладки. Перезагружаем для синхронизации."
@@ -714,13 +732,15 @@ export function ClinicDataSync() {
 
       if (result.ok && successToast) {
         toast.success("Изменения отправлены, данные обновлены");
-      } else if (result.conflict && manual) {
+      } else if (result.conflict) {
         markSaveFailed(
-          "Данные на сервере новее (другое устройство или вкладка). Нажмите «Отправить и обновить» или «Отменить мои правки» в жёлтой полоске сверху — иначе запись/пациент могут не сохраниться."
+          "Данные на сервере новее (другое устройство или вкладка). Нажмите «Повторить отправку» или обновите страницу (F5) — иначе запись/пациент могут не сохраниться."
         );
-        toast.error(
-          "Конфликт синхронизации: на сервере уже есть более новые данные. Используйте кнопки в жёлтой полоске сверху или обновите страницу (F5), затем повторите действие."
-        );
+        if (manual) {
+          toast.error(
+            "Конфликт синхронизации: на сервере уже есть более новые данные. Нажмите «Повторить отправку» или обновите страницу (F5), затем повторите действие."
+          );
+        }
       }
 
       // 4) Подтянуть актуальный снимок после попытки отправки
@@ -737,18 +757,32 @@ export function ClinicDataSync() {
       return result;
     };
 
-    const maybeAutoSaveThenPull = () => {
-      if (autoSaveThenPullRunning.current) return;
+    /** Тихий авто-resolve: очередь → save→pull, иначе force-pull (статусы с сервера сразу) */
+    const maybeAutoResolveServerNewer = () => {
+      if (isClinicCommandOptimisticUpdate()) return;
+      if (autoResolveServerNewerRunning.current) return;
       const now = Date.now();
-      if (now - lastAutoSaveThenPullAt.current < AUTO_SAVE_THEN_PULL_COOLDOWN_MS) return;
-      if (!hasUnsavedUserEdits()) return;
-      autoSaveThenPullRunning.current = true;
-      lastAutoSaveThenPullAt.current = now;
+      if (now - lastAutoResolveServerNewerAt.current < AUTO_SAVE_THEN_PULL_COOLDOWN_MS) {
+        return;
+      }
+      const queue = hasLocalSyncQueue();
+
+      autoResolveServerNewerRunning.current = true;
+      lastAutoResolveServerNewerAt.current = now;
       void (async () => {
         try {
-          await runSaveThenPull({ manual: false, successToast: false });
+          if (queue) {
+            await runSaveThenPull({ manual: false, successToast: false });
+          } else {
+            // preferServer: иначе merge оставлял старый status из локального store
+            await pullRemoteSnapshot({
+              force: true,
+              allowApplyDespitePending: true,
+              allowDuringSaveCooldown: true,
+            });
+          }
         } finally {
-          autoSaveThenPullRunning.current = false;
+          autoResolveServerNewerRunning.current = false;
         }
       })();
     };
@@ -794,6 +828,13 @@ export function ClinicDataSync() {
       // Сначала сравнение: смена clinicSaveStatus / ошибок не должна
       // снова сериализовать и писать весь snapshot в localStorage.
       if (snap === lastTrackedSnap.current) return;
+
+      // Оптимистичный update перед command API — не ставим PUT в очередь
+      // (autoMerge на полном snapshot откатывал только что записанный статус).
+      if (isClinicCommandOptimisticUpdate()) {
+        lastTrackedSnap.current = snap;
+        return;
+      }
 
       // pending best-effort; сбой quota не должен рвать UI
       persistPendingSnapshot(snapshot, { optional: true });
@@ -889,6 +930,29 @@ export function ClinicDataSync() {
     };
     schedulePullTick();
 
+    registerAckClinicServerVersion((updatedAt, revision) => {
+      ackServerSnapshotVersion(updatedAt, revision);
+    });
+
+    registerMarkClinicSyncedAfterCommand((updatedAt, revision) => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const snapshot = pickPersistedState(useClinicStore.getState());
+      try {
+        lastSavedJson.current = JSON.stringify(snapshot);
+        lastTrackedSnap.current = snapFingerprint(snapshot);
+      } catch {
+        /* quota / circular — всё равно ack версии */
+      }
+      ackServerSnapshotVersion(updatedAt, revision);
+      setClinicDataUnsaved(false);
+      setClinicDataSaveError(null);
+      setClinicSaveStatus("idle");
+      clearPendingClinicSnapshot();
+    });
+
     registerClinicDataFlush(() => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
@@ -912,8 +976,17 @@ export function ClinicDataSync() {
     registerDiscardLocalEditsAndPull(discardLocalEditsAndPull);
 
     registerForcePullClinicDataFromServer(async (options) => {
-      // Форма открыта, но store ещё не меняли — pull с merge, не save-then-pull
-      if (isClinicEditorSessionOpen() && !hasUnsavedUserEdits() && !hasPendingClinicRecoveryData()) {
+      if (isClinicCommandOptimisticUpdate()) {
+        pendingPullAfterPull.current = true;
+        return;
+      }
+      // Command API (allowApplyDespitePending): всегда preferServer-pull.
+      // Иначе save→pull успевал отправить в store СТАРЫЙ status и затирал сервер.
+      if (options?.allowApplyDespitePending) {
+        if (saveTimer.current) {
+          clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+        }
         await pullRemoteSnapshot({
           force: true,
           allowApplyDespitePending: true,
@@ -922,7 +995,7 @@ export function ClinicDataSync() {
         });
         return;
       }
-      // Нельзя сбрасывать буфер и затирать экран, если есть локальные пациенты/записи
+      // Ручное обновление: сначала сохранить локальную очередь, потом pull
       if (hasProtectableLocalData()) {
         toast.info("Сначала отправляем ваши изменения, затем подтянем данные с сервера");
         await runSaveThenPull({ manual: true, successToast: true });
@@ -1158,12 +1231,34 @@ export function ClinicDataSync() {
 
     const unsub = useClinicStore.subscribe(onPersistedDataChange);
     const unsubBroadcast = subscribeClinicDataChanged(() => {
-      void pullRemoteSnapshot({ allowDuringSaveCooldown: true });
+      // Другая вкладка уже сохранила (в т.ч. статус через command API) — подтянуть сразу
+      if (!hasLocalSyncQueue()) {
+        void pullRemoteSnapshot({
+          force: true,
+          allowApplyDespitePending: true,
+          allowDuringSaveCooldown: true,
+        });
+        return;
+      }
+      maybeAutoResolveServerNewer();
+    });
+    const unsubCommandMutationEnded = onClinicCommandMutationEnded(() => {
+      if (pendingPullAfterPull.current) {
+        pendingPullAfterPull.current = false;
+        void pullRemoteSnapshot({
+          force: true,
+          allowApplyDespitePending: true,
+          allowDuringSaveCooldown: true,
+        });
+      }
     });
 
     return () => {
       cancelled = true;
       window.clearTimeout(loadingWatchdog);
+      registerAckClinicServerVersion(null);
+      registerMarkClinicSyncedAfterCommand(null);
+      unsubCommandMutationEnded();
       registerClinicDataFlush(null);
       registerClinicDataFlushAsync(null);
       registerSaveThenPullClinicData(null);

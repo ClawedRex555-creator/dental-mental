@@ -1,38 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import {
-  requestClinicDataFlush,
-  requestDiscardLocalEditsAndPull,
-  requestForcePullClinicDataFromServer,
-  requestSaveThenPullClinicData,
-} from "@/lib/clinic-data-sync.client";
+import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 import { useClinicStore } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
 
+/** Только критичные состояния: загрузка, нет доступа, offline, ошибка сохранения, read-only. */
 export function ClinicDataSaveBanner() {
   const phase = useClinicStore((s) => s.clinicSyncPhase);
   const saveStatus = useClinicStore((s) => s.clinicSaveStatus);
-  const serverNewer = useClinicStore((s) => s.clinicServerNewerAvailable);
   const saveError = useClinicStore((s) => s.clinicDataSaveError);
-  const clinicDataUnsaved = useClinicStore((s) => s.clinicDataUnsaved);
   const [syncActionLoading, setSyncActionLoading] = useState(false);
 
-  const runSyncAction = async (action: () => Promise<void>) => {
+  const retrySave = () => {
     if (syncActionLoading) return;
     setSyncActionLoading(true);
     try {
-      await action();
+      const store = useClinicStore.getState();
+      store.setClinicDataSaveError(null);
+      store.setClinicSaveStatus("pending");
+      requestClinicDataFlush();
     } finally {
       setSyncActionLoading(false);
     }
-  };
-
-  const retrySave = () => {
-    const store = useClinicStore.getState();
-    store.setClinicDataSaveError(null);
-    store.setClinicSaveStatus("pending");
-    requestClinicDataFlush();
   };
 
   if (phase === "loading") {
@@ -106,79 +96,7 @@ export function ClinicDataSaveBanner() {
             }}
           >
             Обновить страницу
-          </Button>        </span>
-      </div>
-    );
-  }
-
-  if (
-    serverNewer &&
-    (phase === "ready" || phase === "read_only")
-  ) {
-    const hasLocalQueue =
-      saveStatus === "pending" ||
-      saveStatus === "saving" ||
-      clinicDataUnsaved ||
-      Boolean(saveError);
-    return (
-      <div
-        role="alert"
-        className="relative z-30 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-      >
-        <span>
-          На сервере более новые данные с другого устройства или вкладки.
-          {hasLocalQueue
-            ? " Не закрывайте вкладку: сначала «Отправить и обновить» (сохранит ваши записи/пациентов), иначе правки могут не уйти на сервер."
-            : " Нажмите «Обновить с сервера», чтобы увидеть актуальное расписание и карточки."}
-        </span>
-        <span className="flex flex-wrap items-center justify-center gap-2">
-          {hasLocalQueue ? (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={syncActionLoading}
-                className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
-                onClick={() => void runSyncAction(requestSaveThenPullClinicData)}
-              >
-                {syncActionLoading ? "Отправка…" : "Отправить и обновить"}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={syncActionLoading}
-                className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
-                onClick={() =>
-                  void runSyncAction(() =>
-                    requestDiscardLocalEditsAndPull({ force: true })
-                  )
-                }
-              >
-                Отменить мои правки
-              </Button>
-            </>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={syncActionLoading}
-              className="h-8 border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
-              onClick={() =>
-                void runSyncAction(() =>
-                  requestForcePullClinicDataFromServer({
-                    force: true,
-                    allowApplyDespitePending: true,
-                    allowDuringSaveCooldown: true,
-                  })
-                )
-              }
-            >
-              {syncActionLoading ? "Обновление…" : "Обновить с сервера"}
-            </Button>
-          )}
+          </Button>
         </span>
       </div>
     );
@@ -192,30 +110,6 @@ export function ClinicDataSaveBanner() {
       >
         Роль «бухгалтер»: просмотр финансовых данных. Пациентов и приёмы вносите под владельцем,
         администратором, врачом или ассистентом — иначе изменения не попадут на сервер.
-      </div>
-    );
-  }
-
-  if (phase === "ready" && saveStatus === "saving") {
-    return (
-      <div className="border-b border-teal-100 bg-teal-50/80 px-4 py-1.5 text-center text-xs text-teal-800 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-200">
-        Отправка на сервер… Дождитесь подтверждения.
-      </div>
-    );
-  }
-
-  if (phase === "ready" && saveStatus === "pending") {
-    return (
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-center text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
-        Изменения ждут отправки на сервер…
-      </div>
-    );
-  }
-
-  if (phase === "ready" && saveStatus === "saved") {
-    return (
-      <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-1.5 text-center text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-        Сохранено на сервере — другие устройства увидят изменения через несколько секунд.
       </div>
     );
   }

@@ -989,8 +989,16 @@ export function mergeClinicSnapshotWithLocal(
     ...patientsMerged,
     items: mergePatientsPreferLocalPreservePhi(remote.patients, patientsMerged.items),
   };
+  // Записи: сервер побеждает по общим id (command API / статусы с другого устройства),
+  // локальные ещё не попавшие на сервер — сохраняем.
   const appointments = mergeEntityListWithTombstones(
-    mergeFinancialEntityList(remote.appointments, local.appointments),
+    (() => {
+      const remoteIds = new Set(remote.appointments.map((a) => a.id));
+      const localOnly = local.appointments.filter((a) => !remoteIds.has(a.id));
+      return localOnly.length
+        ? [...remote.appointments, ...localOnly]
+        : remote.appointments;
+    })(),
     [],
     remote.deletedAppointmentIds,
     local.deletedAppointmentIds

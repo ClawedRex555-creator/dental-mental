@@ -20,13 +20,18 @@ import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
 import { canViewPatientPhone } from "@/lib/rbac";
 import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import {
   beginClinicEditorSession,
   endClinicEditorSession,
+  markClinicSyncedAfterCommand,
 } from "@/lib/clinic-data-sync.client";
 import {
   createAppointmentViaCommandApi,
@@ -246,7 +251,6 @@ export function AppointmentModal({
     }
 
     const endTime = calcEndTime(startTime, durationMinutes);
-    const preservePaidStatus = appointment?.paymentStatus === "paid";
     const payload: Appointment = {
       id: appointment?.id ?? generateId("apt"),
       patientId,
@@ -265,9 +269,14 @@ export function AppointmentModal({
       status,
       complaints: complaints.trim(),
       reason: complaints.trim(),
+      comment: appointment?.comment,
       price: appointment?.price ?? 0,
-      paymentStatus: preservePaidStatus ? "paid" : "pending",
+      // Не сбрасываем partial/refunded при смене статуса
+      paymentStatus: appointment?.paymentStatus ?? "pending",
       workActId: appointment?.workActId,
+      isOtherClinicVisit: appointment?.isOtherClinicVisit,
+      externalClaimId: appointment?.externalClaimId,
+      externalSource: appointment?.externalSource,
     };
 
     const conflictError = validateAppointmentSave(appointments, payload, patients, doctors);
@@ -284,37 +293,65 @@ export function AppointmentModal({
         const completingAsDoctor = isDoctor && wasInProgress && status === "completed";
 
         if (appointment) {
-          await updateAppointmentViaCommandApi(appointment.id, payload);
-          // Всегда пишем в store: иначе при успешном API + открытой модалке
-          // force-pull оставлял старый status (editor session).
-          updateAppointment(appointment.id, payload);
-          toast.success("Запись обновлена");
-        } else {
-          await createAppointmentViaCommandApi(payload);
-          addAppointment(payload);
-          toast.success("Запись создана");
+          const previous = appointment;
+          // На всё время await: блокируем фоновый pull (иначе откатывал статус).
+          beginClinicCommandMutation();
+          try {
+            updateAppointment(appointment.id, payload, { skipFlush: true });
+            const apiResult = await updateAppointmentViaCommandApi(
+              appointment.id,
+              payload
+            );
+            if (!apiResult.ok) {
+              updateAppointment(previous.id, previous, { skipFlush: true });
+              toast.error(apiResult.error ?? "Не удалось сохранить запись на сервере");
+              return;
+            }
+            // Снова применяем payload: store мог не совпасть с сервером из‑за гонок.
+            updateAppointment(appointment.id, payload, { skipFlush: true });
+            markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+            prevStatus.current = status;
+            toast.success("Сохранено на сервере");
+
+            if (completingAsDoctor) {
+              onOpenChange(false);
+              openDoctorAct(payload.id);
+              toast.info("Заполните акт оказанных услуг");
+              return;
+            }
+
+            if (isAdmin && paymentStatus === "paid") {
+              setSavedAppointmentId(payload.id);
+              setActMode("standard");
+              setExistingActId(undefined);
+              onOpenChange(false);
+              setActModalOpen(true);
+              toast.info("Оформите акт оказанных услуг");
+              return;
+            }
+
+            onOpenChange(false);
+            return;
+          } finally {
+            endClinicCommandMutation();
+          }
         }
 
-        prevStatus.current = status;
-
-        if (completingAsDoctor) {
+        beginClinicCommandMutation();
+        try {
+          const apiResult = await createAppointmentViaCommandApi(payload);
+          if (!apiResult.ok) {
+            toast.error(apiResult.error ?? "Не удалось создать запись на сервере");
+            return;
+          }
+          addAppointment(payload, { skipFlush: true });
+          markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+          prevStatus.current = status;
+          toast.success("Сохранено на сервере");
           onOpenChange(false);
-          openDoctorAct(payload.id);
-          toast.info("Заполните акт оказанных услуг");
-          return;
+        } finally {
+          endClinicCommandMutation();
         }
-
-        if (isAdmin && paymentStatus === "paid") {
-          setSavedAppointmentId(payload.id);
-          setActMode("standard");
-          setExistingActId(undefined);
-          onOpenChange(false);
-          setActModalOpen(true);
-          toast.info("Оформите акт оказанных услуг");
-          return;
-        }
-
-        onOpenChange(false);
       } finally {
         savingRef.current = false;
         setSaving(false);

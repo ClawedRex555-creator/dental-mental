@@ -2,6 +2,77 @@
 
 export const CLINIC_DATA_SYNC_CHANNEL = "dc-clinic-data-sync";
 
+export type ClinicSyncCas = {
+  updatedAt: string | null;
+  revision: number | null;
+};
+
+/** Последний известный CAS — без лишнего GET ?meta=1 перед command API */
+let cachedClinicCas: ClinicSyncCas = { updatedAt: null, revision: null };
+let ackClinicServerVersionHandler:
+  | ((updatedAt: string | null, revision: number | null) => void)
+  | null = null;
+
+export function getCachedClinicCas(): ClinicSyncCas {
+  return cachedClinicCas;
+}
+
+export function setCachedClinicCas(
+  updatedAt?: string | null,
+  revision?: number | null
+): void {
+  if (updatedAt) cachedClinicCas = { ...cachedClinicCas, updatedAt };
+  if (typeof revision === "number" && Number.isFinite(revision)) {
+    cachedClinicCas = { ...cachedClinicCas, revision };
+  }
+}
+
+export function registerAckClinicServerVersion(
+  fn: ((updatedAt: string | null, revision: number | null) => void) | null
+): void {
+  ackClinicServerVersionHandler = fn;
+}
+
+/** Подтвердить версию сервера без полного GET snapshot (после command API). */
+export function ackClinicServerVersion(
+  updatedAt?: string | null,
+  revision?: number | null
+): void {
+  setCachedClinicCas(updatedAt, revision);
+  ackClinicServerVersionHandler?.(
+    updatedAt ?? cachedClinicCas.updatedAt,
+    typeof revision === "number" ? revision : cachedClinicCas.revision
+  );
+}
+
+let markClinicSyncedAfterCommandHandler:
+  | ((updatedAt: string | null, revision: number | null) => void)
+  | null = null;
+
+export function registerMarkClinicSyncedAfterCommand(
+  fn: ((updatedAt: string | null, revision: number | null) => void) | null
+): void {
+  markClinicSyncedAfterCommandHandler = fn;
+}
+
+/**
+ * После успешного command API: ack CAS + baseline = текущий store.
+ * Иначе debounce PUT с autoMerge может откатить только что записанный статус.
+ */
+export function markClinicSyncedAfterCommand(
+  updatedAt?: string | null,
+  revision?: number | null
+): void {
+  setCachedClinicCas(updatedAt, revision);
+  const at = updatedAt ?? cachedClinicCas.updatedAt;
+  const rev = typeof revision === "number" ? revision : cachedClinicCas.revision;
+  if (markClinicSyncedAfterCommandHandler) {
+    markClinicSyncedAfterCommandHandler(at, rev);
+    return;
+  }
+  ackClinicServerVersionHandler?.(at, rev);
+}
+
 /**
  * Открытые модалки (пациент, запись): пока редактируют — не применяем фоновый pull
  * (иначе store меняет doctors/cabinets и формы «обнуляются»).

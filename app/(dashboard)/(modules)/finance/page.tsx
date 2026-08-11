@@ -40,9 +40,15 @@ import { formatCurrency, formatDate, generateId, getFullName } from "@/lib/utils
 import { resolveInvoiceDisplay } from "@/lib/invoice-from-act";
 import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
 import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
-import { requestClinicDataPull } from "@/lib/clinic-data-sync.client";
+import {
+  markClinicSyncedAfterCommand,
+  requestClinicDataPull,
+} from "@/lib/clinic-data-sync.client";
 import { payWorkActViaCommandApi } from "@/lib/clinic-work-act-pay.client";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 
 type FinanceTab = "payments" | "invoices" | "acts" | "salaries" | "expenses" | "prepayments";
 type Period = "day" | "week" | "month" | "custom";
@@ -1587,11 +1593,17 @@ export default function FinancePage() {
               amount,
             });
             if (!viaApi.ok) {
-              // Fallback: локальный снимок + обычный sync flush
+              // Fallback только при сбое API: локальный снимок + обычный sync flush
               if (!payWorkAct(actId, method, amount)) {
                 toast.error(viaApi.error ?? "Не удалось провести оплату");
                 return;
               }
+            } else {
+              // Сначала store, потом baseline — иначе CAS уезжает, а UI остаётся «не оплачен»
+              runWithoutClinicFlush(() => {
+                payWorkAct(actId, method, amount);
+              });
+              markClinicSyncedAfterCommand(viaApi.updatedAt, viaApi.revision);
             }
 
             toast.success(

@@ -59,7 +59,9 @@ import { createAppointmentViaCommandApi } from "@/lib/clinic-appointment.client"
 import {
   beginClinicEditorSession,
   endClinicEditorSession,
+  markClinicSyncedAfterCommand,
 } from "@/lib/clinic-data-sync.client";
+import { runWithoutClinicFlush } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -427,9 +429,18 @@ export function PatientModal({
         ),
       };
       void (async () => {
-        await createAppointmentViaCommandApi(apt);
+        const apiResult = await createAppointmentViaCommandApi(apt);
+        if (!apiResult.ok) {
+          toast.error(
+            apiResult.error ?? "Пациент сохранён, но запись на приём не создалась"
+          );
+          return;
+        }
         // Локально всегда — иначе UI не увидит запись, пока модалка держит editor session
-        addAppointment(apt);
+        runWithoutClinicFlush(() => {
+          addAppointment(apt, { skipFlush: true });
+        });
+        markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
       })();
       updatePatient(targetPatientId, { nextVisitDate: appointmentFields.date });
     };

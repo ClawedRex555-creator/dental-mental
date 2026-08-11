@@ -40,7 +40,58 @@ import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 
 /** Один flush после цепочки set() в том же тике (акт + счёт + медзапись) */
 let clinicFlushMicrotask = false;
+/**
+ * Пока >0:
+ * - store-изменения не ставят полный PUT в очередь;
+ * - фоновый pull/force-pull не применяется (иначе откатывает статус до ответа command API).
+ */
+let clinicCommandOptimisticDepth = 0;
+let clinicCommandMutationEndedHandlers: Array<() => void> = [];
+
+/** Держать на всё время async command (optimistic → await API → markSynced). */
+export function beginClinicCommandMutation(): void {
+  clinicCommandOptimisticDepth += 1;
+}
+
+export function endClinicCommandMutation(): void {
+  clinicCommandOptimisticDepth = Math.max(0, clinicCommandOptimisticDepth - 1);
+  if (clinicCommandOptimisticDepth === 0 && clinicCommandMutationEndedHandlers.length) {
+    const handlers = clinicCommandMutationEndedHandlers;
+    clinicCommandMutationEndedHandlers = [];
+    for (const handler of handlers) {
+      try {
+        handler();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+export function onClinicCommandMutationEnded(handler: () => void): () => void {
+  clinicCommandMutationEndedHandlers.push(handler);
+  return () => {
+    clinicCommandMutationEndedHandlers = clinicCommandMutationEndedHandlers.filter(
+      (h) => h !== handler
+    );
+  };
+}
+
+export function runWithoutClinicFlush(fn: () => void): void {
+  beginClinicCommandMutation();
+  try {
+    fn();
+  } finally {
+    endClinicCommandMutation();
+  }
+}
+
+export function isClinicCommandOptimisticUpdate(): boolean {
+  return clinicCommandOptimisticDepth > 0;
+}
+
 function scheduleClinicDataFlush(): void {
+  if (clinicCommandOptimisticDepth > 0) return;
   if (typeof queueMicrotask === "undefined") {
     requestClinicDataFlush();
     return;
@@ -49,6 +100,7 @@ function scheduleClinicDataFlush(): void {
   clinicFlushMicrotask = true;
   queueMicrotask(() => {
     clinicFlushMicrotask = false;
+    if (clinicCommandOptimisticDepth > 0) return;
     requestClinicDataFlush();
   });
 }
@@ -229,8 +281,15 @@ interface ClinicState {
   syncOtherClinicVisitForPatient: (patient: Patient) => void;
   /** Удалить пациента и связанные записи; false — не найден */
   deletePatient: (id: string) => boolean;
-  addAppointment: (appointment: Appointment) => void;
-  updateAppointment: (id: string, data: Partial<Appointment>) => void;
+  addAppointment: (
+    appointment: Appointment,
+    options?: { skipFlush?: boolean }
+  ) => void;
+  updateAppointment: (
+    id: string,
+    data: Partial<Appointment>,
+    options?: { skipFlush?: boolean }
+  ) => void;
   setAssistantManualHours: (assistantId: string, date: string, hours: string) => void;
   addMedicalRecord: (record: MedicalRecord) => void;
   /** Удалить запись медкарты и снять ссылки с актов/планов; false — не найдена */
@@ -657,7 +716,7 @@ export const useClinicStore = create<ClinicState>()(
         return true;
       },
 
-      addAppointment: (appointment) => {
+      addAppointment: (appointment, options) => {
         const result = applyCreateAppointmentToPersistedState(
           pickPersistedState(get()),
           appointment
@@ -672,10 +731,10 @@ export const useClinicStore = create<ClinicState>()(
           patients: n.patients,
           deletedAppointmentIds: n.deletedAppointmentIds ?? [],
         });
-        scheduleClinicDataFlush();
+        if (!options?.skipFlush) scheduleClinicDataFlush();
       },
 
-      updateAppointment: (id, data) => {
+      updateAppointment: (id, data, options) => {
         const result = applyUpdateAppointmentToPersistedState(
           pickPersistedState(get()),
           id,
@@ -688,7 +747,7 @@ export const useClinicStore = create<ClinicState>()(
           appointments: n.appointments,
           patients: n.patients,
         });
-        scheduleClinicDataFlush();
+        if (!options?.skipFlush) scheduleClinicDataFlush();
       },
 
       setAssistantManualHours: (assistantId, date, hours) => {

@@ -138,6 +138,55 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     assert.equal(merged.patients.length, 2);
   });
 
+  it("mergeClinicSnapshotWithLocal prefers remote appointment status, keeps local-only appts", () => {
+    const remote = createFreshPersistedState();
+    remote.appointments = [
+      {
+        id: "apt1",
+        patientId: "p1",
+        doctorId: "d1",
+        date: "2026-08-11",
+        startTime: "10:00",
+        endTime: "10:30",
+        durationMinutes: 30,
+        status: "arrived",
+        price: 0,
+        paymentStatus: "pending",
+      },
+    ];
+    const local = createFreshPersistedState();
+    local.appointments = [
+      {
+        id: "apt1",
+        patientId: "p1",
+        doctorId: "d1",
+        date: "2026-08-11",
+        startTime: "10:00",
+        endTime: "10:30",
+        durationMinutes: 30,
+        status: "scheduled",
+        price: 0,
+        paymentStatus: "pending",
+      },
+      {
+        id: "apt-local",
+        patientId: "p1",
+        doctorId: "d1",
+        date: "2026-08-11",
+        startTime: "11:00",
+        endTime: "11:30",
+        durationMinutes: 30,
+        status: "scheduled",
+        price: 0,
+        paymentStatus: "pending",
+      },
+    ];
+
+    const merged = mergeClinicSnapshotWithLocal(remote, local);
+    assert.equal(merged.appointments.find((a) => a.id === "apt1")?.status, "arrived");
+    assert.equal(merged.appointments.some((a) => a.id === "apt-local"), true);
+  });
+
   it("shouldPushMergedSnapshotAfterLoad when pending buffer exists", () => {
     const remote = createFreshPersistedState();
     remote.patients = [patient("p1")];

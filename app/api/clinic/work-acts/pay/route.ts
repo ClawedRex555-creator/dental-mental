@@ -99,88 +99,98 @@ export async function POST(request: Request) {
     typeof body.amount === "number" && Number.isFinite(body.amount)
       ? body.amount
       : undefined;
-  const expectedUpdatedAt =
-    typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
-      ? body.expectedUpdatedAt.trim()
-      : null;
-  const expectedRevision =
-    typeof body.expectedRevision === "number" && Number.isFinite(body.expectedRevision)
-      ? Math.max(0, Math.floor(body.expectedRevision))
-      : null;
+  // Как appointment commands: без autoMerge (он откатывает изменения при stale CAS),
+  // load→apply→CAS от свежей строки→retry.
+  const maxAttempts = 3;
+  let lastConflictUpdatedAt: string | null = null;
 
-  const existing = await getClinicDataDbWithLegacyStaff(session.clinicId);
-  if (!existing?.data) {
-    return NextResponse.json(
-      { ok: false, error: "Нет данных клиники" },
-      { status: 404, headers: NO_STORE_HEADERS }
-    );
-  }
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const existing = await getClinicDataDbWithLegacyStaff(session.clinicId);
+    if (!existing?.data) {
+      return NextResponse.json(
+        { ok: false, error: "Нет данных клиники" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
+    }
 
-  const applied = applyPayWorkActToPersistedState(existing.data, {
-    actId,
-    method,
-    amount,
-  });
-  if (!applied.ok) {
-    return NextResponse.json(
-      { ok: false, error: applied.error },
-      { status: 400, headers: NO_STORE_HEADERS }
-    );
-  }
-
-  if (applied.alreadyApplied) {
-    return NextResponse.json(
-      {
-        ok: true,
-        paymentId: applied.paymentId,
-        fullyPaid: applied.fullyPaid,
-        alreadyApplied: true,
-        updatedAt: existing.updatedAt,
-        revision: existing.revision,
-      },
-      { headers: NO_STORE_HEADERS }
-    );
-  }
-
-  try {
-    const saved = await saveClinicDataDb(session.clinicId, applied.state, {
-      expectedUpdatedAt,
-      expectedRevision,
-      autoMergeOnVersionConflict: true,
+    const applied = applyPayWorkActToPersistedState(existing.data, {
+      actId,
+      method,
+      amount,
     });
-    return NextResponse.json(
-      {
-        ok: true,
-        paymentId: applied.paymentId,
-        fullyPaid: applied.fullyPaid,
-        alreadyApplied: false,
-        updatedAt: saved.updatedAt,
-        revision: saved.revision,
-      },
-      { headers: NO_STORE_HEADERS }
-    );
-  } catch (e) {
-    if (e instanceof ClinicRevisionConflictError) {
+    if (!applied.ok) {
+      return NextResponse.json(
+        { ok: false, error: applied.error },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (applied.alreadyApplied) {
       return NextResponse.json(
         {
-          ok: false,
-          error: "Конфликт версии — обновите данные и повторите оплату",
-          code: e.code,
-          serverUpdatedAt: e.serverUpdatedAt,
+          ok: true,
+          paymentId: applied.paymentId,
+          fullyPaid: applied.fullyPaid,
+          alreadyApplied: true,
+          updatedAt: existing.updatedAt,
+          revision: existing.revision,
         },
-        { status: 409, headers: NO_STORE_HEADERS }
+        { headers: NO_STORE_HEADERS }
       );
     }
-    if (e instanceof PatientMassLossGuardError || e instanceof ScheduleMassLossGuardError) {
+
+    try {
+      const saved = await saveClinicDataDb(session.clinicId, applied.state, {
+        expectedUpdatedAt: existing.updatedAt,
+        expectedRevision: existing.revision,
+        autoMergeOnVersionConflict: false,
+      });
       return NextResponse.json(
-        { ok: false, error: e.message, code: e.code },
-        { status: 409, headers: NO_STORE_HEADERS }
+        {
+          ok: true,
+          paymentId: applied.paymentId,
+          fullyPaid: applied.fullyPaid,
+          alreadyApplied: false,
+          updatedAt: saved.updatedAt,
+          revision: saved.revision,
+        },
+        { headers: NO_STORE_HEADERS }
+      );
+    } catch (e) {
+      if (e instanceof ClinicRevisionConflictError) {
+        lastConflictUpdatedAt = e.serverUpdatedAt;
+        if (attempt < maxAttempts - 1) continue;
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Конфликт версии — обновите данные и повторите оплату",
+            code: e.code,
+            serverUpdatedAt: e.serverUpdatedAt,
+          },
+          { status: 409, headers: NO_STORE_HEADERS }
+        );
+      }
+      if (e instanceof PatientMassLossGuardError || e instanceof ScheduleMassLossGuardError) {
+        return NextResponse.json(
+          { ok: false, error: e.message, code: e.code },
+          { status: 409, headers: NO_STORE_HEADERS }
+        );
+      }
+      const msg = e instanceof Error ? e.message : "Не удалось сохранить оплату";
+      return NextResponse.json(
+        { ok: false, error: msg },
+        { status: 500, headers: NO_STORE_HEADERS }
       );
     }
-    const msg = e instanceof Error ? e.message : "Не удалось сохранить оплату";
-    return NextResponse.json(
-      { ok: false, error: msg },
-      { status: 500, headers: NO_STORE_HEADERS }
-    );
   }
+
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Конфликт версии — обновите данные и повторите оплату",
+      code: "REVISION_CONFLICT",
+      serverUpdatedAt: lastConflictUpdatedAt,
+    },
+    { status: 409, headers: NO_STORE_HEADERS }
+  );
 }

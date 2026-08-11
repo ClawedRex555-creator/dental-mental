@@ -35,6 +35,35 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(merged.appointments[0]?.doctorId, "d2");
   });
 
+  it("drops appointment status change on write-conflict merge (why command API must not autoMerge)", () => {
+    const base = createFreshPersistedState();
+    const appointment: Appointment = {
+      id: "apt1",
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-20",
+      startTime: "10:00",
+      endTime: "11:00",
+      durationMinutes: 60,
+      status: "scheduled",
+      price: 0,
+      paymentStatus: "pending",
+    };
+    const existing = { ...base, appointments: [appointment] };
+    // Command apply на устаревшем CAS: incoming уже с новым status
+    const incoming = {
+      ...base,
+      appointments: [{ ...appointment, status: "arrived" as const }],
+    };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    assert.equal(
+      merged.appointments[0]?.status,
+      "scheduled",
+      "autoMerge предпочитает server — command API обязан retry без autoMerge"
+    );
+  });
+
   it("keeps new appointments from client when absent on server", () => {
     const base = createFreshPersistedState();
     const existing = { ...base, appointments: [] };

@@ -109,6 +109,27 @@ describe("apply-appointment-commands", () => {
     assert.equal(updated.alreadyApplied, true);
   });
 
+  it("update ignores undefined patch fields (does not wipe comment)", () => {
+    const state = baseState();
+    const created = applyCreateAppointmentToPersistedState(
+      state,
+      sampleApt({ comment: "важно", status: "scheduled" })
+    );
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+
+    const updated = applyUpdateAppointmentToPersistedState(created.state, "apt1", {
+      status: "arrived",
+      comment: undefined,
+      externalClaimId: undefined,
+    });
+    assert.equal(updated.ok, true);
+    if (!updated.ok) return;
+    const apt = updated.state.appointments.find((a) => a.id === "apt1");
+    assert.equal(apt?.status, "arrived");
+    assert.equal(apt?.comment, "важно");
+  });
+
   it("allows status change without re-checking slot conflicts", () => {
     const state = baseState();
     const created = applyCreateAppointmentToPersistedState(state, sampleApt());

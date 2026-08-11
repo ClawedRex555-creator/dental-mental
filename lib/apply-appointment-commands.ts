@@ -98,6 +98,17 @@ export function applyCreateAppointmentToPersistedState(
   };
 }
 
+/** Убрать undefined — иначе full payload с parseAppointmentPayload затирал comment/external*. */
+function definedAppointmentPatch(patch: Partial<Appointment>): Partial<Appointment> {
+  const out: Partial<Appointment> = {};
+  for (const [key, value] of Object.entries(patch) as [keyof Appointment, Appointment[keyof Appointment]][]) {
+    if (value !== undefined) {
+      (out as Record<string, unknown>)[key as string] = value;
+    }
+  }
+  return out;
+}
+
 /** Обновить запись (частичный patch поверх существующей). */
 export function applyUpdateAppointmentToPersistedState(
   state: ClinicPersistedState,
@@ -110,7 +121,7 @@ export function applyUpdateAppointmentToPersistedState(
   const current = state.appointments.find((a) => a.id === id);
   if (!current) return { ok: false, error: "Запись не найдена" };
 
-  const next: Appointment = { ...current, ...patch, id };
+  const next: Appointment = { ...current, ...definedAppointmentPatch(patch), id };
   if (appointmentsEqual(current, next)) {
     return {
       ok: true,
