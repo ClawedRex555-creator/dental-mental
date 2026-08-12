@@ -426,6 +426,36 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(patient?.phone, "+79001110000");
   });
 
+  it("non-conflict save also keeps server patient card over stale client snapshot", () => {
+    const base = createFreshPersistedState();
+    const serverPatient = {
+      id: "p1",
+      firstName: "Команда",
+      lastName: "Свежая",
+      phone: "+79001110000",
+      birthDate: "1990-01-01",
+      gender: "female" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const clientPatient = {
+      ...serverPatient,
+      firstName: "Старое",
+      lastName: "ФИО",
+    };
+    const existing = { ...base, patients: [serverPatient] };
+    const incoming = { ...base, patients: [clientPatient] };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    const patient = merged.patients.find((p) => p.id === "p1");
+    assert.equal(patient?.firstName, "Команда");
+    assert.equal(patient?.lastName, "Свежая");
+  });
+
   it("write-conflict prefers real patient FIO over server restored stub", () => {
     const base = createFreshPersistedState();
     const stubState = {

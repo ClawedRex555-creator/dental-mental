@@ -1293,9 +1293,9 @@ export function mergeClinicDataForSave(
       };
     })(),
     cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
-    // Union по id: absence ≠ delete (delete только через deletedPatientIds / cascade).
-    // Пустой phone из клиента не затирает серверный (редакция врача / stale cache).
-    patients: mergePatientsPreferLocalPreservePhi(existing.patients, incoming.patients),
+    // Карточки только через /patients/update. Stale PUT с matching CAS
+    // иначе откатывал ФИО после command API (client wins в mergePatientsPreferLocal).
+    patients: mergePatientsOnWriteConflict(existing.patients, incoming.patients),
     appointments: mergeByIdPreferLocal(existing.appointments, incoming.appointments),
     medicalRecords: mergeArr(
       existing.medicalRecords,

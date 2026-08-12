@@ -207,7 +207,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     assert.equal(saved.patients.length, 8);
   });
 
-  it("mergeClinicDataForSave does not let empty client phone wipe server phone", () => {
+  it("mergeClinicDataForSave keeps server patient card (stale PUT cannot change FIO/phone)", () => {
     const existing = createFreshPersistedState();
     existing.patients = [{ ...patient("p1"), phone: "+79991112233" }];
     existing.doctors = [{ id: "d1", name: "Doc", specialization: "T", phone: "", email: "", cabinet: "—", commissionPercent: 0, status: "active", role: "doctor" }];
@@ -217,7 +217,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     };
     const saved = mergeClinicDataForSave(existing, incoming);
     assert.equal(saved.patients[0]?.phone, "+79991112233");
-    assert.equal(saved.patients[0]?.firstName, "Анна");
+    assert.equal(saved.patients[0]?.firstName, "A");
   });
 
   it("allows patient delete when server still has orphan appointments (incoming is clean)", () => {
@@ -284,7 +284,13 @@ describe("isSuspiciousClinicDataDowngrade", () => {
 
     const blank = createFreshPersistedState();
     const toSaveBlank = mergeClinicDataForSave(existing, blank);
-    assert.equal(shouldRejectEmptyClinicOverwrite(existing, blank, toSaveBlank), true);
+    // merge поднимает server doctors/patients — пустой клиент больше не обнуляет снимок.
+    // Guard срабатывает, только если toSave реально пустой относительно existing.
+    assert.equal(toSaveBlank.doctors.length, 1);
+    assert.equal(
+      shouldRejectEmptyClinicOverwrite(existing, blank, createFreshPersistedState()),
+      true
+    );
 
     existing.cabinets = [
       {

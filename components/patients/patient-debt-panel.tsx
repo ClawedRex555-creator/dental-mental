@@ -8,7 +8,17 @@ import {
   parseDebtInput,
   resolveBalanceFromDebt,
 } from "@/lib/patient-balance";
-import { useClinicStore } from "@/store/useClinicStore";
+import { upsertPatientViaCommandApi } from "@/lib/clinic-patient.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,22 +29,48 @@ export function PatientDebtPanel({ patient }: { patient: Patient }) {
   const updatePatient = useClinicStore((s) => s.updatePatient);
   const debtNow = getPatientDebtAmount(patient.balance);
   const [debtInput, setDebtInput] = useState(debtNow > 0 ? String(debtNow) : "");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setDebtInput(debtNow > 0 ? String(debtNow) : "");
   }, [patient.id, patient.balance, debtNow]);
 
   const saveDebt = (debtAmount: number) => {
+    if (saving) return;
     const resolved = resolveBalanceFromDebt("debtor", debtAmount, patient.balance);
-    updatePatient(patient.id, {
+    const next: Patient = {
+      ...patient,
       balance: resolved.balance,
       status: resolved.status,
-    });
-    if (debtAmount <= 0) {
-      toast.success("Долг погашен");
-    } else {
-      toast.success("Сумма долга обновлена");
-    }
+    };
+    setSaving(true);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await upsertPatientViaCommandApi(next);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось сохранить долг на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          updatePatient(patient.id, {
+            balance: resolved.balance,
+            status: resolved.status,
+          });
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        if (debtAmount <= 0) {
+          toast.success("Долг погашен");
+        } else {
+          toast.success("Сумма долга обновлена");
+        }
+      } finally {
+        endClinicCommandMutation();
+        setSaving(false);
+      }
+    })();
   };
 
   const handleSave = () => {
@@ -78,21 +114,18 @@ export function PatientDebtPanel({ patient }: { patient: Patient }) {
               placeholder="0"
               value={debtInput}
               onChange={(e) => setDebtInput(e.target.value)}
+              disabled={saving}
             />
           </div>
-          <Button type="button" onClick={handleSave}>
+          <Button type="button" onClick={handleSave} disabled={saving}>
             Сохранить
           </Button>
           {debtNow > 0 && (
-            <Button type="button" variant="outline" onClick={handlePayOff}>
-              Погасить полностью
+            <Button type="button" variant="outline" onClick={handlePayOff} disabled={saving}>
+              Погасить
             </Button>
           )}
         </div>
-        <p className="text-xs text-slate-500">
-          Отрицательный баланс отображается в списке пациентов. При полном погашении статус
-          меняется на «Активный», если нет другой задолженности.
-        </p>
       </CardContent>
     </Card>
   );

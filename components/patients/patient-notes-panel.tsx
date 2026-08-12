@@ -11,8 +11,19 @@ import {
 } from "lucide-react";
 import type { Patient, PatientNote, PatientNoteCategory } from "@/lib/types";
 import { PATIENT_NOTE_CATEGORIES, ROLE_LABELS } from "@/lib/constants";
-import { useClinicStore } from "@/store/useClinicStore";
+import { upsertPatientViaCommandApi } from "@/lib/clinic-patient.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { cn, formatDateTime } from "@/lib/utils";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -134,14 +145,36 @@ export function PatientNotesPanel({
   }
 
   function savePinned() {
-    updatePatient(patient.id, { notes: pinnedDraft.trim() || undefined });
-    setPinnedDirty(false);
-    logAuditClient({
-      action: "update",
-      resourceType: "patient",
-      resourceId: patient.id,
-      metadata: { field: "pinned_notes" },
-    });
+    const next: Patient = {
+      ...patient,
+      notes: pinnedDraft.trim() || undefined,
+    };
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await upsertPatientViaCommandApi(next);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось сохранить заметку на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          updatePatient(patient.id, { notes: pinnedDraft.trim() || undefined });
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        setPinnedDirty(false);
+        logAuditClient({
+          action: "update",
+          resourceType: "patient",
+          resourceId: patient.id,
+          metadata: { field: "pinned_notes" },
+        });
+        toast.success("Заметка сохранена");
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
   }
 
   function handleDraftKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {

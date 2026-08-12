@@ -1,4 +1,3 @@
-import { ackClinicServerVersion } from "@/lib/clinic-data-sync.client";
 import type { Patient } from "@/lib/types";
 
 export type PatientCommandResult = {
@@ -11,8 +10,9 @@ export type PatientCommandResult = {
 
 /**
  * Сохранить карточку через command API (без полного snapshot PUT).
- * notifyClinicDataChanged — только после локального apply + markSynced у вызывающего,
- * иначе in-flight PUT / preferServer-pull гоняет старый снимок поверх свежей карточки.
+ * CAS/notify — только у вызывающего после локального apply + markSynced:
+ * ранний ack поднимал revision до apply и позволял stale PUT с old FIO
+ * пройти без conflict и затереть сервер.
  */
 export async function upsertPatientViaCommandApi(
   patient: Patient
@@ -35,19 +35,14 @@ export async function upsertPatientViaCommandApi(
       return { ok: false, error: json?.error ?? `HTTP ${res.status}` };
     }
 
-    const updatedAt = json.updatedAt ?? null;
-    const revision =
-      typeof json.revision === "number" && Number.isFinite(json.revision)
-        ? json.revision
-        : null;
-    // Только CAS — baseline и broadcast после локального apply.
-    ackClinicServerVersion(updatedAt, revision);
-
     return {
       ok: true,
       alreadyApplied: Boolean(json.alreadyApplied),
-      updatedAt,
-      revision,
+      updatedAt: json.updatedAt ?? null,
+      revision:
+        typeof json.revision === "number" && Number.isFinite(json.revision)
+          ? json.revision
+          : null,
     };
   } catch (e) {
     return {
