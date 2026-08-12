@@ -41,7 +41,6 @@ import {
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { canViewPatientPhone } from "@/lib/rbac";
 import { PhoneInput } from "@/components/shared/phone-input";
-import { useClinicStore } from "@/store/useClinicStore";
 import {
   getPatientDebtAmount,
   parseDebtInput,
