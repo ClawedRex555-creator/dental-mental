@@ -466,15 +466,31 @@ export function mergePatientPreferLocalPreservePhi(
 }
 
 /**
- * Конфликт PUT: правки карточки пациента с клиента не должны откатываться
- * (иначе смена ФИО/телефона «не сохраняется» при устаревшем CAS после command API).
- * Пустой PHI с клиента по-прежнему не затирает серверный; stub уступает реальной карточке.
+ * Конфликт PUT (устаревший CAS): для пациентов предпочитаем server.
+ * Карточка пишется через /api/clinic/patients/update; stale full-snapshot PUT
+ * не должен откатывать только что сохранённое ФИО.
+ * Stub «имя Уточните» всё равно уступает реальной карточке с клиента.
  */
 export function mergePatientsOnWriteConflict(
   server: Patient[],
   client: Patient[]
 ): Patient[] {
-  return mergePatientsPreferLocalPreservePhi(server, client);
+  const map = new Map<string, Patient>();
+  for (const p of client) map.set(p.id, p);
+  for (const p of server) {
+    const clientPatient = map.get(p.id);
+    if (!clientPatient) {
+      map.set(p.id, p);
+      continue;
+    }
+    if (isRestoredPatientStub(p) && !isRestoredPatientStub(clientPatient)) {
+      map.set(p.id, mergePatientPreferLocalPreservePhi(p, clientPatient));
+      continue;
+    }
+    // Server wins (включая свежую карточку после patient command API)
+    map.set(p.id, p);
+  }
+  return Array.from(map.values());
 }
 
 export function mergePatientsPreferLocalPreservePhi(
@@ -823,6 +839,38 @@ export function mergeByIdPreferServerRespectingClientDeletions<T extends { id: s
     return mergeByIdPreferLocal(client, serverKept);
   }
   return mergeByIdPreferLocal(client, server);
+}
+
+/**
+ * Записи при CAS-конфликте: обычно server wins (иначе stale PUT откатывает статус).
+ * Исключение: клиент уже отправил акт (ready_for_payment + workActId) — не теряем это,
+ * пока сервер ещё на старом статусе.
+ */
+export function mergeAppointmentsOnWriteConflict(
+  server: Appointment[],
+  client: Appointment[]
+): Appointment[] {
+  const base = mergeByIdPreferServerRespectingClientDeletions(server, client);
+  const serverById = new Map(server.map((a) => [a.id, a]));
+  const clientById = new Map(client.map((a) => [a.id, a]));
+  return base.map((row) => {
+    const s = serverById.get(row.id);
+    const c = clientById.get(row.id);
+    if (!s || !c) return row;
+    if (
+      c.status === "ready_for_payment" &&
+      c.workActId &&
+      s.status !== "ready_for_payment"
+    ) {
+      return {
+        ...s,
+        status: "ready_for_payment",
+        workActId: c.workActId,
+        paymentStatus: c.paymentStatus ?? s.paymentStatus,
+      };
+    }
+    return row;
+  });
 }
 
 export function doctorScheduleKey(schedule: DoctorMonthSchedule): string {
@@ -1414,7 +1462,7 @@ export function mergeClinicDataOnWriteConflict(
     appointments:
       incoming.appointments.length === 0 && existing.appointments.length > 0
         ? existing.appointments
-        : mergeByIdPreferLocal(incoming.appointments, existing.appointments),
+        : mergeAppointmentsOnWriteConflict(existing.appointments, incoming.appointments),
     medicalRecords: preferServer(existing.medicalRecords, incoming.medicalRecords),
     treatmentPlans: preferServer(existing.treatmentPlans, incoming.treatmentPlans),
     payments: hasPatientDeletion

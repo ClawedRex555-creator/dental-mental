@@ -1,33 +1,40 @@
 import { ackClinicServerVersion } from "@/lib/clinic-data-sync.client";
-import type { Patient } from "@/lib/types";
+import type { WorkAct } from "@/lib/types";
 
-export type PatientCommandResult = {
+export type SubmitWorkActCommandResult = {
   ok: boolean;
   alreadyApplied?: boolean;
   error?: string;
+  actId?: string;
+  appointmentId?: string;
   updatedAt?: string | null;
   revision?: number | null;
 };
 
 /**
- * Сохранить карточку через command API (без полного snapshot PUT).
- * notifyClinicDataChanged — только после локального apply + markSynced у вызывающего,
- * иначе in-flight PUT / preferServer-pull гоняет старый снимок поверх свежей карточки.
+ * Отправить акт администратору через command API.
+ * notifyClinicDataChanged — после локального apply + markSynced у вызывающего.
  */
-export async function upsertPatientViaCommandApi(
-  patient: Patient
-): Promise<PatientCommandResult> {
+export async function submitWorkActViaCommandApi(input: {
+  act: WorkAct;
+  appointmentId: string;
+}): Promise<SubmitWorkActCommandResult> {
   try {
-    const res = await fetch("/api/clinic/patients/update", {
+    const res = await fetch("/api/clinic/work-acts/submit", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patient }),
+      body: JSON.stringify({
+        act: input.act,
+        appointmentId: input.appointmentId,
+      }),
     });
     const json = (await res.json().catch(() => null)) as {
       ok?: boolean;
       alreadyApplied?: boolean;
       error?: string;
+      actId?: string;
+      appointmentId?: string;
       updatedAt?: string | null;
       revision?: number | null;
     } | null;
@@ -40,12 +47,13 @@ export async function upsertPatientViaCommandApi(
       typeof json.revision === "number" && Number.isFinite(json.revision)
         ? json.revision
         : null;
-    // Только CAS — baseline и broadcast после локального apply.
     ackClinicServerVersion(updatedAt, revision);
 
     return {
       ok: true,
       alreadyApplied: Boolean(json.alreadyApplied),
+      actId: json.actId,
+      appointmentId: json.appointmentId,
       updatedAt,
       revision,
     };

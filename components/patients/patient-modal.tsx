@@ -61,8 +61,14 @@ import {
   beginClinicEditorSession,
   endClinicEditorSession,
   markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
-import { runWithoutClinicFlush } from "@/store/useClinicStore";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -491,6 +497,7 @@ export function PatientModal({
 
     savingRef.current = true;
     setSaving(true);
+    beginClinicCommandMutation();
     void (async () => {
       try {
         // Узкий command API: полный PUT + preferServer-pull откатывали ФИО.
@@ -510,6 +517,9 @@ export function PatientModal({
           }
         });
         markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+        // Пока полный snapshot PUT ещё жив — не дать ему улететь следом и откатить ФИО.
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
 
         saveAppointmentFor(patientToSave);
         toast.success(
@@ -526,6 +536,7 @@ export function PatientModal({
         }
         onOpenChange(false);
       } finally {
+        endClinicCommandMutation();
         savingRef.current = false;
         setSaving(false);
       }

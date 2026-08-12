@@ -1,6 +1,5 @@
 import {
   ackClinicServerVersion,
-  notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
 import type { Appointment, Patient } from "@/lib/types";
 
@@ -41,10 +40,9 @@ async function postAppointmentCommand(
       typeof json.revision === "number" && Number.isFinite(json.revision)
         ? json.revision
         : null;
-    // Только CAS — baseline после локального apply (иначе create «забывал» новую запись,
-    // а pay/create затирали несохранённые правки пациента).
+    // Только CAS — baseline + broadcast после локального apply у вызывающего
+    // (иначе соседняя вкладка/pull мог откатить статус до markSynced).
     ackClinicServerVersion(updatedAt, revision);
-    notifyClinicDataChanged();
 
     return {
       ok: true,

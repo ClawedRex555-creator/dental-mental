@@ -224,6 +224,21 @@ export function ClinicDataSync() {
       updatedAt?: string | null,
       options?: { preferServer?: boolean; revision?: number | null }
     ) => {
+      // Ответ начатый до command API не должен откатывать только что сохранённую карточку.
+      if (
+        updatedAt &&
+        lastServerUpdatedAt.current &&
+        updatedAt < lastServerUpdatedAt.current
+      ) {
+        return;
+      }
+      if (
+        typeof options?.revision === "number" &&
+        typeof lastServerRevision.current === "number" &&
+        options.revision < lastServerRevision.current
+      ) {
+        return;
+      }
       const local = mergePendingIntoClinicSnapshot(pickPersistedState(useClinicStore.getState()));
       // Никогда не затираем локальных пациентов/записи: даже «Обновить с сервера»
       // должно смержить сущности, которых ещё нет на сервере.
@@ -421,6 +436,25 @@ export function ClinicDataSync() {
 
         const remote = await fetchClinicDataFromServer();
         if (!remote?.data || cancelled) return;
+        // Пока ждали сеть, command API мог обновить CAS — не накатываем более старый снимок.
+        if (isClinicCommandOptimisticUpdate()) {
+          pendingPullAfterPull.current = true;
+          return;
+        }
+        if (
+          remote.updatedAt &&
+          lastServerUpdatedAt.current &&
+          remote.updatedAt < lastServerUpdatedAt.current
+        ) {
+          return;
+        }
+        if (
+          typeof remote.revision === "number" &&
+          typeof lastServerRevision.current === "number" &&
+          remote.revision < lastServerRevision.current
+        ) {
+          return;
+        }
         discardStalePendingClinicSnapshot(remote.data);
 
         const localNow = pickPersistedState(useClinicStore.getState());
@@ -952,6 +986,10 @@ export function ClinicDataSync() {
         /* quota / circular — всё равно ack версии */
       }
       ackServerSnapshotVersion(updatedAt, revision);
+      // Не дать in-flight/соседнему pull сразу preferServer-перетереть command apply.
+      saveAckCooldownUntil.current = Date.now() + SAVE_ACK_PULL_COOLDOWN_MS;
+      // Отложенный pull после mutation — не нужен: CAS уже подтверждён command API.
+      pendingPullAfterPull.current = false;
       setClinicDataUnsaved(false);
       setClinicDataSaveError(null);
       setClinicSaveStatus("idle");

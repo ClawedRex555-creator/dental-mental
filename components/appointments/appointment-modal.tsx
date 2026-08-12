@@ -32,6 +32,7 @@ import {
   beginClinicEditorSession,
   endClinicEditorSession,
   markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
 import {
   createAppointmentViaCommandApi,
@@ -310,6 +311,7 @@ export function AppointmentModal({
             // Снова применяем payload: store мог не совпасть с сервером из‑за гонок.
             updateAppointment(appointment.id, payload, { skipFlush: true });
             markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+            notifyClinicDataChanged();
             prevStatus.current = status;
             toast.success("Сохранено на сервере");
 
@@ -349,6 +351,7 @@ export function AppointmentModal({
           }
           addAppointment(payload, { skipFlush: true });
           markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+          notifyClinicDataChanged();
           prevStatus.current = status;
           toast.success("Сохранено на сервере");
           onOpenChange(false);

@@ -65,6 +65,37 @@ describe("mergeClinicDataOnWriteConflict", () => {
     );
   });
 
+  it("keeps client ready_for_payment when server still lags after act submit", () => {
+    const base = createFreshPersistedState();
+    const appointment: Appointment = {
+      id: "apt1",
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-20",
+      startTime: "10:00",
+      endTime: "11:00",
+      durationMinutes: 60,
+      status: "completed",
+      price: 0,
+      paymentStatus: "pending",
+    };
+    const existing = { ...base, appointments: [appointment] };
+    const incoming = {
+      ...base,
+      appointments: [
+        {
+          ...appointment,
+          status: "ready_for_payment" as const,
+          workActId: "act1",
+        },
+      ],
+    };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    assert.equal(merged.appointments[0]?.status, "ready_for_payment");
+    assert.equal(merged.appointments[0]?.workActId, "act1");
+  });
+
   it("keeps new appointments from client when absent on server", () => {
     const base = createFreshPersistedState();
     const existing = { ...base, appointments: [] };
@@ -362,7 +393,7 @@ describe("mergeClinicDataOnWriteConflict", () => {
     );
   });
 
-  it("write-conflict keeps client patient edits over stale server card", () => {
+  it("write-conflict keeps server patient card (stale client PUT must not overwrite command API)", () => {
     const base = createFreshPersistedState();
     const serverPatient = {
       id: "p1",
@@ -390,10 +421,9 @@ describe("mergeClinicDataOnWriteConflict", () => {
 
     const merged = mergeClinicDataOnWriteConflict(existing, incoming);
     const patient = merged.patients.find((p) => p.id === "p1");
-    assert.equal(patient?.firstName, "Новое");
-    assert.equal(patient?.lastName, "ФИО");
-    assert.equal(patient?.phone, "+79001112233");
-    assert.equal(patient?.address, "ул. Новая, 1");
+    assert.equal(patient?.firstName, "Старое");
+    assert.equal(patient?.lastName, "Имя");
+    assert.equal(patient?.phone, "+79001110000");
   });
 
   it("write-conflict prefers real patient FIO over server restored stub", () => {

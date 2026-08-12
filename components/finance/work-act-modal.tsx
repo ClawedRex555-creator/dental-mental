@@ -15,11 +15,22 @@ import type {
 import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
+import { submitWorkActViaCommandApi } from "@/lib/clinic-work-act-submit.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 import {
   getClinicBillableServices,
   getTechnicalServices,
   normalizeServiceFields,
 } from "@/lib/service-categories";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import {
   buildWorkActMedicalRecommendations,
   calcWorkActAmounts,
@@ -42,7 +53,6 @@ import {
   type OpenPrepaidSource,
 } from "@/lib/prepayment-utils";
 import { normalizePlanItemQuantity } from "@/lib/treatment-plan-item-utils";
-import { useClinicStore } from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { formatCurrency, generateId, getFullName } from "@/lib/utils";
@@ -579,20 +589,46 @@ export function WorkActModal({
 
   const handleSubmitToAdmin = () => {
     if (actSaveLock.current) return;
-    actSaveLock.current = true;
-    const act = persistAct(true);
-    if (!act || !linkedAppointmentId) {
-      actSaveLock.current = false;
+    if (!linkedAppointmentId) {
+      toast.error("Запись не найдена");
       return;
     }
-    updateWorkAct(act.id, { submittedToAdmin: true });
-    updateAppointment(linkedAppointmentId, {
-      status: "ready_for_payment",
-      workActId: act.id,
-    });
-    toast.success("Акт отправлен администратору");
-    onSubmitted?.();
-    onOpenChange(false);
+    actSaveLock.current = true;
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        // Сначала локальный draft под mutation lock (без PUT), затем command API.
+        // Полный snapshot PUT + autoMerge раньше откатывал ready_for_payment.
+        const act = persistAct(true);
+        if (!act) return;
+
+        const apiResult = await submitWorkActViaCommandApi({
+          act: { ...act, submittedToAdmin: true, appointmentId: linkedAppointmentId },
+          appointmentId: linkedAppointmentId,
+        });
+        if (!apiResult.ok) {
+          toast.error(apiResult.error ?? "Не удалось отправить акт администратору");
+          return;
+        }
+
+        runWithoutClinicFlush(() => {
+          updateWorkAct(act.id, { submittedToAdmin: true });
+          updateAppointment(linkedAppointmentId, {
+            status: "ready_for_payment",
+            workActId: act.id,
+          });
+        });
+        markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+        notifyClinicDataChanged();
+
+        toast.success("Акт отправлен администратору");
+        onSubmitted?.();
+        onOpenChange(false);
+      } finally {
+        endClinicCommandMutation();
+        actSaveLock.current = false;
+      }
+    })();
   };
 
   const handleReturnAppointmentToEditing = () => {
