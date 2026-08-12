@@ -6,6 +6,7 @@ import {
   countClinicVisits,
   derivePatientVisitFields,
   findOrphanPatientIds,
+  isRestoredPatientStub,
   otherClinicVisitId,
   patientsLostButAppointmentsRemain,
   repairMissingPatientsInSnapshot,
@@ -67,6 +68,18 @@ describe("patient-visits", () => {
     assert.equal(repaired.patients.length, 1);
     assert.equal(repaired.patients[0]?.id, "missing");
     assert.equal(countClinicVisits(repaired.appointments, "missing"), 1);
+    assert.equal(isRestoredPatientStub(repaired.patients[0]!), true);
+  });
+
+  it("isRestoredPatientStub does not match real patients named coincidentally without notes", () => {
+    assert.equal(
+      isRestoredPatientStub({
+        firstName: "Уточните",
+        lastName: "имя",
+        notes: "обычная заметка",
+      }),
+      false
+    );
   });
 
   it("repairMissingPatientsInSnapshot does not revive tombstoned patient", () => {

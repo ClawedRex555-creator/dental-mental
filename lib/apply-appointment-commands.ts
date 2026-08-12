@@ -1,5 +1,11 @@
-import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
-import { derivePatientVisitFields } from "@/lib/patient-visits";
+import {
+  mergePatientPreferLocalPreservePhi,
+  type ClinicPersistedState,
+} from "@/lib/clinic-persisted-state";
+import {
+  derivePatientVisitFields,
+  isRestoredPatientStub,
+} from "@/lib/patient-visits";
 import { validateAppointmentSave } from "@/lib/validate-appointment-save";
 import type { Appointment, AppointmentStatus, Patient } from "@/lib/types";
 
@@ -21,6 +27,32 @@ function withPatientVisitFields(
   if (!patient) return patients;
   const fields = derivePatientVisitFields(patient, appointments);
   return patients.map((p) => (p.id === patientId ? { ...p, ...fields } : p));
+}
+
+/** Вставить/обновить пациента в снимке (заглушка уступает реальной карточке). */
+export function upsertPatientInPersistedState(
+  state: ClinicPersistedState,
+  patient: Patient
+): ClinicPersistedState {
+  const existing = state.patients.find((p) => p.id === patient.id);
+  if (!existing) {
+    return {
+      ...state,
+      patients: [...state.patients, patient],
+      deletedPatientIds: (state.deletedPatientIds ?? []).filter((id) => id !== patient.id),
+    };
+  }
+  const merged =
+    isRestoredPatientStub(existing) && !isRestoredPatientStub(patient)
+      ? mergePatientPreferLocalPreservePhi(existing, patient)
+      : isRestoredPatientStub(patient) && !isRestoredPatientStub(existing)
+        ? existing
+        : mergePatientPreferLocalPreservePhi(existing, patient);
+  return {
+    ...state,
+    patients: state.patients.map((p) => (p.id === patient.id ? merged : p)),
+    deletedPatientIds: (state.deletedPatientIds ?? []).filter((id) => id !== patient.id),
+  };
 }
 
 function appointmentsEqual(a: Appointment, b: Appointment): boolean {
@@ -50,7 +82,8 @@ function appointmentsEqual(a: Appointment, b: Appointment): boolean {
 /** Создать запись (идемпотентно по id). */
 export function applyCreateAppointmentToPersistedState(
   state: ClinicPersistedState,
-  appointment: Appointment
+  appointment: Appointment,
+  patient?: Patient | null
 ): ApplyAppointmentResult {
   if (!appointment.id?.trim()) {
     return { ok: false, error: "Не указан id записи" };
@@ -72,24 +105,37 @@ export function applyCreateAppointmentToPersistedState(
     };
   }
 
+  let nextState = state;
+  if (patient && patient.id === appointment.patientId) {
+    nextState = upsertPatientInPersistedState(nextState, patient);
+  }
+
+  const hasPatient = nextState.patients.some((p) => p.id === appointment.patientId);
+  if (!hasPatient) {
+    return {
+      ok: false,
+      error: "Пациент не найден. Сначала сохраните карточку пациента.",
+    };
+  }
+
   const conflictError = validateAppointmentSave(
-    state.appointments,
+    nextState.appointments,
     appointment,
-    state.patients,
-    state.doctors
+    nextState.patients,
+    nextState.doctors
   );
   if (conflictError) {
     return { ok: false, error: conflictError };
   }
 
-  const appointments = [appointment, ...state.appointments];
+  const appointments = [appointment, ...nextState.appointments];
   return {
     ok: true,
     state: {
-      ...state,
+      ...nextState,
       appointments,
-      patients: withPatientVisitFields(state.patients, appointments, appointment.patientId),
-      deletedAppointmentIds: (state.deletedAppointmentIds ?? []).filter(
+      patients: withPatientVisitFields(nextState.patients, appointments, appointment.patientId),
+      deletedAppointmentIds: (nextState.deletedAppointmentIds ?? []).filter(
         (tombstoneId) => tombstoneId !== appointment.id
       ),
     },

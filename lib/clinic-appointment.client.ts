@@ -2,7 +2,7 @@ import {
   ackClinicServerVersion,
   notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
-import type { Appointment } from "@/lib/types";
+import type { Appointment, Patient } from "@/lib/types";
 
 export type AppointmentCommandResult = {
   ok: boolean;
@@ -60,9 +60,15 @@ async function postAppointmentCommand(
   }
 }
 
-/** Создать запись через command API. */
-export function createAppointmentViaCommandApi(appointment: Appointment) {
-  return postAppointmentCommand("/api/clinic/appointments/create", { appointment });
+/** Создать запись через command API. patient — чтобы ФИО попало в снимок/уведомления. */
+export function createAppointmentViaCommandApi(
+  appointment: Appointment,
+  options?: { patient?: Patient }
+) {
+  return postAppointmentCommand("/api/clinic/appointments/create", {
+    appointment,
+    ...(options?.patient ? { patient: options.patient } : {}),
+  });
 }
 
 /** Обновить запись через command API. */
@@ -78,5 +84,7 @@ export function updateAppointmentViaCommandApi(
 
 /** Отменить запись через command API. */
 export function cancelAppointmentViaCommandApi(appointmentId: string) {
-  return postAppointmentCommand("/api/clinic/appointments/cancel", { appointmentId });
+  return postAppointmentCommand("/api/clinic/appointments/cancel", {
+    appointmentId,
+  });
 }

@@ -611,11 +611,19 @@ export function ClinicDataSync() {
           const currentJson = JSON.stringify(pickPersistedState(useClinicStore.getState()));
           if (currentJson === json) {
             if (saveResult.merged) {
+              // autoMerge на сервере мог отдать чужие поля; не pull'им preferServer —
+              // сразу ещё раз PUT на свежем CAS, чтобы карточка пациента точно уехала.
               toast.info(
-                "Данные объединены с сервером — проверьте, что всё на месте"
+                "Данные объединены с сервером — повторно сохраняем ваши правки…"
               );
+              saveAckCooldownUntil.current = Date.now() + SAVE_ACK_PULL_COOLDOWN_MS;
+              lastSavedJson.current = "";
+              pendingFlushAfterSave.current = true;
+              setClinicSaveStatus("pending");
+              setClinicDataUnsaved(true);
+            } else {
+              markSaveSuccess();
             }
-            markSaveSuccess();
           } else {
             persistPendingSnapshot(pickPersistedState(useClinicStore.getState()), {
               optional: true,
@@ -675,12 +683,9 @@ export function ClinicDataSync() {
         if (pendingPullAfterSave.current) {
           pendingPullAfterSave.current = false;
           void pullRemoteSnapshot({ allowDuringSaveCooldown: true });
-        } else if (saveResult?.ok && saveResult.merged) {
-          void pullRemoteSnapshot({
-            force: true,
-            allowDuringSaveCooldown: true,
-          });
         }
+        // Раньше при merged сразу делали force-pull и затирали только что
+        // отредактированную карточку пациента устаревшим remote.
       }
     };
 
@@ -1231,12 +1236,13 @@ export function ClinicDataSync() {
 
     const unsub = useClinicStore.subscribe(onPersistedDataChange);
     const unsubBroadcast = subscribeClinicDataChanged(() => {
-      // Другая вкладка уже сохранила (в т.ч. статус через command API) — подтянуть сразу
+      // Другая вкладка уже сохранила (в т.ч. статус через command API) — подтянуть.
+      // Не bypass'ить saveAckCooldown: иначе эта же вкладка после PUT пациента
+      // сразу делала preferServer-pull и откатывала ФИО на старые с сервера.
       if (!hasLocalSyncQueue()) {
         void pullRemoteSnapshot({
           force: true,
           allowApplyDespitePending: true,
-          allowDuringSaveCooldown: true,
         });
         return;
       }

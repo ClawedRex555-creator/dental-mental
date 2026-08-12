@@ -5,7 +5,10 @@ import {
   requireAppointmentCommandSession,
   saveAppointmentCommandResult,
 } from "@/lib/clinic-appointment-command.server";
-import { parseAppointmentPayload } from "@/lib/parse-appointment-command-body";
+import {
+  parseAppointmentPayload,
+  parsePatientPayload,
+} from "@/lib/parse-appointment-command-body";
 
 /** Command API: создать запись без полного client PUT snapshot. */
 export async function POST(request: Request) {
@@ -30,7 +33,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const patient = parsePatientPayload(body.patient);
+  if (patient && patient.id !== appointment.patientId) {
+    return NextResponse.json(
+      { ok: false, error: "Пациент не совпадает с записью" },
+      { status: 400, headers: APPOINTMENT_CMD_HEADERS }
+    );
+  }
+
   return saveAppointmentCommandResult(auth.clinicId, (state) =>
-    applyCreateAppointmentToPersistedState(state, appointment)
+    applyCreateAppointmentToPersistedState(state, appointment, patient)
   );
 }

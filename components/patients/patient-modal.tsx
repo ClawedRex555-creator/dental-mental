@@ -56,6 +56,7 @@ import {
 } from "@/lib/patient-duplicate";
 import { formatDate, generateId, getFullName } from "@/lib/utils";
 import { createAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
+import { upsertPatientViaCommandApi } from "@/lib/clinic-patient.client";
 import {
   beginClinicEditorSession,
   endClinicEditorSession,
@@ -418,31 +419,32 @@ export function PatientModal({
           },
     };
 
-    const saveAppointmentFor = (targetPatientId: string) => {
+    const saveAppointmentFor = (targetPatient: Patient) => {
       if (!appointmentFields.enabled) return;
       const apt: Appointment = {
         id: generateId("apt"),
         ...buildAppointmentFromSchedule(
-          targetPatientId,
+          targetPatient.id,
           appointmentFields,
           fields.diagnosis
         ),
       };
       void (async () => {
-        const apiResult = await createAppointmentViaCommandApi(apt);
+        const apiResult = await createAppointmentViaCommandApi(apt, {
+          patient: targetPatient,
+        });
         if (!apiResult.ok) {
           toast.error(
             apiResult.error ?? "Пациент сохранён, но запись на приём не создалась"
           );
           return;
         }
-        // Локально всегда — иначе UI не увидит запись, пока модалка держит editor session
         runWithoutClinicFlush(() => {
           addAppointment(apt, { skipFlush: true });
+          updatePatient(targetPatient.id, { nextVisitDate: appointmentFields.date });
         });
         markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
       })();
-      updatePatient(targetPatientId, { nextVisitDate: appointmentFields.date });
     };
 
     if (patient) {
@@ -483,34 +485,51 @@ export function PatientModal({
       }
     }
 
+    const patientToSave: Patient = appointmentFields.enabled
+      ? { ...payload, nextVisitDate: appointmentFields.date }
+      : payload;
+
     savingRef.current = true;
     setSaving(true);
-    try {
-      if (patient) {
-        updatePatient(patient.id, payload);
-        syncOtherClinicVisitForPatient(payload);
-        saveAppointmentFor(patient.id);
+    void (async () => {
+      try {
+        // Узкий command API: полный PUT + preferServer-pull откатывали ФИО.
+        const apiResult = await upsertPatientViaCommandApi(patientToSave);
+        if (!apiResult.ok) {
+          toast.error(apiResult.error ?? "Не удалось сохранить пациента на сервере");
+          return;
+        }
+
+        runWithoutClinicFlush(() => {
+          if (patient) {
+            updatePatient(patient.id, patientToSave);
+            syncOtherClinicVisitForPatient(patientToSave);
+          } else {
+            addPatient(patientToSave);
+            syncOtherClinicVisitForPatient(patientToSave);
+          }
+        });
+        markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+
+        saveAppointmentFor(patientToSave);
         toast.success(
           appointmentFields.enabled
-            ? "Пациент обновлён и записан на приём"
-            : "Пациент обновлён"
+            ? patient
+              ? "Пациент обновлён и записан на приём"
+              : "Пациент добавлен и записан на приём"
+            : patient
+              ? "Пациент обновлён"
+              : "Пациент добавлен"
         );
-      } else {
-        addPatient(payload);
-        syncOtherClinicVisitForPatient(payload);
-        saveAppointmentFor(payload.id);
-        toast.success(
-          appointmentFields.enabled
-            ? "Пациент добавлен и записан на приём"
-            : "Пациент добавлен"
-        );
-        onCreated?.(payload, { appointmentCreated: appointmentFields.enabled });
+        if (!patient) {
+          onCreated?.(patientToSave, { appointmentCreated: appointmentFields.enabled });
+        }
+        onOpenChange(false);
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
       }
-      onOpenChange(false);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+    })();
   };
 
   const duplicateName = duplicateMatch

@@ -7,6 +7,7 @@ import {
 import {
   findOrphanPatientIds,
   patientsLostButAppointmentsRemain,
+  isRestoredPatientStub,
   repairMissingPatientsInSnapshot,
 } from "@/lib/patient-visits";
 import { filterPaymentsWithExistingWorkActs } from "@/lib/work-act-payment";
@@ -71,6 +72,8 @@ export interface ClinicPersistedState {
   deletedWorkActIds?: string[];
   /** Явно удалённые пациенты — защита от воскрешения устаревшей вкладкой */
   deletedPatientIds?: string[];
+  /** Явно удалённые сотрудники — pending/pull не должны восстанавливать */
+  deletedDoctorIds?: string[];
   /** Явно удалённые записи расписания */
   deletedAppointmentIds?: string[];
   deletedMedicalRecordIds?: string[];
@@ -113,6 +116,7 @@ export function createFreshPersistedState(): ClinicPersistedState {
     deletedServiceIds: [],
     deletedWorkActIds: [],
     deletedPatientIds: [],
+    deletedDoctorIds: [],
     deletedAppointmentIds: [],
     deletedMedicalRecordIds: [],
     deletedTreatmentPlanIds: [],
@@ -149,6 +153,7 @@ type PersistPickSource = {
   deletedServiceIds?: string[];
   deletedWorkActIds?: string[];
   deletedPatientIds?: string[];
+  deletedDoctorIds?: string[];
   deletedAppointmentIds?: string[];
   deletedMedicalRecordIds?: string[];
   deletedTreatmentPlanIds?: string[];
@@ -238,6 +243,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     deletedServiceIds: state.deletedServiceIds ?? [],
     deletedWorkActIds: state.deletedWorkActIds ?? [],
     deletedPatientIds: state.deletedPatientIds ?? [],
+    deletedDoctorIds: state.deletedDoctorIds ?? [],
     deletedAppointmentIds: state.deletedAppointmentIds ?? [],
     deletedMedicalRecordIds: state.deletedMedicalRecordIds ?? [],
     deletedTreatmentPlanIds: state.deletedTreatmentPlanIds ?? [],
@@ -420,12 +426,27 @@ function isEmptyPatientPhiValue(value: unknown): boolean {
 /**
  * Local wins, но пустой PHI из local не затирает непустой remote
  * (типичный след редакции врача / битого кэша).
+ * Автозаглушка «имя Уточните» никогда не перебивает реальное ФИО.
  */
 export function mergePatientPreferLocalPreservePhi(
   remote: Patient,
   local: Patient
 ): Patient {
+  if (isRestoredPatientStub(local) && !isRestoredPatientStub(remote)) {
+    return remote;
+  }
   const merged: Patient = { ...remote, ...local };
+  if (isRestoredPatientStub(remote) && !isRestoredPatientStub(local)) {
+    // local — реальная карточка: забираем ФИО/контакты целиком, stub-метки сбрасываем
+    merged.firstName = local.firstName;
+    merged.lastName = local.lastName;
+    merged.middleName = local.middleName;
+    if (local.notes !== undefined) merged.notes = local.notes;
+    if (local.previousVisitsNote !== undefined) {
+      merged.previousVisitsNote = local.previousVisitsNote;
+    }
+    if (local.source) merged.source = local.source;
+  }
   for (const key of PATIENT_PHI_MERGE_KEYS) {
     if (isEmptyPatientPhiValue(local[key]) && !isEmptyPatientPhiValue(remote[key])) {
       (merged as unknown as Record<string, unknown>)[key] = remote[key];
@@ -442,6 +463,18 @@ export function mergePatientPreferLocalPreservePhi(
     };
   }
   return merged;
+}
+
+/**
+ * Конфликт PUT: правки карточки пациента с клиента не должны откатываться
+ * (иначе смена ФИО/телефона «не сохраняется» при устаревшем CAS после command API).
+ * Пустой PHI с клиента по-прежнему не затирает серверный; stub уступает реальной карточке.
+ */
+export function mergePatientsOnWriteConflict(
+  server: Patient[],
+  client: Patient[]
+): Patient[] {
+  return mergePatientsPreferLocalPreservePhi(server, client);
 }
 
 export function mergePatientsPreferLocalPreservePhi(
@@ -611,12 +644,13 @@ export function mergeEntityListWithTombstones<T extends { id: string }>(
 
 /**
  * Финальный фильтр: все tombstones из снимка вычищают сущности
- * (пациенты / записи / медкарты / планы + каскад по patientId).
+ * (пациенты / сотрудники / записи / медкарты / планы + каскад по patientId).
  */
 export function applyAllDeletionTombstones(
   snapshot: ClinicPersistedState
 ): ClinicPersistedState {
   const deletedPatientIds = unionTombstoneIds(snapshot.deletedPatientIds);
+  const deletedDoctorIds = unionTombstoneIds(snapshot.deletedDoctorIds);
   const deletedAppointmentIds = unionTombstoneIds(snapshot.deletedAppointmentIds);
   const deletedMedicalRecordIds = unionTombstoneIds(snapshot.deletedMedicalRecordIds);
   const deletedTreatmentPlanIds = unionTombstoneIds(snapshot.deletedTreatmentPlanIds);
@@ -630,6 +664,7 @@ export function applyAllDeletionTombstones(
         {
           ...snapshot,
           deletedPatientIds,
+          deletedDoctorIds,
           deletedAppointmentIds,
           deletedMedicalRecordIds,
           deletedTreatmentPlanIds,
@@ -645,6 +680,7 @@ export function applyAllDeletionTombstones(
   );
 
   const patientSet = new Set(deletedPatientIds);
+  const doctorSet = new Set(deletedDoctorIds);
   const appointmentSet = new Set(deletedAppointmentIds);
   const medicalSet = new Set(deletedMedicalRecordIds);
   const planSet = new Set(deletedTreatmentPlanIds);
@@ -660,9 +696,26 @@ export function applyAllDeletionTombstones(
   next = {
     ...next,
     patients: next.patients.filter((p) => !patientSet.has(p.id)),
-    appointments: next.appointments.filter(
-      (a) => !appointmentSet.has(a.id) && !patientSet.has(a.patientId)
+    doctors: next.doctors.filter((d) => !doctorSet.has(d.id)),
+    doctorSchedules: (next.doctorSchedules ?? []).filter(
+      (sch) => !doctorSet.has(sch.doctorId)
     ),
+    cabinets: next.cabinets.map((c) => ({
+      ...c,
+      staffIds: (c.staffIds ?? []).filter((sid) => !doctorSet.has(sid)),
+    })),
+    appointments: next.appointments
+      .filter((a) => !appointmentSet.has(a.id) && !patientSet.has(a.patientId))
+      .map((a) => {
+        let row = a;
+        if (row.doctorId && doctorSet.has(row.doctorId)) {
+          row = { ...row, doctorId: undefined };
+        }
+        if (row.assistantId && doctorSet.has(row.assistantId)) {
+          row = { ...row, assistantId: undefined, assistantHours: undefined };
+        }
+        return row;
+      }),
     medicalRecords: next.medicalRecords.filter(
       (r) => !medicalSet.has(r.id) && !patientSet.has(r.patientId)
     ),
@@ -671,11 +724,20 @@ export function applyAllDeletionTombstones(
     ),
     payments: filterByPatient(next.payments),
     invoices: filterByPatient(next.invoices),
-    workActs: filterByPatient(next.workActs),
+    workActs: filterByPatient(next.workActs).map((act) =>
+      act.doctorId && doctorSet.has(act.doctorId)
+        ? { ...act, doctorId: undefined }
+        : act
+    ),
     prepayments: filterByPatient(next.prepayments),
     patientFiles: filterByPatient(next.patientFiles),
     patientNotes: filterByPatient(next.patientNotes),
     teethByPatient,
+    assistantManualHours: Object.fromEntries(
+      Object.entries(next.assistantManualHours ?? {}).filter(
+        ([staffId]) => !doctorSet.has(staffId)
+      )
+    ),
   };
 
   return repairFinancialCoupling(next);
@@ -692,6 +754,11 @@ function withMergedTombstoneIds(
       existing.deletedPatientIds,
       incoming.deletedPatientIds,
       merged.deletedPatientIds
+    ),
+    deletedDoctorIds: unionTombstoneIds(
+      existing.deletedDoctorIds,
+      incoming.deletedDoctorIds,
+      merged.deletedDoctorIds
     ),
     deletedAppointmentIds: unionTombstoneIds(
       existing.deletedAppointmentIds,
@@ -989,6 +1056,12 @@ export function mergeClinicSnapshotWithLocal(
     ...patientsMerged,
     items: mergePatientsPreferLocalPreservePhi(remote.patients, patientsMerged.items),
   };
+  const doctors = mergeEntityListWithTombstones(
+    remote.doctors,
+    local.doctors,
+    remote.deletedDoctorIds,
+    local.deletedDoctorIds
+  );
   // Записи: сервер побеждает по общим id (command API / статусы с другого устройства),
   // локальные ещё не попавшие на сервер — сохраняем.
   const appointments = mergeEntityListWithTombstones(
@@ -1018,7 +1091,8 @@ export function mergeClinicSnapshotWithLocal(
 
   const merged: ClinicPersistedState = {
     ...remote,
-    doctors: mergeByIdPreferLocal(remote.doctors, local.doctors),
+    doctors: doctors.items,
+    deletedDoctorIds: doctors.deletedIds,
     ...(() => {
       const services = mergeServicesState(
         remote.services,
@@ -1138,6 +1212,12 @@ export function mergeClinicDataForSave(
     ...(incoming.deletedPatientIds ?? []),
   ]);
   const hasPatientDeletion = deletedPatientIds.size > 0;
+  const doctorsMerged = mergeEntityListWithTombstones(
+    existing.doctors,
+    incoming.doctors,
+    existing.deletedDoctorIds,
+    incoming.deletedDoctorIds
+  );
   const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
   const hasTreatmentPlanDeletion = hasEntityListDeletion(
     existing.treatmentPlans,
@@ -1146,7 +1226,8 @@ export function mergeClinicDataForSave(
 
   const merged: ClinicPersistedState = {
     ...incoming,
-    doctors: mergeArr(existing.doctors, incoming.doctors, protect),
+    doctors: doctorsMerged.items,
+    deletedDoctorIds: doctorsMerged.deletedIds,
     ...(() => {
       const servicesState = mergeServicesState(
         existing.services,
@@ -1303,10 +1384,18 @@ export function mergeClinicDataOnWriteConflict(
     ...(incoming.deletedPatientIds ?? []),
   ]);
   const hasPatientDeletion = deletedPatientIds.size > 0;
+  const deletedDoctorIds = unionTombstoneIds(
+    existing.deletedDoctorIds,
+    incoming.deletedDoctorIds
+  );
+  const deletedDoctorSet = new Set(deletedDoctorIds);
 
   const merged: ClinicPersistedState = {
     ...incoming,
-    doctors: preferServer(existing.doctors, incoming.doctors),
+    doctors: preferServer(existing.doctors, incoming.doctors).filter(
+      (d) => !deletedDoctorSet.has(d.id)
+    ),
+    deletedDoctorIds,
     ...(() => {
       const servicesState = mergeServicesState(
         existing.services,
@@ -1320,8 +1409,8 @@ export function mergeClinicDataOnWriteConflict(
       };
     })(),
     cabinets: preferServer(existing.cabinets, incoming.cabinets),
-    // Union по id: absence ≠ delete (delete только через deletedPatientIds).
-    patients: mergeByIdPreferLocal(incoming.patients, existing.patients),
+    // Обычно server wins; автозаглушка «имя Уточните» уступает реальной карточке клиента.
+    patients: mergePatientsOnWriteConflict(existing.patients, incoming.patients),
     appointments:
       incoming.appointments.length === 0 && existing.appointments.length > 0
         ? existing.appointments
@@ -1541,6 +1630,9 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
       : [],
     deletedPatientIds: Array.isArray(d.deletedPatientIds)
       ? (d.deletedPatientIds as string[])
+      : [],
+    deletedDoctorIds: Array.isArray(d.deletedDoctorIds)
+      ? (d.deletedDoctorIds as string[])
       : [],
     deletedAppointmentIds: Array.isArray(d.deletedAppointmentIds)
       ? (d.deletedAppointmentIds as string[])

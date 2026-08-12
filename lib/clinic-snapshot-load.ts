@@ -150,7 +150,21 @@ function preferRemoteKeepLocalOnlyEntities(
       remote.documentTemplates,
       local.documentTemplates
     ),
-    doctors: appendLocalOnly(remote.doctors, local.doctors),
+    ...(() => {
+      const deletedDoctorIds = [
+        ...new Set([
+          ...(remote.deletedDoctorIds ?? []),
+          ...(local.deletedDoctorIds ?? []),
+        ]),
+      ];
+      const deleted = new Set(deletedDoctorIds);
+      return {
+        doctors: appendLocalOnly(remote.doctors, local.doctors).filter(
+          (d) => !deleted.has(d.id)
+        ),
+        deletedDoctorIds,
+      };
+    })(),
     services: appendLocalOnly(remote.services, local.services),
     cabinets: appendLocalOnly(remote.cabinets, local.cabinets),
     teethByPatient: {
@@ -201,6 +215,12 @@ export function mergeRemoteSnapshotForPull(
       ...(local.deletedPatientIds ?? []),
     ]),
   ];
+  const deletedDoctorIds = [
+    ...new Set([
+      ...(remote.deletedDoctorIds ?? []),
+      ...(local.deletedDoctorIds ?? []),
+    ]),
+  ];
   const deletedAppointmentIds = [
     ...new Set([
       ...(remote.deletedAppointmentIds ?? []),
@@ -229,6 +249,7 @@ export function mergeRemoteSnapshotForPull(
             deletedLegalDocumentIds,
             deletedServiceIds,
             deletedPatientIds,
+            deletedDoctorIds,
             deletedAppointmentIds,
             deletedMedicalRecordIds,
             deletedTreatmentPlanIds,

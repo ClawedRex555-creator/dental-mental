@@ -9,7 +9,11 @@ import { CabinetModal } from "@/components/staff/cabinet-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { requestForcePullClinicDataFromServer } from "@/lib/clinic-data-sync.client";
+import {
+  markClinicSyncedAfterCommand,
+  requestForcePullClinicDataFromServer,
+} from "@/lib/clinic-data-sync.client";
+import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
 import { ROLE_LABELS } from "@/lib/constants";
 import { deleteStaffOnServer } from "@/lib/clinic-staff-client";
 import type { Doctor } from "@/lib/types";
@@ -60,16 +64,18 @@ export default function StaffPage() {
       return;
     }
 
-    // 3) локальный UI без гонки с автосохранением
+    // 3) локально: без flush и без pending-буфера (иначе merge возвращал сотрудника)
+    clearPendingClinicSnapshot();
     useClinicStore.getState().pauseClinicAutoSave();
     useClinicStore.getState().setClinicDataSaveError(null);
     useClinicStore.getState().setClinicSaveStatus("idle");
-    removeDoctor(member.id);
+    removeDoctor(member.id, { skipFlush: true });
     await requestForcePullClinicDataFromServer({
       force: true,
       allowApplyDespitePending: true,
       allowDuringSaveCooldown: true,
     });
+    markClinicSyncedAfterCommand();
 
     toast.success("Сотрудник удалён, доступ отключён");
   };

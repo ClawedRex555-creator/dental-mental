@@ -5,6 +5,7 @@ import {
   mergeClinicDataForSave,
   mergeClinicDataOnWriteConflict,
 } from "./clinic-persisted-state";
+import { buildRestoredPatientStub } from "./patient-visits";
 import type { Appointment, Service, WorkAct } from "./types";
 
 describe("mergeClinicDataOnWriteConflict", () => {
@@ -359,5 +360,114 @@ describe("mergeClinicDataOnWriteConflict", () => {
       merged.workActs.find((a) => a.id === "wa-incoming")?.actNumber,
       "0095-07/2026"
     );
+  });
+
+  it("write-conflict keeps client patient edits over stale server card", () => {
+    const base = createFreshPersistedState();
+    const serverPatient = {
+      id: "p1",
+      firstName: "Старое",
+      lastName: "Имя",
+      phone: "+79001110000",
+      birthDate: "1990-01-01",
+      gender: "female" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const clientPatient = {
+      ...serverPatient,
+      firstName: "Новое",
+      lastName: "ФИО",
+      phone: "+79001112233",
+      address: "ул. Новая, 1",
+    };
+    const existing = { ...base, patients: [serverPatient] };
+    const incoming = { ...base, patients: [clientPatient] };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    const patient = merged.patients.find((p) => p.id === "p1");
+    assert.equal(patient?.firstName, "Новое");
+    assert.equal(patient?.lastName, "ФИО");
+    assert.equal(patient?.phone, "+79001112233");
+    assert.equal(patient?.address, "ул. Новая, 1");
+  });
+
+  it("write-conflict prefers real patient FIO over server restored stub", () => {
+    const base = createFreshPersistedState();
+    const stubState = {
+      ...base,
+      appointments: [
+        {
+          id: "apt1",
+          patientId: "p1",
+          doctorId: "d1",
+          date: "2026-08-14",
+          startTime: "13:30",
+          endTime: "14:00",
+          durationMinutes: 30,
+          status: "scheduled" as const,
+          price: 0,
+          paymentStatus: "pending" as const,
+        },
+      ],
+    };
+    const stub = buildRestoredPatientStub("p1", stubState);
+    const real = {
+      id: "p1",
+      firstName: "Ирина",
+      lastName: "Смирнова",
+      middleName: "Ивановна",
+      phone: "+79001112233",
+      birthDate: "1990-01-01",
+      gender: "female" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const existing = { ...stubState, patients: [stub] };
+    const incoming = { ...base, patients: [real], appointments: [] };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    const patient = merged.patients.find((p) => p.id === "p1");
+    assert.equal(patient?.lastName, "Смирнова");
+    assert.equal(patient?.firstName, "Ирина");
+  });
+
+  it("deletedDoctorIds tombstone prevents staff resurrection on save merge", () => {
+    const base = createFreshPersistedState();
+    const doctor = {
+      id: "doc1",
+      name: "Иванов",
+      specialization: "Терапия",
+      phone: "",
+      email: "",
+      cabinet: "—",
+      commissionPercent: 0,
+      status: "active" as const,
+      role: "doctor" as const,
+    };
+    const existing = { ...base, doctors: [doctor], patients: [] };
+    const incoming = {
+      ...base,
+      doctors: [],
+      deletedDoctorIds: ["doc1"],
+    };
+
+    const saved = mergeClinicDataForSave(existing, incoming);
+    assert.equal(saved.doctors.some((d) => d.id === "doc1"), false);
+    assert.equal(saved.deletedDoctorIds?.includes("doc1"), true);
+
+    // Устаревшая вкладка всё ещё содержит сотрудника — tombstone побеждает
+    const staleClient = { ...base, doctors: [doctor], deletedDoctorIds: [] };
+    const afterStale = mergeClinicDataForSave(saved, staleClient);
+    assert.equal(afterStale.doctors.some((d) => d.id === "doc1"), false);
+    assert.equal(afterStale.deletedDoctorIds?.includes("doc1"), true);
   });
 });

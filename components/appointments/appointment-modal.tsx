@@ -339,7 +339,10 @@ export function AppointmentModal({
 
         beginClinicCommandMutation();
         try {
-          const apiResult = await createAppointmentViaCommandApi(payload);
+          const selectedPatient = patients.find((p) => p.id === payload.patientId);
+          const apiResult = await createAppointmentViaCommandApi(payload, {
+            patient: selectedPatient,
+          });
           if (!apiResult.ok) {
             toast.error(apiResult.error ?? "Не удалось создать запись на сервере");
             return;

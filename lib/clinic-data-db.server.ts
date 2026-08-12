@@ -141,6 +141,7 @@ function buildSnapshotAfterStaffRemoval(
   return {
     ...data,
     doctors: data.doctors.filter((d) => d.id !== staffId),
+    deletedDoctorIds: [...new Set([...(data.deletedDoctorIds ?? []), staffId])],
     doctorSchedules: (data.doctorSchedules ?? []).filter((s) => s.doctorId !== staffId),
     cabinets: data.cabinets.map((c) => ({
       ...c,
@@ -155,6 +156,9 @@ function buildSnapshotAfterStaffRemoval(
     }),
     workActs: data.workActs.map((act) =>
       act.doctorId === staffId ? { ...act, doctorId: undefined } : act
+    ),
+    assistantManualHours: Object.fromEntries(
+      Object.entries(data.assistantManualHours ?? {}).filter(([id]) => id !== staffId)
     ),
   };
 }
@@ -176,7 +180,15 @@ export async function removeStaffFromClinicSnapshot(
   }
 
   if (!data.doctors.some((d) => d.id === staffId)) {
-    return record;
+    // Уже нет в doctors — всё равно фиксируем tombstone, чтобы pending/pull не вернули.
+    if ((data.deletedDoctorIds ?? []).includes(staffId)) {
+      return record;
+    }
+    const next = {
+      ...data,
+      deletedDoctorIds: [...new Set([...(data.deletedDoctorIds ?? []), staffId])],
+    };
+    return saveClinicDataDb(clinicId, next, { allowEmptyResult: true });
   }
 
   const next = buildSnapshotAfterStaffRemoval(data, staffId);

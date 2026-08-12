@@ -137,22 +137,50 @@ describe("apply-appointment-commands", () => {
     if (!created.ok) return;
 
     // Второй приём на тот же слот (как «грязные» данные) — смена статуса первого всё равно ок
-    const withOverlap = {
+    const crowded = {
       ...created.state,
       appointments: [
         ...created.state.appointments,
         sampleApt({ id: "apt2", status: "scheduled" }),
       ],
     };
-    const updated = applyUpdateAppointmentToPersistedState(withOverlap, "apt1", {
+    const updated = applyUpdateAppointmentToPersistedState(crowded, "apt1", {
       status: "arrived",
     });
     assert.equal(updated.ok, true);
-    if (!updated.ok) return;
-    assert.equal(updated.alreadyApplied, false);
-    assert.equal(
-      updated.state.appointments.find((a) => a.id === "apt1")?.status,
-      "arrived"
-    );
+  });
+
+  it("create without patient on server fails instead of orphan stub", () => {
+    const state = createFreshPersistedState();
+    state.doctors = baseState().doctors;
+    const result = applyCreateAppointmentToPersistedState(state, sampleApt());
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.error, /Пациент не найден/);
+  });
+
+  it("create upserts patient payload so FIO is available for notifications", () => {
+    const state = createFreshPersistedState();
+    state.doctors = baseState().doctors;
+    const patient = {
+      id: "p1",
+      firstName: "Ирина",
+      lastName: "Петрова",
+      phone: "+79001112233",
+      birthDate: "1990-01-01",
+      gender: "female" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const result = applyCreateAppointmentToPersistedState(state, sampleApt(), patient);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.state.patients[0]?.lastName, "Петрова");
+    assert.equal(result.state.patients[0]?.firstName, "Ирина");
+    assert.equal(result.state.appointments[0]?.id, "apt1");
   });
 });

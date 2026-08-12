@@ -16,6 +16,8 @@ import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
+import { isModuleEnabled } from "@/lib/modules";
+import { getClinicModules } from "@/lib/platform-modules.server";
 
 export const APPOINTMENT_CMD_HEADERS = {
   "Cache-Control": "private, no-store, must-revalidate",
@@ -98,6 +100,28 @@ export async function requireAppointmentCommandSession(
   return { ok: true, clinicId: session.clinicId };
 }
 
+async function maybeNotifyAfterAppointmentCommand(
+  clinicId: string,
+  prevSnapshot: ClinicPersistedState,
+  nextSnapshot: ClinicPersistedState
+): Promise<void> {
+  const modules = await getClinicModules(clinicId);
+  if (!isModuleEnabled(modules, "notifications")) return;
+  const { maybeSyncAppointmentNotifications, maybeNotifyClinicStaffEvents } = await import(
+    "@/lib/notifications/worker.server"
+  );
+  await maybeSyncAppointmentNotifications(
+    clinicId,
+    prevSnapshot.appointments,
+    nextSnapshot.appointments
+  ).catch(() => undefined);
+  await maybeNotifyClinicStaffEvents({
+    clinicId,
+    prevSnapshot,
+    nextSnapshot,
+  }).catch(() => undefined);
+}
+
 /**
  * Сохранить результат command API.
  *
@@ -148,6 +172,11 @@ export async function saveAppointmentCommandResult(
         expectedRevision: existing.revision,
         autoMergeOnVersionConflict: false,
       });
+      await maybeNotifyAfterAppointmentCommand(
+        clinicId,
+        existing.data,
+        saved.data
+      ).catch(() => undefined);
       return NextResponse.json(
         {
           ok: true,
@@ -198,15 +227,5 @@ export async function saveAppointmentCommandResult(
 }
 
 export async function loadClinicSnapshotForCommand(clinicId: string) {
-  const existing = await getClinicDataDbWithLegacyStaff(clinicId);
-  if (!existing?.data) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { ok: false, error: "Нет данных клиники" },
-        { status: 404, headers: APPOINTMENT_CMD_HEADERS }
-      ),
-    };
-  }
-  return { ok: true as const, existing };
+  return getClinicDataDbWithLegacyStaff(clinicId);
 }

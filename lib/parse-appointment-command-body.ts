@@ -1,4 +1,4 @@
-import type { Appointment, AppointmentStatus, PaymentStatus } from "@/lib/types";
+import type { Appointment, AppointmentStatus, Patient, PaymentStatus } from "@/lib/types";
 
 const STATUSES: AppointmentStatus[] = [
   "scheduled",
@@ -139,4 +139,93 @@ export function parseAppointmentPatch(raw: unknown): Partial<Appointment> | null
   if ("workActId" in b) patch.workActId = asOptionalString(b.workActId);
 
   return patch;
+}
+
+const GENDERS = ["male", "female"] as const;
+const PATIENT_STATUSES = ["active", "new", "archived", "debtor", "vip"] as const;
+const DISABILITIES = [
+  "none",
+  "group1",
+  "group2",
+  "group3",
+  "child",
+  "not_specified",
+] as const;
+
+/** Пациент в теле create — чтобы не создавать запись без ФИО (гонка с flush карточки). */
+export function parsePatientPayload(raw: unknown): Patient | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as Record<string, unknown>;
+  const id = asOptionalString(b.id);
+  const firstName = asOptionalString(b.firstName);
+  const lastName = asOptionalString(b.lastName);
+  const birthDate = asOptionalString(b.birthDate);
+  if (!id || !firstName || !lastName || !birthDate) return null;
+
+  const gender =
+    typeof b.gender === "string" && (GENDERS as readonly string[]).includes(b.gender)
+      ? (b.gender as Patient["gender"])
+      : "female";
+  const status =
+    typeof b.status === "string" &&
+    (PATIENT_STATUSES as readonly string[]).includes(b.status)
+      ? (b.status as Patient["status"])
+      : "active";
+  const disability =
+    typeof b.disability === "string" &&
+    (DISABILITIES as readonly string[]).includes(b.disability)
+      ? (b.disability as Patient["disability"])
+      : "not_specified";
+  const source =
+    typeof b.source === "string" && b.source.trim()
+      ? (b.source as Patient["source"])
+      : "Сайт";
+
+  const phone = typeof b.phone === "string" ? b.phone : "";
+  const createdAt = asOptionalString(b.createdAt) ?? birthDate;
+
+  return {
+    id,
+    firstName,
+    lastName,
+    middleName: asOptionalString(b.middleName),
+    phone,
+    email: asOptionalString(b.email),
+    birthDate,
+    gender,
+    address: asOptionalString(b.address),
+    source,
+    status,
+    notes: asOptionalString(b.notes),
+    allergies: Array.isArray(b.allergies)
+      ? b.allergies.filter((x): x is string => typeof x === "string")
+      : undefined,
+    chronicDiseases: Array.isArray(b.chronicDiseases)
+      ? b.chronicDiseases.filter((x): x is string => typeof x === "string")
+      : undefined,
+    createdAt,
+    balance: Math.max(0, asNumber(b.balance, 0)),
+    totalSpent: Math.max(0, asNumber(b.totalSpent, 0)),
+    lastVisitDate: asOptionalString(b.lastVisitDate),
+    nextVisitDate: asOptionalString(b.nextVisitDate),
+    snils: asOptionalString(b.snils),
+    passportSeries: asOptionalString(b.passportSeries),
+    passportNumber: asOptionalString(b.passportNumber),
+    isChild: b.isChild === true ? true : undefined,
+    birthCertificateSeries: asOptionalString(b.birthCertificateSeries),
+    birthCertificateNumber: asOptionalString(b.birthCertificateNumber),
+    representativeFullName: asOptionalString(b.representativeFullName),
+    representativeBirthDate: asOptionalString(b.representativeBirthDate),
+    representativePassportSeries: asOptionalString(b.representativePassportSeries),
+    representativePassportNumber: asOptionalString(b.representativePassportNumber),
+    withoutIdentityDocuments: b.withoutIdentityDocuments === true ? true : undefined,
+    diagnosis: asOptionalString(b.diagnosis),
+    hadPreviousVisits: b.hadPreviousVisits === true ? true : undefined,
+    previousVisitsNote: asOptionalString(b.previousVisitsNote),
+    disability,
+    notificationPrefs:
+      b.notificationPrefs && typeof b.notificationPrefs === "object"
+        ? (b.notificationPrefs as Patient["notificationPrefs"])
+        : undefined,
+  };
 }

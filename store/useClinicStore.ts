@@ -218,6 +218,7 @@ interface ClinicState {
   deletedServiceIds: string[];
   deletedWorkActIds: string[];
   deletedPatientIds: string[];
+  deletedDoctorIds: string[];
   deletedAppointmentIds: string[];
   deletedMedicalRecordIds: string[];
   deletedTreatmentPlanIds: string[];
@@ -260,7 +261,7 @@ interface ClinicState {
   addDoctor: (doctor: Doctor) => void;
   setDoctors: (doctors: Doctor[]) => void;
   updateDoctor: (id: string, data: Partial<Doctor>) => void;
-  removeDoctor: (id: string) => void;
+  removeDoctor: (id: string, options?: { skipFlush?: boolean }) => void;
   addCabinet: (cabinet: Cabinet) => void;
   removeCabinet: (id: string) => void;
   assignStaffToCabinet: (cabinetId: string, staffId: string) => void;
@@ -366,6 +367,7 @@ export const useClinicStore = create<ClinicState>()(
       deletedServiceIds: [],
       deletedWorkActIds: [],
       deletedPatientIds: [],
+      deletedDoctorIds: [],
       deletedAppointmentIds: [],
       deletedMedicalRecordIds: [],
       deletedTreatmentPlanIds: [],
@@ -481,9 +483,10 @@ export const useClinicStore = create<ClinicState>()(
                 }
               : null;
           return {
-            doctors: [doctor, ...s.doctors],
+            doctors: [doctor, ...s.doctors.filter((d) => d.id !== doctor.id)],
+            deletedDoctorIds: (s.deletedDoctorIds ?? []).filter((id) => id !== doctor.id),
             doctorSchedules: scheduleEntry
-              ? [scheduleEntry, ...schedules]
+              ? [scheduleEntry, ...schedules.filter((sch) => sch.doctorId !== doctor.id)]
               : schedules,
           };
         });
@@ -499,11 +502,12 @@ export const useClinicStore = create<ClinicState>()(
         scheduleClinicDataFlush();
       },
 
-      removeDoctor: (id) => {
+      removeDoctor: (id, options) => {
         set((s) => {
           const schedules = s.doctorSchedules ?? [];
           return {
             doctors: s.doctors.filter((d) => d.id !== id),
+            deletedDoctorIds: [...new Set([...(s.deletedDoctorIds ?? []), id])],
             doctorSchedules: schedules.filter((sch) => sch.doctorId !== id),
           cabinets: s.cabinets.map((c) => ({
             ...c,
@@ -526,7 +530,7 @@ export const useClinicStore = create<ClinicState>()(
           ),
           };
         });
-        scheduleClinicDataFlush();
+        if (!options?.skipFlush) scheduleClinicDataFlush();
       },
 
       addCabinet: (cabinet) =>
@@ -1111,6 +1115,7 @@ export const useClinicStore = create<ClinicState>()(
           deletedServiceIds: repaired.deletedServiceIds ?? [],
           deletedWorkActIds: repaired.deletedWorkActIds ?? [],
           deletedPatientIds: repaired.deletedPatientIds ?? [],
+          deletedDoctorIds: repaired.deletedDoctorIds ?? [],
           deletedAppointmentIds: repaired.deletedAppointmentIds ?? [],
           deletedMedicalRecordIds: repaired.deletedMedicalRecordIds ?? [],
           deletedTreatmentPlanIds: repaired.deletedTreatmentPlanIds ?? [],
@@ -1153,7 +1158,18 @@ export const useClinicStore = create<ClinicState>()(
           );
           const hydrated = applyAllDeletionTombstones({
             ...s,
-            doctors: mergeByIdPreferLocal(data.doctors ?? [], s.doctors),
+            ...(() => {
+              const doctors = mergeEntityListWithTombstones(
+                data.doctors ?? [],
+                s.doctors,
+                data.deletedDoctorIds,
+                s.deletedDoctorIds
+              );
+              return {
+                doctors: doctors.items,
+                deletedDoctorIds: doctors.deletedIds,
+              };
+            })(),
             ...mergeServicesState(
               data.services ?? [],
               s.services,
@@ -1234,6 +1250,7 @@ export const useClinicStore = create<ClinicState>()(
             deletedServiceIds: hydrated.deletedServiceIds ?? [],
             deletedWorkActIds: hydrated.deletedWorkActIds ?? [],
             deletedPatientIds: hydrated.deletedPatientIds ?? [],
+            deletedDoctorIds: hydrated.deletedDoctorIds ?? [],
             deletedAppointmentIds: hydrated.deletedAppointmentIds ?? [],
             deletedMedicalRecordIds: hydrated.deletedMedicalRecordIds ?? [],
             deletedTreatmentPlanIds: hydrated.deletedTreatmentPlanIds ?? [],

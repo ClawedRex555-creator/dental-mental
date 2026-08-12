@@ -12,6 +12,7 @@ import { sendWebPushToUsers } from "@/lib/notifications/web-push.server";
 import type { NotificationChannel } from "@/lib/notifications/types";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
 import { withDb } from "@/lib/db";
+import { isRestoredPatientStub } from "@/lib/patient-visits";
 import type { Appointment, AppointmentStatus, WorkAct } from "@/lib/types";
 
 export async function processNotificationQueue(input?: {
@@ -102,6 +103,7 @@ function formatPatientName(snapshot: ClinicPersistedState, patientId?: string): 
   if (!patientId) return "Пациент";
   const patient = snapshot.patients.find((p) => p.id === patientId);
   if (!patient) return "Пациент";
+  if (isRestoredPatientStub(patient)) return "Пациент";
   return formatPatientDisplayName(patient);
 }
 

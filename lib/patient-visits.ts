@@ -146,6 +146,18 @@ export function buildRestoredPatientStub(
   };
 }
 
+/** Автозаглушка после orphan repair — не должна перебивать реальное ФИО в merge/уведомлениях */
+export function isRestoredPatientStub(patient: Pick<Patient, "firstName" | "lastName" | "notes" | "previousVisitsNote">): boolean {
+  if (patient.lastName !== "имя" || patient.firstName !== "Уточните") return false;
+  const note = patient.notes ?? "";
+  const visitNote = patient.previousVisitsNote ?? "";
+  return (
+    note.includes("Автовосстановление") ||
+    note.includes("восстановлена автоматически") ||
+    visitNote.includes("Автовосстановление")
+  );
+}
+
 /** Восстановить пациентов, на которых ссылаются приёмы и другие сущности */
 export function repairMissingPatientsInSnapshot(
   state: ClinicPersistedState
