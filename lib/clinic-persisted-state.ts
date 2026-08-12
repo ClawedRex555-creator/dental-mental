@@ -1293,11 +1293,11 @@ export function mergeClinicDataForSave(
       };
     })(),
     cabinets: mergeArr(existing.cabinets, incoming.cabinets, protect),
-    // incoming = то, что сохраняем (PUT client или уже applied command state).
-    // Server-prefer здесь НЕЛЬЗЯ: command API тоже проходит через mergeClinicDataForSave
-    // и иначе откатывал только что записанное ФИО на old existing.
-    // Stale PUT ловим через CAS + mergeClinicDataOnWriteConflict (там server wins).
-    patients: mergePatientsPreferLocalPreservePhi(existing.patients, incoming.patients),
+    // Пациенты: server wins на обычном PUT.
+    // Карточка пишется через /api/clinic/patients/update + replaceAppliedSnapshot
+    // (без этого merge). Иначе вкладка с устаревшим ФИО и свежим CAS
+    // (ack после pull) затирает только что сохранённую карточку без 409.
+    patients: mergePatientsOnWriteConflict(existing.patients, incoming.patients),
     appointments: mergeByIdPreferLocal(existing.appointments, incoming.appointments),
     medicalRecords: mergeArr(
       existing.medicalRecords,

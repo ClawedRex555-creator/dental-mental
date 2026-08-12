@@ -645,16 +645,13 @@ export function ClinicDataSync() {
           const currentJson = JSON.stringify(pickPersistedState(useClinicStore.getState()));
           if (currentJson === json) {
             if (saveResult.merged) {
-              // autoMerge на сервере мог отдать чужие поля; не pull'им preferServer —
-              // сразу ещё раз PUT на свежем CAS, чтобы карточка пациента точно уехала.
-              toast.info(
-                "Данные объединены с сервером — повторно сохраняем ваши правки…"
-              );
+              // Пациенты на PUT теперь server-prefer: повторный PUT со старым
+              // локальным ФИО больше не «дожимает» карточку и только гоняет revision.
+              // Подтягиваем серверный снимок (command API уже сохранил правки).
+              toast.info("Данные объединены с сервером — обновляем локальную копию…");
               saveAckCooldownUntil.current = Date.now() + SAVE_ACK_PULL_COOLDOWN_MS;
-              lastSavedJson.current = "";
-              pendingFlushAfterSave.current = true;
-              setClinicSaveStatus("pending");
-              setClinicDataUnsaved(true);
+              pendingPullAfterSave.current = true;
+              markSaveSuccess();
             } else {
               markSaveSuccess();
             }
@@ -716,7 +713,10 @@ export function ClinicDataSync() {
         }
         if (pendingPullAfterSave.current) {
           pendingPullAfterSave.current = false;
-          void pullRemoteSnapshot({ allowDuringSaveCooldown: true });
+          void pullRemoteSnapshot({
+            allowDuringSaveCooldown: true,
+            allowApplyDespitePending: true,
+          });
         }
         // Раньше при merged сразу делали force-pull и затирали только что
         // отредактированную карточку пациента устаревшим remote.

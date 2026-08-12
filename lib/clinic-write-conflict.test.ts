@@ -426,12 +426,12 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(patient?.phone, "+79001110000");
   });
 
-  it("non-conflict save keeps incoming patient card (command apply must persist)", () => {
+  it("non-conflict PUT keeps server patient card (stale client must not wipe command write)", () => {
     const base = createFreshPersistedState();
     const serverPatient = {
       id: "p1",
-      firstName: "Старое",
-      lastName: "ФИО",
+      firstName: "Команда",
+      lastName: "Свежая",
       phone: "+79001110000",
       birthDate: "1990-01-01",
       gender: "female" as const,
@@ -444,8 +444,8 @@ describe("mergeClinicDataOnWriteConflict", () => {
     };
     const clientPatient = {
       ...serverPatient,
-      firstName: "Команда",
-      lastName: "Свежая",
+      firstName: "Старое",
+      lastName: "ФИО",
     };
     const existing = { ...base, patients: [serverPatient] };
     const incoming = { ...base, patients: [clientPatient] };
@@ -454,6 +454,36 @@ describe("mergeClinicDataOnWriteConflict", () => {
     const patient = merged.patients.find((p) => p.id === "p1");
     assert.equal(patient?.firstName, "Команда");
     assert.equal(patient?.lastName, "Свежая");
+  });
+
+  it("non-conflict PUT still accepts brand-new patient from client", () => {
+    const base = createFreshPersistedState();
+    const serverPatient = {
+      id: "p1",
+      firstName: "Есть",
+      lastName: "НаСервере",
+      phone: "+79001110000",
+      birthDate: "1990-01-01",
+      gender: "female" as const,
+      source: "Сайт" as const,
+      status: "active" as const,
+      disability: "not_specified" as const,
+      createdAt: "2026-01-01",
+      balance: 0,
+      totalSpent: 0,
+    };
+    const newPatient = {
+      ...serverPatient,
+      id: "p-new",
+      firstName: "Новый",
+      lastName: "Клиент",
+    };
+    const existing = { ...base, patients: [serverPatient] };
+    const incoming = { ...base, patients: [serverPatient, newPatient] };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.patients.some((p) => p.id === "p-new"), true);
+    assert.equal(merged.patients.find((p) => p.id === "p-new")?.lastName, "Клиент");
   });
 
   it("write-conflict prefers real patient FIO over server restored stub", () => {
