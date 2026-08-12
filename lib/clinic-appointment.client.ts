@@ -1,6 +1,7 @@
 import {
   ackClinicServerVersion,
 } from "@/lib/clinic-data-sync.client";
+import type { AppointmentCommandPatch } from "@/lib/apply-appointment-commands";
 import type { Appointment, Patient } from "@/lib/types";
 
 export type AppointmentCommandResult = {
@@ -69,10 +70,10 @@ export function createAppointmentViaCommandApi(
   });
 }
 
-/** Обновить запись через command API. */
+/** Обновить запись через command API. null на опциональных полях = снять значение. */
 export function updateAppointmentViaCommandApi(
   appointmentId: string,
-  appointment: Appointment
+  appointment: Appointment | AppointmentCommandPatch
 ) {
   return postAppointmentCommand("/api/clinic/appointments/update", {
     appointmentId,

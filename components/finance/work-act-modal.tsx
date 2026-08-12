@@ -16,6 +16,7 @@ import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import { updateAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
+import type { AppointmentCommandPatch } from "@/lib/apply-appointment-commands";
 import {
   deleteWorkActViaCommandApi,
   upsertWorkActViaCommandApi,
@@ -694,7 +695,11 @@ export function WorkActModal({
     }
     const { workActId: _cleared, ...withoutAct } = current;
     void _cleared;
-    const next = { ...withoutAct, status: "completed" as const };
+    const next: AppointmentCommandPatch = {
+      ...withoutAct,
+      status: "completed",
+      workActId: null,
+    };
     beginClinicCommandMutation();
     void (async () => {
       try {

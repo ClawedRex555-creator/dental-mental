@@ -9,7 +9,7 @@ import {
   parseAppointmentPatch,
   parseAppointmentPayload,
 } from "@/lib/parse-appointment-command-body";
-import type { Appointment } from "@/lib/types";
+import type { AppointmentCommandPatch } from "@/lib/apply-appointment-commands";
 
 /** Command API: обновить запись без полного client PUT snapshot. */
 export async function POST(request: Request) {
@@ -39,13 +39,18 @@ export async function POST(request: Request) {
     );
   }
 
-  let patch: Partial<Appointment> | null = null;
+  let patch: AppointmentCommandPatch | null = null;
   if (body.appointment != null) {
+    const raw = body.appointment as Record<string, unknown>;
     const full = parseAppointmentPayload(body.appointment);
     if (full) {
       const { id: _id, ...rest } = full;
       void _id;
-      patch = rest;
+      patch = { ...rest };
+      // Явный null/"" с клиента снимает workActId; отсутствие ключа — не трогаем.
+      if ("workActId" in raw && (raw.workActId === null || raw.workActId === "")) {
+        patch.workActId = null;
+      }
     } else {
       patch = parseAppointmentPatch(body.appointment);
     }

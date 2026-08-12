@@ -1,4 +1,5 @@
 import type { Appointment, AppointmentStatus, Patient, PaymentStatus } from "@/lib/types";
+import type { AppointmentCommandPatch } from "@/lib/apply-appointment-commands";
 
 const STATUSES: AppointmentStatus[] = [
   "scheduled",
@@ -79,10 +80,10 @@ export function parseAppointmentPayload(raw: unknown): Appointment | null {
 }
 
 /** Частичный patch для update. */
-export function parseAppointmentPatch(raw: unknown): Partial<Appointment> | null {
+export function parseAppointmentPatch(raw: unknown): AppointmentCommandPatch | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
-  const patch: Partial<Appointment> = {};
+  const patch: AppointmentCommandPatch = {};
 
   if ("patientId" in b) {
     const v = asOptionalString(b.patientId);
@@ -136,7 +137,12 @@ export function parseAppointmentPatch(raw: unknown): Partial<Appointment> | null
     }
     patch.paymentStatus = b.paymentStatus as PaymentStatus;
   }
-  if ("workActId" in b) patch.workActId = asOptionalString(b.workActId);
+  if ("workActId" in b) {
+    patch.workActId =
+      b.workActId === null || b.workActId === ""
+        ? null
+        : asOptionalString(b.workActId);
+  }
 
   return patch;
 }

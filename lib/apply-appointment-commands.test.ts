@@ -159,6 +159,26 @@ describe("apply-appointment-commands", () => {
     assert.match(result.error, /Пациент не найден/);
   });
 
+  it("update clears workActId when patch sends null", () => {
+    const state = baseState();
+    const created = applyCreateAppointmentToPersistedState(
+      state,
+      sampleApt({ workActId: "act1", status: "ready_for_payment" })
+    );
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+
+    const updated = applyUpdateAppointmentToPersistedState(created.state, "apt1", {
+      status: "completed",
+      workActId: null,
+    });
+    assert.equal(updated.ok, true);
+    if (!updated.ok) return;
+    const apt = updated.state.appointments.find((a) => a.id === "apt1");
+    assert.equal(apt?.status, "completed");
+    assert.equal(apt?.workActId, undefined);
+  });
+
   it("create upserts patient payload so FIO is available for notifications", () => {
     const state = createFreshPersistedState();
     state.doctors = baseState().doctors;

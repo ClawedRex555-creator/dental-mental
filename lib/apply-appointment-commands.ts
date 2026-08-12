@@ -144,22 +144,38 @@ export function applyCreateAppointmentToPersistedState(
   };
 }
 
-/** Убрать undefined — иначе full payload с parseAppointmentPayload затирал comment/external*. */
-function definedAppointmentPatch(patch: Partial<Appointment>): Partial<Appointment> {
-  const out: Partial<Appointment> = {};
-  for (const [key, value] of Object.entries(patch) as [keyof Appointment, Appointment[keyof Appointment]][]) {
-    if (value !== undefined) {
-      (out as Record<string, unknown>)[key as string] = value;
+/** Убрать undefined — иначе full payload с parseAppointmentPayload затирал comment/external*.
+ *  null на опциональных полях = явное снятие (workActId, assistantId, …). */
+export type AppointmentCommandPatch = {
+  [K in keyof Appointment]?: Appointment[K] | null;
+};
+
+function applyAppointmentPatch(
+  current: Appointment,
+  patch: AppointmentCommandPatch
+): Appointment {
+  const next: Appointment = { ...current, id: current.id };
+  const mutable = next as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch) as [
+    keyof Appointment,
+    unknown,
+  ][]) {
+    if (key === "id") continue;
+    if (value === undefined) continue;
+    if (value === null) {
+      delete mutable[key as string];
+      continue;
     }
+    mutable[key as string] = value;
   }
-  return out;
+  return next;
 }
 
 /** Обновить запись (частичный patch поверх существующей). */
 export function applyUpdateAppointmentToPersistedState(
   state: ClinicPersistedState,
   appointmentId: string,
-  patch: Partial<Appointment>
+  patch: AppointmentCommandPatch
 ): ApplyAppointmentResult {
   const id = appointmentId.trim();
   if (!id) return { ok: false, error: "Не указана запись" };
@@ -167,7 +183,7 @@ export function applyUpdateAppointmentToPersistedState(
   const current = state.appointments.find((a) => a.id === id);
   if (!current) return { ok: false, error: "Запись не найдена" };
 
-  const next: Appointment = { ...current, ...definedAppointmentPatch(patch), id };
+  const next = applyAppointmentPatch(current, patch);
   if (appointmentsEqual(current, next)) {
     return {
       ok: true,
