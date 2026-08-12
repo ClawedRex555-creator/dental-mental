@@ -16,7 +16,17 @@ import { extractDiagnosisCode } from "@/lib/egisz/cda/diagnosis-code";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { PatientModal } from "@/components/patients/patient-modal";
-import { useClinicStore } from "@/store/useClinicStore";
+import { upsertMedicalRecordViaCommandApi } from "@/lib/clinic-entity.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -102,10 +112,25 @@ export function MedicalRecordModal({
       serviceName: serviceName.trim() || "Приём",
     };
 
-    addMedicalRecord(record);
-    toast.success("Запись в медкарту добавлена");
-    onSaved?.(record.id);
-    onOpenChange(false);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await upsertMedicalRecordViaCommandApi(record);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось сохранить медзапись на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => addMedicalRecord(record));
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        toast.success("Запись в медкарту добавлена");
+        onSaved?.(record.id);
+        onOpenChange(false);
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
   };
 
   return (

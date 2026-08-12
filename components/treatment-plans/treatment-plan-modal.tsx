@@ -17,9 +17,22 @@ import { logAuditClient } from "@/lib/audit-client";
 import { canDeleteTreatmentPlans } from "@/lib/rbac";
 import { getClinicBillableServices } from "@/lib/service-categories";
 import { syncTreatmentPlanCommentToPatientNotes } from "@/lib/treatment-plan-patient-note";
+import {
+  deleteTreatmentPlanViaCommandApi,
+  upsertTreatmentPlanViaCommandApi,
+} from "@/lib/clinic-entity.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { formatCurrency, generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -206,7 +219,7 @@ export function TreatmentPlanModal({
     };
   };
 
-  const persistPlan = (payload: TreatmentPlan) => {
+  const persistPlanLocally = (payload: TreatmentPlan) => {
     const doctorName = doctors.find((d) => d.id === doctorId)?.name ?? "";
     syncTreatmentPlanCommentToPatientNotes({
       plan: payload,
@@ -225,31 +238,90 @@ export function TreatmentPlanModal({
     }
   };
 
+  const savePlanViaCommand = async (
+    payload: TreatmentPlan,
+    options?: { thenPrepayment?: boolean }
+  ) => {
+    beginClinicCommandMutation();
+    try {
+      const api = await upsertTreatmentPlanViaCommandApi(payload);
+      if (!api.ok) {
+        toast.error(api.error ?? "Не удалось сохранить план на сервере");
+        return false;
+      }
+      runWithoutClinicFlush(() => persistPlanLocally(payload));
+      markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
+      if (options?.thenPrepayment) {
+        toast.success(plan ? "План сохранён" : "План создан");
+        onRequestPrepayment?.(payload);
+      } else {
+        const savedWithComment = Boolean(comment.trim());
+        toast.success(
+          plan
+            ? savedWithComment
+              ? "План сохранён, комментарий — в заметках пациента"
+              : "План лечения обновлён"
+            : savedWithComment
+              ? "План создан, комментарий — в заметках пациента"
+              : "План лечения создан"
+        );
+      }
+      onOpenChange(false);
+      return true;
+    } finally {
+      endClinicCommandMutation();
+    }
+  };
+
   const handleSave = () => {
     const payload = buildPlanPayload();
     if (!payload) return;
-
-    const savedWithComment = Boolean(comment.trim());
-    persistPlan(payload);
-    toast.success(
-      plan
-        ? savedWithComment
-          ? "План сохранён, комментарий — в заметках пациента"
-          : "План лечения обновлён"
-        : savedWithComment
-          ? "План создан, комментарий — в заметках пациента"
-          : "План лечения создан"
-    );
-    onOpenChange(false);
+    void savePlanViaCommand(payload);
   };
 
   const handlePrepayment = () => {
     const payload = buildPlanPayload();
     if (!payload) return;
-    persistPlan(payload);
-    toast.success(plan ? "План сохранён" : "План создан");
-    onRequestPrepayment?.(payload);
-    onOpenChange(false);
+    void savePlanViaCommand(payload, { thenPrepayment: true });
+  };
+
+  const handleDeletePlan = () => {
+    if (!plan) return;
+    if (
+      !window.confirm(
+        `Удалить план «${plan.title}»?\n\nСвязанная заметка будет удалена. Акты и предоплаты в «Финансы» останутся.`
+      )
+    ) {
+      return;
+    }
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await deleteTreatmentPlanViaCommandApi(plan.id);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось удалить план");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          deleteTreatmentPlan(plan.id);
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        void logAuditClient({
+          action: "delete",
+          resourceType: "treatment_plan",
+          resourceId: plan.id,
+          metadata: { title: plan.title, patientId: plan.patientId },
+        });
+        toast.success("План лечения удалён");
+        onOpenChange(false);
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
   };
 
   return (
@@ -467,27 +539,7 @@ export function TreatmentPlanModal({
                 type="button"
                 variant="outline"
                 className="border-red-200 text-red-700 hover:bg-red-50"
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      `Удалить план «${plan.title}»?\n\nСвязанная заметка будет удалена. Акты и предоплаты в «Финансы» останутся.`
-                    )
-                  ) {
-                    return;
-                  }
-                  if (deleteTreatmentPlan(plan.id)) {
-                    void logAuditClient({
-                      action: "delete",
-                      resourceType: "treatment_plan",
-                      resourceId: plan.id,
-                      metadata: { title: plan.title, patientId: plan.patientId },
-                    });
-                    toast.success("План лечения удалён");
-                    onOpenChange(false);
-                  } else {
-                    toast.error("Не удалось удалить план");
-                  }
-                }}
+                onClick={handleDeletePlan}
               >
                 <Trash2 className="h-4 w-4" />
                 Удалить

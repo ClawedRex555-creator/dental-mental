@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   endOfDay,
@@ -42,10 +42,15 @@ import { canDeleteClinicExpenses, canDeleteWorkActs } from "@/lib/rbac";
 import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
 import {
   markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
   requestClinicDataPull,
 } from "@/lib/clinic-data-sync.client";
+import { updateAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
+import { deleteWorkActViaCommandApi } from "@/lib/clinic-work-act.client";
 import { payWorkActViaCommandApi } from "@/lib/clinic-work-act-pay.client";
 import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
   runWithoutClinicFlush,
   useClinicStore,
 } from "@/store/useClinicStore";
@@ -92,6 +97,84 @@ export default function FinancePage() {
   const setAssistantManualHours = useClinicStore((s) => s.setAssistantManualHours);
   const repairPaidActAppointments = useClinicStore((s) => s.repairPaidActAppointments);
   const salaryModuleEnabled = useIsModuleEnabled("my_salary");
+  const assistantHoursSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
+  const assistantHoursPrevious = useRef<Map<string, number | undefined>>(new Map());
+
+  useEffect(() => {
+    const timers = assistantHoursSaveTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  const persistAssistantHours = (appointmentId: string) => {
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const full = useClinicStore
+          .getState()
+          .appointments.find((a) => a.id === appointmentId);
+        if (!full) return;
+        const api = await updateAppointmentViaCommandApi(appointmentId, full);
+        if (!api.ok) {
+          const previous = assistantHoursPrevious.current.get(appointmentId);
+          runWithoutClinicFlush(() => {
+            updateAppointment(
+              appointmentId,
+              { assistantHours: previous },
+              { skipFlush: true }
+            );
+          });
+          toast.error(api.error ?? "Не удалось сохранить часы ассистента");
+          return;
+        }
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        assistantHoursPrevious.current.delete(appointmentId);
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
+  };
+
+  const scheduleAssistantHoursSave = (appointmentId: string) => {
+    const existing = assistantHoursSaveTimers.current.get(appointmentId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      assistantHoursSaveTimers.current.delete(appointmentId);
+      persistAssistantHours(appointmentId);
+    }, 600);
+    assistantHoursSaveTimers.current.set(appointmentId, timer);
+  };
+
+  const handleAssistantHoursChange = (appointmentId: string, raw: string) => {
+    const current = useClinicStore
+      .getState()
+      .appointments.find((a) => a.id === appointmentId);
+    if (!current) return;
+    if (!assistantHoursPrevious.current.has(appointmentId)) {
+      assistantHoursPrevious.current.set(appointmentId, current.assistantHours);
+    }
+    const nextHours =
+      raw === "" ? undefined : Math.max(0, Number(raw.replace(",", ".")) || 0);
+    runWithoutClinicFlush(() => {
+      updateAppointment(appointmentId, { assistantHours: nextHours }, { skipFlush: true });
+    });
+    scheduleAssistantHoursSave(appointmentId);
+  };
+
+  const handleAssistantHoursBlur = (appointmentId: string) => {
+    const pending = assistantHoursSaveTimers.current.get(appointmentId);
+    if (pending) {
+      clearTimeout(pending);
+      assistantHoursSaveTimers.current.delete(appointmentId);
+      persistAssistantHours(appointmentId);
+    }
+  };
   const visibleTabs = useMemo(
     () => FINANCE_TABS.filter((t) => t !== "salaries" || salaryModuleEnabled),
     [salaryModuleEnabled]
@@ -1106,14 +1189,9 @@ export default function FinancePage() {
                               }
                               placeholder="0"
                               onChange={(e) => {
-                                const raw = e.target.value;
-                                updateAppointment(row.apt.id, {
-                                  assistantHours:
-                                    raw === ""
-                                      ? undefined
-                                      : Math.max(0, Number(raw.replace(",", ".")) || 0),
-                                });
+                                handleAssistantHoursChange(row.apt.id, e.target.value);
                               }}
+                              onBlur={() => handleAssistantHoursBlur(row.apt.id)}
                             />
                           </td>
                           <td className="px-4 py-3 text-right">{formatCurrency(row.rate)}</td>
@@ -1435,13 +1513,37 @@ export default function FinancePage() {
                                   ) {
                                     return;
                                   }
-                                  if (deleteWorkAct(act.id)) {
-                                    toast.success(
-                                      isPaid ? "Оплаченный акт удалён" : "Акт удалён"
-                                    );
-                                  } else {
-                                    toast.error("Не удалось удалить акт");
-                                  }
+                                  beginClinicCommandMutation();
+                                  void (async () => {
+                                    try {
+                                      const apiResult =
+                                        await deleteWorkActViaCommandApi(act.id);
+                                      if (!apiResult.ok) {
+                                        toast.error(
+                                          apiResult.error ?? "Не удалось удалить акт"
+                                        );
+                                        return;
+                                      }
+                                      runWithoutClinicFlush(() => {
+                                        deleteWorkAct(act.id);
+                                      });
+                                      markClinicSyncedAfterCommand(
+                                        apiResult.updatedAt,
+                                        apiResult.revision
+                                      );
+                                      useClinicStore
+                                        .getState()
+                                        .pauseClinicAutoSave(15_000);
+                                      notifyClinicDataChanged();
+                                      toast.success(
+                                        isPaid
+                                          ? "Оплаченный акт удалён"
+                                          : "Акт удалён"
+                                      );
+                                    } finally {
+                                      endClinicCommandMutation();
+                                    }
+                                  })();
                                 }}
                               >
                                 <Trash2 className="h-4 w-4" />

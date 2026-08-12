@@ -14,7 +14,17 @@ import type { Patient, PatientStatus } from "@/lib/types";
 import { cn, formatCurrency, formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { canDeletePatients, canViewPatientPhone } from "@/lib/rbac";
 import { logAuditClient } from "@/lib/audit-client";
-import { useClinicStore } from "@/store/useClinicStore";
+import { deletePatientViaCommandApi } from "@/lib/clinic-patient.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 
 export default function PatientsPage() {
   const patients = useClinicStore((s) => s.patients);
@@ -26,6 +36,45 @@ export default function PatientsPage() {
   const [statusFilter, setStatusFilter] = useState<PatientStatus | "all">("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Patient | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeletePatient = (p: Patient) => {
+    const name = getFullName(p.firstName, p.lastName, p.middleName);
+    if (
+      !window.confirm(
+        `Удалить пациента «${name}»?\n\nБудут удалены записи, медкарта, планы, акты, платежи и файлы. Действие нельзя отменить.`
+      )
+    ) {
+      return;
+    }
+    if (deletingId) return;
+    setDeletingId(p.id);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await deletePatientViaCommandApi(p.id);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось удалить пациента на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          deletePatient(p.id);
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        logAuditClient({
+          action: "delete",
+          resourceType: "patient",
+          resourceId: p.id,
+        });
+        toast.success("Пациент удалён");
+      } finally {
+        endClinicCommandMutation();
+        setDeletingId(null);
+      }
+    })();
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -142,25 +191,8 @@ export default function PatientsPage() {
                           variant="ghost"
                           size="sm"
                           className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                `Удалить пациента «${name}»?\n\nБудут удалены записи, медкарта, планы, акты, платежи и файлы. Действие нельзя отменить.`
-                              )
-                            ) {
-                              return;
-                            }
-                            if (deletePatient(p.id)) {
-                              logAuditClient({
-                                action: "delete",
-                                resourceType: "patient",
-                                resourceId: p.id,
-                              });
-                              toast.success("Пациент удалён");
-                            } else {
-                              toast.error("Не удалось удалить пациента");
-                            }
-                          }}
+                          disabled={deletingId === p.id}
+                          onClick={() => handleDeletePatient(p)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -235,26 +267,8 @@ export default function PatientsPage() {
                           variant="ghost"
                           size="sm"
                           className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                          onClick={() => {
-                            const name = getFullName(p.firstName, p.lastName, p.middleName);
-                            if (
-                              !window.confirm(
-                                `Удалить пациента «${name}»?\n\nБудут удалены записи, медкарта, планы, акты, платежи и файлы. Действие нельзя отменить.`
-                              )
-                            ) {
-                              return;
-                            }
-                            if (deletePatient(p.id)) {
-                              logAuditClient({
-                                action: "delete",
-                                resourceType: "patient",
-                                resourceId: p.id,
-                              });
-                              toast.success("Пациент удалён");
-                            } else {
-                              toast.error("Не удалось удалить пациента");
-                            }
-                          }}
+                          disabled={deletingId === p.id}
+                          onClick={() => handleDeletePatient(p)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

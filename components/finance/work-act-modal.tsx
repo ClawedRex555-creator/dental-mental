@@ -15,6 +15,11 @@ import type {
 import { DISCOUNT_BEARER_LABELS } from "@/lib/constants";
 import { calcDoctorPaymentForAct } from "@/lib/finance-utils";
 import { createInvoiceFromWorkAct } from "@/lib/invoice-from-act";
+import { updateAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
+import {
+  deleteWorkActViaCommandApi,
+  upsertWorkActViaCommandApi,
+} from "@/lib/clinic-work-act.client";
 import { submitWorkActViaCommandApi } from "@/lib/clinic-work-act-submit.client";
 import {
   markClinicSyncedAfterCommand,
@@ -46,6 +51,7 @@ import {
   getWorkActPaidAmount,
   isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
+import { detachAppointmentFromWorkAct } from "@/lib/work-act-visit";
 import { canDeleteWorkActs } from "@/lib/rbac";
 import {
   getOpenPrepaidSources,
@@ -553,38 +559,83 @@ export function WorkActModal({
 
   const actSaveLock = useRef(false);
 
+  const saveActViaCommand = async (options: {
+    submittedToAdmin?: boolean;
+    afterLocalPersist?: (act: WorkAct) => void;
+    successMessage: (act: WorkAct) => string;
+    closeOnSuccess?: boolean;
+  }): Promise<boolean> => {
+    beginClinicCommandMutation();
+    try {
+      const act = persistAct(options.submittedToAdmin);
+      if (!act) return false;
+
+      const apiResult = await upsertWorkActViaCommandApi({
+        act,
+        linkAppointmentId: linkedAppointmentId,
+        ...(typeof options.submittedToAdmin === "boolean"
+          ? { submittedToAdmin: options.submittedToAdmin }
+          : {}),
+      });
+      if (!apiResult.ok) {
+        toast.error(apiResult.error ?? "Не удалось сохранить акт");
+        return false;
+      }
+
+      runWithoutClinicFlush(() => {
+        options.afterLocalPersist?.(act);
+      });
+      markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
+
+      toast.success(options.successMessage(act));
+      if (options.closeOnSuccess) onOpenChange(false);
+      return true;
+    } finally {
+      endClinicCommandMutation();
+    }
+  };
+
   const handleSaveOnly = () => {
     if (actSaveLock.current) return;
     actSaveLock.current = true;
-    const act = persistAct(mode === "doctor" ? false : undefined);
-    if (!act) {
-      actSaveLock.current = false;
-      return;
-    }
-    toast.success(
-      linkedPrepaymentId && prepayPath === "settle"
-        ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
-        : `Акт № ${act.actNumber} сохранён`
-    );
-    if (mode !== "doctor") {
-      onOpenChange(false);
-      return;
-    }
-    actSaveLock.current = false;
+    void (async () => {
+      try {
+        const submittedToAdmin = mode === "doctor" ? false : undefined;
+        await saveActViaCommand({
+          submittedToAdmin,
+          successMessage: (act) =>
+            linkedPrepaymentId && prepayPath === "settle"
+              ? `Акт № ${act.actNumber} сохранён, предоплата зачтена`
+              : `Акт № ${act.actNumber} сохранён`,
+          closeOnSuccess: mode !== "doctor",
+        });
+      } finally {
+        actSaveLock.current = false;
+      }
+    })();
   };
 
   const handleSaveAndPrint = () => {
     if (actSaveLock.current) return;
     actSaveLock.current = true;
-    const act = persistAct(mode === "doctor" ? false : undefined);
-    if (!act) {
-      actSaveLock.current = false;
-      return;
-    }
-    const patient = patients.find((p) => p.id === patientId);
-    if (patient) printWorkAct(act, patient, clinicSettings);
-    toast.success(`Акт № ${act.actNumber} сохранён и отправлен на печать`);
-    actSaveLock.current = false;
+    void (async () => {
+      try {
+        const submittedToAdmin = mode === "doctor" ? false : undefined;
+        await saveActViaCommand({
+          submittedToAdmin,
+          afterLocalPersist: (act) => {
+            const patient = patients.find((p) => p.id === patientId);
+            if (patient) printWorkAct(act, patient, clinicSettings);
+          },
+          successMessage: (act) =>
+            `Акт № ${act.actNumber} сохранён и отправлен на печать`,
+        });
+      } finally {
+        actSaveLock.current = false;
+      }
+    })();
   };
 
   const handleSubmitToAdmin = () => {
@@ -636,25 +687,71 @@ export function WorkActModal({
       toast.error("Запись не найдена");
       return;
     }
-    updateAppointment(linkedAppointmentId, {
-      status: "completed",
-      workActId: undefined,
-    });
-    toast.success("Запись возвращена на редактирование");
-    onOpenChange(false);
+    const current = appointments.find((a) => a.id === linkedAppointmentId);
+    if (!current) {
+      toast.error("Запись не найдена");
+      return;
+    }
+    const { workActId: _cleared, ...withoutAct } = current;
+    void _cleared;
+    const next = { ...withoutAct, status: "completed" as const };
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const apiResult = await updateAppointmentViaCommandApi(
+          linkedAppointmentId,
+          next
+        );
+        if (!apiResult.ok) {
+          toast.error(apiResult.error ?? "Не удалось вернуть запись");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          useClinicStore.setState((s) => ({
+            appointments: s.appointments.map((a) =>
+              a.id === linkedAppointmentId
+                ? { ...detachAppointmentFromWorkAct(a), status: "completed" }
+                : a
+            ),
+          }));
+        });
+        markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        toast.success("Запись возвращена на редактирование");
+        onOpenChange(false);
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
   };
 
   const handleAdminFixSave = () => {
-    const act = persistAct(existingAct?.submittedToAdmin ?? true);
-    if (!act) return;
-    if (linkedAppointmentId) {
-      updateAppointment(linkedAppointmentId, {
-        status: "ready_for_payment",
-        workActId: act.id,
-      });
-    }
-    toast.success(`Акт № ${act.actNumber} сохранён`);
-    onOpenChange(false);
+    if (actSaveLock.current) return;
+    actSaveLock.current = true;
+    void (async () => {
+      try {
+        await saveActViaCommand({
+          submittedToAdmin: existingAct?.submittedToAdmin ?? true,
+          afterLocalPersist: (act) => {
+            if (linkedAppointmentId) {
+              updateAppointment(
+                linkedAppointmentId,
+                {
+                  status: "ready_for_payment",
+                  workActId: act.id,
+                },
+                { skipFlush: true }
+              );
+            }
+          },
+          successMessage: (act) => `Акт № ${act.actNumber} сохранён`,
+          closeOnSuccess: true,
+        });
+      } finally {
+        actSaveLock.current = false;
+      }
+    })();
   };
 
   const navigateToPayment = (actId: string) => {
@@ -1343,12 +1440,33 @@ export function WorkActModal({
                       ) {
                         return;
                       }
-                      if (deleteWorkAct(existingAct.id)) {
-                        toast.success(paid ? "Оплаченный акт удалён" : "Акт удалён");
-                        onOpenChange(false);
-                      } else {
-                        toast.error("Не удалось удалить акт");
-                      }
+                      beginClinicCommandMutation();
+                      void (async () => {
+                        try {
+                          const apiResult = await deleteWorkActViaCommandApi(
+                            existingAct.id
+                          );
+                          if (!apiResult.ok) {
+                            toast.error(apiResult.error ?? "Не удалось удалить акт");
+                            return;
+                          }
+                          runWithoutClinicFlush(() => {
+                            deleteWorkAct(existingAct.id);
+                          });
+                          markClinicSyncedAfterCommand(
+                            apiResult.updatedAt,
+                            apiResult.revision
+                          );
+                          useClinicStore.getState().pauseClinicAutoSave(15_000);
+                          notifyClinicDataChanged();
+                          toast.success(
+                            paid ? "Оплаченный акт удалён" : "Акт удалён"
+                          );
+                          onOpenChange(false);
+                        } finally {
+                          endClinicCommandMutation();
+                        }
+                      })();
                     }}
                   >
                     Удалить акт

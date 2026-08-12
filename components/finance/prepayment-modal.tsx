@@ -4,15 +4,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
+import { createPrepaymentViaCommandApi } from "@/lib/clinic-entity.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 import { getClinicBillableServices } from "@/lib/service-categories";
 import { formatCurrency, generateId } from "@/lib/utils";
 import { calcDiscountTotals } from "@/lib/discount-utils";
 import { normalizePlanItemQuantity } from "@/lib/treatment-plan-item-utils";
-import type { DiscountType, TreatmentPlan } from "@/lib/types";
+import type { DiscountType, TreatmentPlan, WorkAct } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -229,7 +239,7 @@ export function PrepaymentModal({
           : undefined,
     };
 
-    addWorkAct({
+    const workAct: WorkAct = {
       id: actId,
       actNumber,
       actDate,
@@ -246,34 +256,50 @@ export function PrepaymentModal({
       actType: "prepayment",
       prepaymentId: prepId,
       notes: `Аванс за планируемые услуги. План: ${formatCurrency(finalAmount)}${discountValue > 0 ? ` (скидка ${discountType === "percent" ? `${discount}%` : formatCurrency(discount)})` : ""}, внесено: ${formatCurrency(paid)}${remainingAmount > 0 ? `, остаток: ${formatCurrency(remainingAmount)}` : ""}`,
-    });
+    };
 
-    addInvoice({
-      id: invoiceId,
-      patientId,
-      workActId: actId,
-      amount: paid,
-      subtotalAmount: finalAmount,
-      discountType,
-      discount,
-      discountValue,
-      paid: 0,
-      status: "pending",
-      date: actDate,
-      description:
-        discountValue > 0
-          ? `Аванс ${actNumber}: план ${formatCurrency(finalAmount)}, скидка ${discountType === "percent" ? `${discount}%` : formatCurrency(discount)}, внесено ${formatCurrency(paid)}`
-          : `Аванс (предоплата) по документу ${actNumber}`,
-    });
-
-    addPrepayment(prepayment);
-    printPrepaymentAct(prepayment, patient, clinicSettings);
-
-    toast.success("Акт предоплаты создан. Перейдите к оплате внесённой суммы.");
-    onOpenChange(false);
-    window.setTimeout(() => {
-      window.location.assign(`/finance?tab=acts&payAct=${actId}`);
-    }, 50);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await createPrepaymentViaCommandApi({ prepayment, workAct });
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось создать предоплату на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          addWorkAct(workAct);
+          addInvoice({
+            id: invoiceId,
+            patientId,
+            workActId: actId,
+            amount: paid,
+            subtotalAmount: finalAmount,
+            discountType,
+            discount,
+            discountValue,
+            paid: 0,
+            status: "pending",
+            date: actDate,
+            description:
+              discountValue > 0
+                ? `Аванс ${actNumber}: план ${formatCurrency(finalAmount)}, скидка ${discountType === "percent" ? `${discount}%` : formatCurrency(discount)}, внесено ${formatCurrency(paid)}`
+                : `Аванс (предоплата) по документу ${actNumber}`,
+          });
+          addPrepayment(prepayment);
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        printPrepaymentAct(prepayment, patient, clinicSettings);
+        toast.success("Акт предоплаты создан. Перейдите к оплате внесённой суммы.");
+        onOpenChange(false);
+        window.setTimeout(() => {
+          window.location.assign(`/finance?tab=acts&payAct=${actId}`);
+        }, 50);
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
   };
 
   return (

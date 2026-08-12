@@ -486,6 +486,117 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(merged.patients.find((p) => p.id === "p-new")?.lastName, "Клиент");
   });
 
+  it("non-conflict PUT keeps server appointment status (stale client must not wipe command write)", () => {
+    const base = createFreshPersistedState();
+    const appointment: Appointment = {
+      id: "apt1",
+      patientId: "p1",
+      doctorId: "d1",
+      date: "2026-06-20",
+      startTime: "10:00",
+      endTime: "11:00",
+      durationMinutes: 60,
+      status: "arrived",
+      price: 0,
+      paymentStatus: "pending",
+    };
+    const existing = { ...base, appointments: [appointment] };
+    const incoming = {
+      ...base,
+      appointments: [{ ...appointment, status: "scheduled" as const }],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.appointments[0]?.status, "arrived");
+  });
+
+  it("non-conflict PUT keeps server work-act paymentStatus and accepts client-only new act", () => {
+    const base = createFreshPersistedState();
+    const serverAct: WorkAct = {
+      id: "wa1",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-06-20",
+      actNumber: "1",
+      actType: "services",
+      items: [{ id: "i1", serviceName: "Пломба", quantity: 1, price: 1000, total: 1000 }],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
+      totalAmount: 1000,
+      createdAt: "2026-06-20",
+      paymentStatus: "paid",
+      submittedToAdmin: true,
+    };
+    const staleClientAct: WorkAct = {
+      ...serverAct,
+      paymentStatus: "pending",
+      submittedToAdmin: false,
+      items: [],
+    };
+    const newClientAct: WorkAct = {
+      ...serverAct,
+      id: "wa-new",
+      actNumber: "2",
+      paymentStatus: "pending",
+      submittedToAdmin: false,
+    };
+    const existing = { ...base, workActs: [serverAct] };
+    const incoming = { ...base, workActs: [staleClientAct, newClientAct] };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    const kept = merged.workActs.find((a) => a.id === "wa1");
+    assert.equal(kept?.paymentStatus, "paid");
+    assert.equal(kept?.submittedToAdmin, true);
+    assert.equal(kept?.items.length, 1);
+    assert.equal(merged.workActs.some((a) => a.id === "wa-new"), true);
+  });
+
+  it("non-conflict PUT keeps server payment on overlap and accepts client-only payment", () => {
+    const base = createFreshPersistedState();
+    const act: WorkAct = {
+      id: "wa1",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-06-20",
+      actNumber: "1",
+      actType: "services",
+      items: [],
+      subtotalAmount: 1000,
+      discountType: "percent",
+      discount: 0,
+      totalAmount: 1000,
+      createdAt: "2026-06-20",
+      paymentStatus: "paid",
+    };
+    const serverPayment = {
+      id: "pay1",
+      patientId: "p1",
+      amount: 1000,
+      method: "card" as const,
+      status: "paid" as const,
+      date: "2026-06-20",
+      workActId: "wa1",
+    };
+    const staleClientPayment = { ...serverPayment, amount: 100, method: "cash" as const };
+    const newClientPayment = {
+      ...serverPayment,
+      id: "pay-new",
+      amount: 500,
+    };
+    const existing = { ...base, workActs: [act], payments: [serverPayment] };
+    const incoming = {
+      ...base,
+      workActs: [act],
+      payments: [staleClientPayment, newClientPayment],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.payments.find((p) => p.id === "pay1")?.amount, 1000);
+    assert.equal(merged.payments.find((p) => p.id === "pay1")?.method, "card");
+    assert.equal(merged.payments.some((p) => p.id === "pay-new"), true);
+  });
+
   it("write-conflict prefers real patient FIO over server restored stub", () => {
     const base = createFreshPersistedState();
     const stubState = {

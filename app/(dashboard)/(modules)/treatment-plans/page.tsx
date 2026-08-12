@@ -18,8 +18,11 @@ import { logAuditClient } from "@/lib/audit-client";
 import { canDeleteTreatmentPlans } from "@/lib/rbac";
 import { treatmentPlansForViewer } from "@/lib/treatment-plan-access";
 import { normalizePlanItemQuantity, planItemLineTotal } from "@/lib/treatment-plan-item-utils";
-import { markClinicSyncedAfterCommand } from "@/lib/clinic-data-sync.client";
+import { markClinicSyncedAfterCommand, notifyClinicDataChanged } from "@/lib/clinic-data-sync.client";
+import { deleteTreatmentPlanViaCommandApi } from "@/lib/clinic-entity.client";
 import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
   runWithoutClinicFlush,
   useClinicStore,
 } from "@/store/useClinicStore";
@@ -156,21 +159,35 @@ export default function TreatmentPlansPage() {
                           ) {
                             return;
                           }
-                          if (deleteTreatmentPlan(plan.id)) {
-                            void logAuditClient({
-                              action: "delete",
-                              resourceType: "treatment_plan",
-                              resourceId: plan.id,
-                              metadata: { title: plan.title, patientId: plan.patientId },
-                            });
-                            toast.success("План лечения удалён");
-                            if (editing?.id === plan.id) {
-                              setEditing(null);
-                              setModalOpen(false);
+                          beginClinicCommandMutation();
+                          void (async () => {
+                            try {
+                              const api = await deleteTreatmentPlanViaCommandApi(plan.id);
+                              if (!api.ok) {
+                                toast.error(api.error ?? "Не удалось удалить план");
+                                return;
+                              }
+                              runWithoutClinicFlush(() => {
+                                deleteTreatmentPlan(plan.id);
+                              });
+                              markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+                              useClinicStore.getState().pauseClinicAutoSave(15_000);
+                              notifyClinicDataChanged();
+                              void logAuditClient({
+                                action: "delete",
+                                resourceType: "treatment_plan",
+                                resourceId: plan.id,
+                                metadata: { title: plan.title, patientId: plan.patientId },
+                              });
+                              toast.success("План лечения удалён");
+                              if (editing?.id === plan.id) {
+                                setEditing(null);
+                                setModalOpen(false);
+                              }
+                            } finally {
+                              endClinicCommandMutation();
                             }
-                          } else {
-                            toast.error("Не удалось удалить план");
-                          }
+                          })();
                         }}
                       >
                         <Trash2 className="h-4 w-4" />

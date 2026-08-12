@@ -435,6 +435,7 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     const incoming = {
       ...existing,
       medicalRecords: existing.medicalRecords.filter((r) => r.id !== "mr0" && r.id !== "mr1"),
+      deletedMedicalRecordIds: ["mr0", "mr1"],
     };
 
     assert.equal(isSuspiciousClinicDataDowngrade(existing, incoming), false);

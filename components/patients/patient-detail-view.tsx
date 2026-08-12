@@ -20,7 +20,12 @@ import {
   OTHER_CLINIC_VISIT_BADGE,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/constants";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { cn, formatCurrency, formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
 import { AppointmentModal } from "@/components/appointments/appointment-modal";
 import { PrepaymentModal } from "@/components/finance/prepayment-modal";
@@ -55,6 +60,11 @@ import { isWorkActSyntheticVisit } from "@/lib/work-act-visit";
 import { printWorkAct } from "@/lib/work-act-print";
 import { getPatientDebtAmount } from "@/lib/patient-balance";
 import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
+import { deletePatientViaCommandApi } from "@/lib/clinic-patient.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 
 const TABS = ["overview", "appointments", "records", "teeth", "plans", "finance", "files", "notes"] as const;
 type Tab = (typeof TABS)[number];
@@ -109,6 +119,45 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const canDeleteRecords = canDeleteMedicalRecords(currentUser.role);
   const showPhone = canViewPatientPhone(currentUser.role);
   const patientName = getFullName(patient.firstName, patient.lastName, patient.middleName);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeletePatient = () => {
+    if (
+      !window.confirm(
+        `Удалить пациента «${patientName}»?\n\nБудут удалены все визиты, медкарта, планы, финансы и файлы. Действие нельзя отменить.`
+      )
+    ) {
+      return;
+    }
+    if (deleting) return;
+    setDeleting(true);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await deletePatientViaCommandApi(patient.id);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось удалить пациента на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          deletePatient(patient.id);
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        logAuditClient({
+          action: "delete",
+          resourceType: "patient",
+          resourceId: patient.id,
+        });
+        toast.success("Пациент удалён");
+        router.push("/patients");
+      } finally {
+        endClinicCommandMutation();
+        setDeleting(false);
+      }
+    })();
+  };
 
   useEffect(() => {
     logAuditClient({
@@ -255,26 +304,8 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                 variant="outline"
                 size="sm"
                 className="border-red-200 text-red-700 hover:bg-red-50"
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      `Удалить пациента «${patientName}»?\n\nБудут удалены все визиты, медкарта, планы, финансы и файлы. Действие нельзя отменить.`
-                    )
-                  ) {
-                    return;
-                  }
-                  if (deletePatient(patient.id)) {
-                    logAuditClient({
-                      action: "delete",
-                      resourceType: "patient",
-                      resourceId: patient.id,
-                    });
-                    toast.success("Пациент удалён");
-                    router.push("/patients");
-                  } else {
-                    toast.error("Не удалось удалить пациента");
-                  }
-                }}
+                disabled={deleting}
+                onClick={handleDeletePatient}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Удалить

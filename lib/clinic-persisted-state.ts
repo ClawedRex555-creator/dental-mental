@@ -1267,10 +1267,6 @@ export function mergeClinicDataForSave(
     incoming.deletedDoctorIds
   );
   const hasServiceDeletion = hasEntityListDeletion(existing.services, incoming.services);
-  const hasTreatmentPlanDeletion = hasEntityListDeletion(
-    existing.treatmentPlans,
-    incoming.treatmentPlans
-  );
 
   const merged: ClinicPersistedState = {
     ...incoming,
@@ -1298,36 +1294,71 @@ export function mergeClinicDataForSave(
     // (без этого merge). Иначе вкладка с устаревшим ФИО и свежим CAS
     // (ack после pull) затирает только что сохранённую карточку без 409.
     patients: mergePatientsOnWriteConflict(existing.patients, incoming.patients),
-    appointments: mergeByIdPreferLocal(existing.appointments, incoming.appointments),
-    medicalRecords: mergeArr(
-      existing.medicalRecords,
-      incoming.medicalRecords,
-      hasPatientDeletion ? undefined : protect
-    ),
-    treatmentPlans: mergeArr(
-      existing.treatmentPlans,
-      incoming.treatmentPlans,
-      hasPatientDeletion || hasTreatmentPlanDeletion ? undefined : protect
-    ),
-    payments: hasPatientDeletion
-      ? mergeArr(existing.payments, incoming.payments)
-      : mergeFinancialArraysForSave(existing.payments, incoming.payments),
-    invoices: hasPatientDeletion
-      ? mergeArr(existing.invoices, incoming.invoices)
-      : mergeFinancialArraysForSave(existing.invoices, incoming.invoices),
+    // Статусы/workActId пишутся command API; stale PUT не должен откатывать.
+    appointments:
+      incoming.appointments.length === 0 && existing.appointments.length > 0
+        ? existing.appointments
+        : mergeAppointmentsOnWriteConflict(existing.appointments, incoming.appointments),
     ...(() => {
-      const acts = mergeWorkActsState(
-        existing.workActs,
-        incoming.workActs,
+      const deletedMedicalRecordIds = unionTombstoneIds(
+        existing.deletedMedicalRecordIds,
+        incoming.deletedMedicalRecordIds
+      );
+      const mrTombstones = new Set(deletedMedicalRecordIds);
+      // Absence ≠ delete: only tombstones remove; overlapping ids → server wins.
+      const medicalRecords = mergeByIdPreferLocal(
+        incoming.medicalRecords,
+        existing.medicalRecords
+      ).filter((r) => !mrTombstones.has(r.id));
+      return { medicalRecords, deletedMedicalRecordIds };
+    })(),
+    ...(() => {
+      const deletedTreatmentPlanIds = unionTombstoneIds(
+        existing.deletedTreatmentPlanIds,
+        incoming.deletedTreatmentPlanIds
+      );
+      const planTombstones = new Set(deletedTreatmentPlanIds);
+      const plans = mergeByIdPreferLocal(
+        incoming.treatmentPlans,
+        existing.treatmentPlans
+      ).filter((p) => !planTombstones.has(p.id));
+      return {
+        treatmentPlans: plans,
+        deletedTreatmentPlanIds,
+      };
+    })(),
+    // Пересекающиеся id: server wins (оплата/акт с command API);
+    // новые id клиента принимаем; пустой incoming не обнуляет финансы.
+    payments:
+      incoming.payments.length === 0 && existing.payments.length > 0
+        ? existing.payments
+        : mergeByIdPreferServerRespectingClientDeletions(
+            existing.payments,
+            incoming.payments
+          ),
+    invoices:
+      incoming.invoices.length === 0 && existing.invoices.length > 0
+        ? existing.invoices
+        : mergeByIdPreferServerRespectingClientDeletions(
+            existing.invoices,
+            incoming.invoices
+          ),
+    ...(() => {
+      const deletedWorkActIds = unionTombstoneIds(
         existing.deletedWorkActIds,
         incoming.deletedWorkActIds
       );
-      const workActs = hasPatientDeletion
-        ? mergeArr(existing.workActs, incoming.workActs)
-        : mergeFinancialArraysForSave(existing.workActs, acts.workActs);
+      const tombstoneSet = new Set(deletedWorkActIds);
+      const workActsBase =
+        incoming.workActs.length === 0 && existing.workActs.length > 0
+          ? existing.workActs
+          : mergeByIdPreferServerRespectingClientDeletions(
+              existing.workActs,
+              incoming.workActs
+            );
       return {
-        workActs,
-        deletedWorkActIds: acts.deletedWorkActIds,
+        workActs: workActsBase.filter((act) => !tombstoneSet.has(act.id)),
+        deletedWorkActIds,
       };
     })(),
     warehouse: mergeArr(existing.warehouse, incoming.warehouse, protect),
@@ -1338,11 +1369,8 @@ export function mergeClinicDataForSave(
       incoming.patientFiles,
       hasPatientDeletion ? undefined : protect
     ),
-    patientNotes: mergeArr(
-      existing.patientNotes,
-      incoming.patientNotes,
-      hasPatientDeletion ? undefined : protect
-    ),
+    // Заметки: server wins на пересечении; новые с клиента принимаем; absence ≠ delete.
+    patientNotes: mergeByIdPreferLocal(incoming.patientNotes, existing.patientNotes),
     documentTemplates: mergeArr(existing.documentTemplates, incoming.documentTemplates, protect),
     clinicExpenses: mergeArr(existing.clinicExpenses, incoming.clinicExpenses, protect),
     ...(() => {
@@ -1358,10 +1386,9 @@ export function mergeClinicDataForSave(
       };
     })(),
     doctorSchedules: mergeDoctorSchedules(existing.doctorSchedules, incoming.doctorSchedules),
-    prepayments: mergeArr(
-      existing.prepayments,
-      incoming.prepayments,
-      hasPatientDeletion ? undefined : protect
+    prepayments: mergeByIdPreferLocal(
+      incoming.prepayments ?? [],
+      existing.prepayments ?? []
     ),
     teethByPatient: { ...existing.teethByPatient, ...incoming.teethByPatient },
     actCounter: Math.max(existing.actCounter, incoming.actCounter),

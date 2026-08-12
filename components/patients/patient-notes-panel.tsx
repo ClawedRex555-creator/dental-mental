@@ -13,6 +13,10 @@ import type { Patient, PatientNote, PatientNoteCategory } from "@/lib/types";
 import { PATIENT_NOTE_CATEGORIES, ROLE_LABELS } from "@/lib/constants";
 import { upsertPatientViaCommandApi } from "@/lib/clinic-patient.client";
 import {
+  addPatientNoteViaCommandApi,
+  deletePatientNoteViaCommandApi,
+} from "@/lib/clinic-entity.client";
+import {
   markClinicSyncedAfterCommand,
   notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
@@ -134,14 +138,29 @@ export function PatientNotesPanel({
       category,
       createdAt: now,
     };
-    addPatientNote(note);
-    logAuditClient({
-      action: "create",
-      resourceType: "patient",
-      resourceId: patient.id,
-      metadata: { noteId: note.id, category, kind: "team_note" },
-    });
-    setDraft("");
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await addPatientNoteViaCommandApi(note);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось сохранить заметку");
+          return;
+        }
+        runWithoutClinicFlush(() => addPatientNote(note));
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        logAuditClient({
+          action: "create",
+          resourceType: "patient",
+          resourceId: patient.id,
+          metadata: { noteId: note.id, category, kind: "team_note" },
+        });
+        setDraft("");
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
   }
 
   function savePinned() {
@@ -384,13 +403,28 @@ export function PatientNotesPanel({
                               ) {
                                 return;
                               }
-                              deletePatientNote(note.id);
-                              logAuditClient({
-                                action: "delete",
-                                resourceType: "patient",
-                                resourceId: patient.id,
-                                metadata: { noteId: note.id, kind: "team_note" },
-                              });
+                              beginClinicCommandMutation();
+                              void (async () => {
+                                try {
+                                  const api = await deletePatientNoteViaCommandApi(note.id);
+                                  if (!api.ok) {
+                                    toast.error(api.error ?? "Не удалось удалить заметку");
+                                    return;
+                                  }
+                                  runWithoutClinicFlush(() => deletePatientNote(note.id));
+                                  markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+                                  useClinicStore.getState().pauseClinicAutoSave(15_000);
+                                  notifyClinicDataChanged();
+                                  logAuditClient({
+                                    action: "delete",
+                                    resourceType: "patient",
+                                    resourceId: patient.id,
+                                    metadata: { noteId: note.id, kind: "team_note" },
+                                  });
+                                } finally {
+                                  endClinicCommandMutation();
+                                }
+                              })();
                             }}
                           >
                             <Trash2 className="mr-1 h-3.5 w-3.5" />
