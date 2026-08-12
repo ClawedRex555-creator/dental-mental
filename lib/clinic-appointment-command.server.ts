@@ -171,6 +171,7 @@ export async function saveAppointmentCommandResult(
         expectedUpdatedAt: existing.updatedAt,
         expectedRevision: existing.revision,
         autoMergeOnVersionConflict: false,
+        replaceAppliedSnapshot: true,
       });
       await maybeNotifyAfterAppointmentCommand(
         clinicId,

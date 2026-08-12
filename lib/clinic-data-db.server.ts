@@ -203,6 +203,11 @@ export async function saveClinicDataDb(
     expectedUpdatedAt?: string | null;
     expectedRevision?: number | null;
     autoMergeOnVersionConflict?: boolean;
+    /**
+     * Command API: applied state уже полный снимок после load→apply.
+     * Не мержить снова с existing — иначе merge*PreferServer откатывает apply.
+     */
+    replaceAppliedSnapshot?: boolean;
   }
 ): Promise<ClinicDataSaveResult> {
   const expectedUpdatedAt =
@@ -214,6 +219,7 @@ export async function saveClinicDataDb(
       ? Math.max(0, Math.floor(options.expectedRevision))
       : null;
   const shouldAutoMergeOnConflict = options?.autoMergeOnVersionConflict !== false;
+  const replaceAppliedSnapshot = options?.replaceAppliedSnapshot === true;
 
   const saved = await withDb(async (client) => {
     // Сериализуем сохранения по clinicId на уровне БД:
@@ -257,9 +263,9 @@ export async function saveClinicDataDb(
       ]);
 
       const merged =
-        existing && hasClinicData(existing.data)
-          ? mergeClinicDataForSave(existing.data, incomingForSave)
-          : withUniqueWorkActNumbers(incomingForSave);
+        replaceAppliedSnapshot || !existing || !hasClinicData(existing.data)
+          ? withUniqueWorkActNumbers(incomingForSave)
+          : mergeClinicDataForSave(existing.data, incomingForSave);
       const toSave = applyAllDeletionTombstones(
         enforceDeletedPatientsHard(merged, deletedPatientIds)
       );

@@ -144,6 +144,7 @@ export async function POST(request: Request) {
         expectedUpdatedAt: existing.updatedAt,
         expectedRevision: existing.revision,
         autoMergeOnVersionConflict: false,
+        replaceAppliedSnapshot: true,
       });
       return NextResponse.json(
         {

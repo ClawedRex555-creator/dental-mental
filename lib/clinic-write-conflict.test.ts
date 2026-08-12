@@ -426,12 +426,12 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(patient?.phone, "+79001110000");
   });
 
-  it("non-conflict save also keeps server patient card over stale client snapshot", () => {
+  it("non-conflict save keeps incoming patient card (command apply must persist)", () => {
     const base = createFreshPersistedState();
     const serverPatient = {
       id: "p1",
-      firstName: "Команда",
-      lastName: "Свежая",
+      firstName: "Старое",
+      lastName: "ФИО",
       phone: "+79001110000",
       birthDate: "1990-01-01",
       gender: "female" as const,
@@ -444,8 +444,8 @@ describe("mergeClinicDataOnWriteConflict", () => {
     };
     const clientPatient = {
       ...serverPatient,
-      firstName: "Старое",
-      lastName: "ФИО",
+      firstName: "Команда",
+      lastName: "Свежая",
     };
     const existing = { ...base, patients: [serverPatient] };
     const incoming = { ...base, patients: [clientPatient] };
