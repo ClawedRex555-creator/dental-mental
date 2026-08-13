@@ -51,6 +51,7 @@ services:
       EGISZ_PRODUCT_NAME: ${EGISZ_PRODUCT_NAME:-Emkaro}
       EGISZ_N3_STUB: ${EGISZ_N3_STUB:-true}
       EGISZ_CRON_SECRET: ${EGISZ_CRON_SECRET:-}
+      MEDFLEX_CRON_SECRET: ${MEDFLEX_CRON_SECRET:-}
       EGISZ_WEBHOOK_SECRET: ${EGISZ_WEBHOOK_SECRET:-}
       EGISZ_SIGNING_URL: ${EGISZ_SIGNING_URL:-}
       EGISZ_SIGNING_SECRET: ${EGISZ_SIGNING_SECRET:-}
@@ -115,6 +116,38 @@ services:
             -H "Content-Type: application/json" \
             -d '{}' >/dev/null || echo "notifications-cron: tick failed"
           sleep 60
+        done
+    restart: unless-stopped
+
+  medflex-cron:
+    image: curlimages/curl:8.10.1
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      MEDFLEX_CRON_SECRET: ${MEDFLEX_CRON_SECRET:-}
+      EGISZ_CRON_SECRET: ${EGISZ_CRON_SECRET:-}
+    command:
+      - sh
+      - -ceu
+      - |
+        SECRET="${MEDFLEX_CRON_SECRET:-$EGISZ_CRON_SECRET}"
+        if [ -z "$SECRET" ]; then
+          echo "medflex-cron: MEDFLEX_CRON_SECRET or EGISZ_CRON_SECRET required, disabled"
+          sleep infinity
+        fi
+        echo "medflex-cron: pushing schedule every 15 minutes"
+        while true; do
+          curl -fsS -X POST "http://app:3000/api/medflex/process" \
+            -H "Authorization: Bearer $SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}' >/dev/null || echo "medflex-cron: tick failed"
+          sleep 900
         done
     restart: unless-stopped
 

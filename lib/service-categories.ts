@@ -171,12 +171,17 @@ export function groupServicesByCategory(
   const groups: { category: string; items: Service[]; isLegacyCategory?: boolean }[] = [];
 
   for (const category of SERVICE_CATEGORIES) {
+    // Техническая — отдельная панель, не в общем прайсе клиники
+    if (category === SERVICE_CATEGORY_TECHNICAL) {
+      byCategory.delete(category);
+      continue;
+    }
     groups.push({ category, items: byCategory.get(category) ?? [] });
     byCategory.delete(category);
   }
 
   for (const [category, items] of byCategory) {
-    if (items.length > 0) {
+    if (items.length > 0 && !isTechnicalServiceCategory(category)) {
       groups.push({ category, items, isLegacyCategory: true });
     }
   }

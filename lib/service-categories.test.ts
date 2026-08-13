@@ -78,6 +78,12 @@ describe("service categories", () => {
     assert.equal(isTechnicalServiceCategory("Техническая"), true);
     assert.equal(getClinicBillableServices(services).length, 1);
     assert.equal(getTechnicalServices(services).length, 1);
+    const groups = groupServicesByCategory(services);
+    assert.equal(
+      groups.some((g) => g.category === SERVICE_CATEGORY_TECHNICAL),
+      false,
+      "technical must stay out of clinic category groups (left panel only)"
+    );
   });
 
   it("merge keeps local services when remote snapshot is shorter", () => {

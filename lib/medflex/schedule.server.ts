@@ -14,6 +14,7 @@ import {
   isClinicOpenOnDate,
 } from "@/lib/clinic-schedule";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
+import { getClinicBillableServices } from "@/lib/service-categories";
 import type { MedflexClinicConfig, MedflexScheduleCell } from "@/lib/medflex/types";
 
 function slotEndExclusive(endTime: string): string {
@@ -122,9 +123,14 @@ export function buildMedflexServicesSchedulePayload(
   const filialName = (config.filialName || clinicName || "Филиал").trim();
   const days = config.scheduleDays ?? 30;
 
+  /** Техническая не уходит в ПроДокторов / MedFlex */
+  const billableServices = getClinicBillableServices(state.services).filter(
+    (s) => s.active !== false
+  );
+  const billableServiceIds = billableServices.map((s) => s.id);
+
   const basic: Record<string, unknown> = {};
-  for (const service of state.services) {
-    if (service.active === false) continue;
+  for (const service of billableServices) {
     basic[service.id] = {
       name: service.name,
       category: service.category || "Стоматология",
@@ -141,7 +147,7 @@ export function buildMedflexServicesSchedulePayload(
     const cells = buildDoctorScheduleCells(state, doctor.id, days);
     doctors[doctor.id] = {
       efio: doctor.name.trim(),
-      services: state.services.filter((s) => s.active !== false).map((s) => s.id),
+      services: billableServiceIds,
       intervals: cells
         .filter((c) => c.free)
         .map((c) => ({
@@ -158,7 +164,7 @@ export function buildMedflexServicesSchedulePayload(
       [filialId]: filialName,
       data: {
         [filialId]: {
-          services: { basic, additional: {} },
+          services: { basic, additional_services: {} },
           doctors,
           devices: {},
         },

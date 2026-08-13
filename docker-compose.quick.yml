@@ -36,6 +36,8 @@ services:
       APP_ROOT_DOMAIN: ${APP_ROOT_DOMAIN:-localhost}
       DEFAULT_CLINIC_SLUG: ${DEFAULT_CLINIC_SLUG:-tstom}
       NOTIFICATIONS_CRON_SECRET: ${NOTIFICATIONS_CRON_SECRET:-}
+      EGISZ_CRON_SECRET: ${EGISZ_CRON_SECRET:-}
+      MEDFLEX_CRON_SECRET: ${MEDFLEX_CRON_SECRET:-}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-}
       NOTIFICATIONS_MOCK_FAIL: ${NOTIFICATIONS_MOCK_FAIL:-0}
       NOTIFICATIONS_TELEGRAM_BOT_TOKEN: ${NOTIFICATIONS_TELEGRAM_BOT_TOKEN:-}
@@ -82,6 +84,33 @@ services:
             -H "Content-Type: application/json" \
             -d '{}' >/dev/null || echo "notifications-cron: tick failed"
           sleep 60
+        done
+    restart: unless-stopped
+
+  medflex-cron:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      MEDFLEX_CRON_SECRET: ${MEDFLEX_CRON_SECRET:-}
+      EGISZ_CRON_SECRET: ${EGISZ_CRON_SECRET:-}
+    command:
+      - sh
+      - -ceu
+      - |
+        SECRET="${MEDFLEX_CRON_SECRET:-$EGISZ_CRON_SECRET}"
+        if [ -z "$SECRET" ]; then
+          echo "medflex-cron: MEDFLEX_CRON_SECRET or EGISZ_CRON_SECRET required, disabled"
+          sleep infinity
+        fi
+        echo "medflex-cron: pushing schedule every 15 minutes"
+        while true; do
+          curl -fsS -X POST "http://app:3000/api/medflex/process" \
+            -H "Authorization: Bearer $SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}' >/dev/null || echo "medflex-cron: tick failed"
+          sleep 900
         done
     restart: unless-stopped
 

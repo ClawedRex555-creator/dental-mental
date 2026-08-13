@@ -5,7 +5,9 @@ import {
   hasSnapshotRecoveryFromMerge,
   isSuspiciousClinicDataDowngrade,
   mergeClinicDataForSave,
+  mergeClinicDataOnWriteConflict,
   mergeClinicSnapshotWithLocal,
+  mergeLegalDocumentsState,
   repairFinancialCoupling,
   shouldPushMergedSnapshotAfterLoad,
   shouldRejectEmptyClinicOverwrite,
@@ -647,6 +649,48 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     const merged = mergeClinicDataForSave(existing, incoming);
     assert.equal(merged.legalDocuments.length, 1);
     assert.equal(merged.legalDocuments[0]?.id, "ld1");
+  });
+
+  it("mergeClinicDataOnWriteConflict keeps client clinicSettings over server", () => {
+    const existing = createFreshPersistedState();
+    existing.clinicSettings = {
+      ...existing.clinicSettings,
+      name: "Старое название",
+      phone: "+79000000000",
+    };
+    const incoming = {
+      ...existing,
+      clinicSettings: {
+        ...existing.clinicSettings,
+        name: "Новое название",
+        phone: "+79001112233",
+      },
+    };
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    assert.equal(merged.clinicSettings.name, "Новое название");
+    assert.equal(merged.clinicSettings.phone, "+79001112233");
+  });
+
+  it("mergeLegalDocumentsState keeps fileDataUrl when slim pending overwrites metadata", () => {
+    const withFile = {
+      id: "ld1",
+      category: "Договоры",
+      title: "Договор",
+      date: "2026-08-13",
+      fileName: "dogovor.pdf",
+      fileDataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+    };
+    const slimmed = {
+      id: "ld1",
+      category: "Договоры",
+      title: "Договор (правка)",
+      date: "2026-08-13",
+      fileName: "dogovor.pdf",
+    };
+    const { legalDocuments } = mergeLegalDocumentsState([withFile], [slimmed]);
+    assert.equal(legalDocuments.length, 1);
+    assert.equal(legalDocuments[0]?.title, "Договор (правка)");
+    assert.equal(legalDocuments[0]?.fileDataUrl, withFile.fileDataUrl);
   });
 
   it("mergeClinicSnapshotWithLocal keeps remote-only clinic expenses", () => {

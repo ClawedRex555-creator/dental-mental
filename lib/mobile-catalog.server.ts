@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Doctor, Service } from "@/lib/types";
 import { loadClinicSnapshot } from "@/lib/mobile-clinic-context.server";
+import { getClinicBillableServices } from "@/lib/service-categories";
 import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 
 export interface MobileCatalogDoctor {
@@ -82,7 +83,7 @@ export async function getMobileCatalog(
     .filter((d) => d.status === "active")
     .map(mapDoctor);
 
-  const services = data.services
+  const services = getClinicBillableServices(data.services)
     .filter((s) => s.active !== false)
     .map(mapService);
 

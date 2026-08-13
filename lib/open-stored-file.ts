@@ -397,11 +397,33 @@ function downloadDataUrl(dataUrl: string, fileName: string): boolean {
   return true;
 }
 
+/** Браузер иногда отдаёт application/octet-stream — восстанавливаем MIME по расширению. */
+function normalizeLegalFileDataUrl(dataUrl: string, fileName: string): string {
+  if (parseAllowedDataUrl(dataUrl)) return dataUrl;
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0 || !dataUrl.startsWith("data:")) return dataUrl;
+  const payload = dataUrl.slice(comma + 1);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  const prefixByExt: Record<string, string> = {
+    pdf: "data:application/pdf;base64,",
+    docx: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,",
+    doc: "data:application/msword;base64,",
+    png: "data:image/png;base64,",
+    jpg: "data:image/jpeg;base64,",
+    jpeg: "data:image/jpeg;base64,",
+    webp: "data:image/webp;base64,",
+  };
+  const prefix = ext ? prefixByExt[ext] : undefined;
+  if (!prefix) return dataUrl;
+  return `${prefix}${payload}`;
+}
+
 export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const result = reader.result as string;
+      const raw = reader.result as string;
+      const result = normalizeLegalFileDataUrl(raw, file.name);
       if (!parseAllowedDataUrl(result)) {
         const ext = file.name.split(".").pop()?.toLowerCase();
         if (ext === "doc") {

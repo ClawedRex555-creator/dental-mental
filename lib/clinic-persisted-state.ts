@@ -517,6 +517,35 @@ export function hasEntityListDeletion<T extends { id: string }>(
 }
 
 /**
+ * Incoming wins по метаданным, но «урезанная» копия без fileDataUrl
+ * (slim pending-буфер) не должна затирать уже загруженный файл.
+ */
+export function mergeLegalDocumentPreferFile(
+  existing: LegalDocument,
+  incoming: LegalDocument
+): LegalDocument {
+  const merged: LegalDocument = { ...existing, ...incoming };
+  const incomingHasFile =
+    typeof incoming.fileDataUrl === "string" && incoming.fileDataUrl.length > 0;
+  const existingHasFile =
+    typeof existing.fileDataUrl === "string" && existing.fileDataUrl.length > 0;
+
+  if (incomingHasFile) {
+    merged.fileDataUrl = incoming.fileDataUrl;
+    if (incoming.fileName) merged.fileName = incoming.fileName;
+  } else if (existingHasFile) {
+    merged.fileDataUrl = existing.fileDataUrl;
+    if (!merged.fileName && existing.fileName) merged.fileName = existing.fileName;
+  }
+
+  if (!merged.fileDataUrl && !merged.templateUrl && existing.templateUrl) {
+    merged.templateUrl = existing.templateUrl;
+  }
+
+  return merged;
+}
+
+/**
  * Юр. документы: union server + client, без потери записей с другого устройства.
  * Tombstones — явные удаления с этой вкладки.
  */
@@ -530,10 +559,20 @@ export function mergeLegalDocumentsState(
   // another client with old data must not resurrect it on save.
   const deletedLegalDocumentIds = [...new Set([...existingTombstones, ...incomingTombstones])];
   const tombstoneSet = new Set(deletedLegalDocumentIds);
-  const legalDocuments = mergeByIdPreferLocal(existing, incoming).filter(
-    (d) => !tombstoneSet.has(d.id)
-  );
-  return { legalDocuments, deletedLegalDocumentIds };
+  const map = new Map<string, LegalDocument>();
+  for (const doc of existing) {
+    if (tombstoneSet.has(doc.id)) continue;
+    map.set(doc.id, doc);
+  }
+  for (const doc of incoming) {
+    if (tombstoneSet.has(doc.id)) continue;
+    const prev = map.get(doc.id);
+    map.set(doc.id, prev ? mergeLegalDocumentPreferFile(prev, doc) : doc);
+  }
+  return {
+    legalDocuments: Array.from(map.values()),
+    deletedLegalDocumentIds,
+  };
 }
 
 /**
@@ -1543,7 +1582,7 @@ export function mergeClinicDataOnWriteConflict(
       existing.assistantManualHours ?? {},
       incoming.assistantManualHours ?? {}
     ),
-    clinicSettings: existing.clinicSettings ?? incoming.clinicSettings,
+    clinicSettings: incoming.clinicSettings ?? existing.clinicSettings,
     userThemePreferences: {
       ...incoming.userThemePreferences,
       ...existing.userThemePreferences,

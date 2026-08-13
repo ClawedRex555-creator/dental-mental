@@ -12,7 +12,19 @@
    - указать `filial_id` (любой стабильный) и название филиала;
    - сохранить → появится **входящий токен** и URL webhook’ов.
 4. Отправить менеджеру URL + `Authorization: Token <наш входящий токен>`.
-5. На сервере cron каждые 15 минут:
+5. Автовыгрузка расписания: сервис `medflex-cron` в `docker-compose.yml`
+   (каждые 15 минут вызывает `POST /api/medflex/process`).
+
+Нужен секрет в `.env`:
+
+```bash
+# достаточно одного из двух:
+MEDFLEX_CRON_SECRET=$(openssl rand -hex 24)
+# или уже существующий:
+EGISZ_CRON_SECRET=...
+```
+
+Ручной вызов (если cron ещё не поднят):
 
 ```bash
 curl -X POST https://emkaro.ru/api/medflex/process \
