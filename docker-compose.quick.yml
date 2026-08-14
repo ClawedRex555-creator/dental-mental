@@ -73,14 +73,14 @@ services:
       - sh
       - -ceu
       - |
-        SECRET="${NOTIFICATIONS_CRON_SECRET}"
-        if [ -z "$SECRET" ]; then
+        SECRET="$${NOTIFICATIONS_CRON_SECRET}"
+        if [ -z "$$SECRET" ]; then
           echo "notifications-cron: NOTIFICATIONS_CRON_SECRET required, disabled"
           sleep infinity
         fi
         while true; do
           curl -fsS -X POST "http://app:3000/api/notifications/process" \
-            -H "Authorization: Bearer $SECRET" \
+            -H "Authorization: Bearer $$SECRET" \
             -H "Content-Type: application/json" \
             -d '{}' >/dev/null || echo "notifications-cron: tick failed"
           sleep 60
@@ -99,15 +99,15 @@ services:
       - sh
       - -ceu
       - |
-        SECRET="${MEDFLEX_CRON_SECRET:-$EGISZ_CRON_SECRET}"
-        if [ -z "$SECRET" ]; then
+        SECRET="$${MEDFLEX_CRON_SECRET:-$${EGISZ_CRON_SECRET}}"
+        if [ -z "$$SECRET" ]; then
           echo "medflex-cron: MEDFLEX_CRON_SECRET or EGISZ_CRON_SECRET required, disabled"
           sleep infinity
         fi
         echo "medflex-cron: pushing schedule every 15 minutes"
         while true; do
           curl -fsS -X POST "http://app:3000/api/medflex/process" \
-            -H "Authorization: Bearer $SECRET" \
+            -H "Authorization: Bearer $$SECRET" \
             -H "Content-Type: application/json" \
             -d '{}' >/dev/null || echo "medflex-cron: tick failed"
           sleep 900
