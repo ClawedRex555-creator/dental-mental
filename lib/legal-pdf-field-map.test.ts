@@ -77,6 +77,23 @@ describe("resolveTokenForPdfField", () => {
     assert.equal(resolveTokenForPdfField("паспортзаказчика", tokens), "6012 345678");
   });
 
+  it("matches passport issued-by and issued-at aliases", () => {
+    const tokens = {
+      "patient.passportIssuedBy": "ОВД Тест",
+      "patient.passportIssuedAt": "18.02.2015",
+      "patient.passportIssuerCode": "770-001",
+    };
+    assert.equal(resolveTokenForPdfField("passport_issued_by", tokens), "ОВД Тест");
+    assert.equal(resolveTokenForPdfField("patient_passport_issued_by", tokens), "ОВД Тест");
+    assert.equal(resolveTokenForPdfField("кемвыдан", tokens), "ОВД Тест");
+    assert.equal(resolveTokenForPdfField("passport_issued_at", tokens), "18.02.2015");
+    assert.equal(resolveTokenForPdfField("patient_passport_issued_at", tokens), "18.02.2015");
+    assert.equal(resolveTokenForPdfField("датавыдачипаспорта", tokens), "18.02.2015");
+    assert.equal(resolveTokenForPdfField("passport_issuer_code", tokens), "770-001");
+    assert.equal(resolveTokenForPdfField("patient_passport_issuer_code", tokens), "770-001");
+    assert.equal(resolveTokenForPdfField("кодподразделения", tokens), "770-001");
+  });
+
   it("matches patient or representative aliases", () => {
     const childTokens = {
       "patientOrRepresentative.fullName": "Иванов Иван Иванович",

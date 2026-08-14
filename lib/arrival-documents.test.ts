@@ -20,6 +20,9 @@ function patient(): Patient {
     status: "active",
     passportSeries: "4510",
     passportNumber: "123456",
+    passportIssuedBy: "ОВД района Тест",
+    passportIssuedAt: "2015-02-18",
+    passportIssuerCode: "770-001",
     address: "г. Москва, ул. Примерная, 1",
   };
 }
@@ -43,6 +46,27 @@ describe("fillDocumentTemplate", () => {
     assert.match(text, /Иванов Иван Иванович/);
     assert.match(text, /4510 123456/);
     assert.match(text, /Стоматология Улыбка/);
+  });
+
+  it("replaces passport issued-by and issued-at placeholders", () => {
+    const text = fillDocumentTemplate(
+      "Паспорт {{patient.passport}}, выдан {{patient.passportIssuedBy}} {{patient.passportIssuedAt}}, код {{patient.passportIssuerCode}}.",
+      {
+        patient: patient(),
+        clinic: {
+          name: "Клиника",
+          phone: "+74950000000",
+          email: "info@test.ru",
+          address: "Москва",
+          inn: "7700000000",
+          workHours: "9-21",
+        },
+      }
+    );
+    assert.match(text, /4510 123456/);
+    assert.match(text, /ОВД района Тест/);
+    assert.match(text, /18\.02\.2015/);
+    assert.match(text, /770-001/);
   });
 
   it("replaces clinic placeholders", () => {

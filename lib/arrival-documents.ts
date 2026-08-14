@@ -95,6 +95,11 @@ export function buildArrivalDocumentTokens(
     "patient.passport": formatPassport(patient),
     "patient.passportSeries": dash(patient.passportSeries),
     "patient.passportNumber": dash(patient.passportNumber),
+    "patient.passportIssuedBy": dash(patient.passportIssuedBy),
+    "patient.passportIssuedAt": patient.passportIssuedAt
+      ? formatDate(patient.passportIssuedAt)
+      : "—",
+    "patient.passportIssuerCode": dash(patient.passportIssuerCode),
     "patient.contractNumber": contractNumber,
     "patient.representativeFullName": legalRepresentativeFullName,
     "patient.representativeBirthDate": legalRepresentativeBirthDate,
@@ -121,6 +126,11 @@ export function buildArrivalDocumentTokens(
     "пациент.адрес": dash(patient.address),
     "пациент.датаРождения": formatDate(patient.birthDate),
     "пациент.паспорт": formatPassport(patient),
+    "пациент.паспортКемВыдан": dash(patient.passportIssuedBy),
+    "пациент.паспортДатаВыдачи": patient.passportIssuedAt
+      ? formatDate(patient.passportIssuedAt)
+      : "—",
+    "пациент.паспортКодПодразделения": dash(patient.passportIssuerCode),
     "пациент.снилс": dash(patient.snils),
     "пациент.договор": contractNumber,
     "пациент.представитель": dash(patient.representativeFullName),
@@ -258,7 +268,9 @@ export function renderPatientSummaryHtml(ctx: ArrivalDocumentContext): string {
       <p><strong>Дата рождения:</strong> ${escapeHtml(t["patient.birthDate"])} (${escapeHtml(t["patient.age"])} лет)</p>
       <p><strong>Телефон:</strong> ${escapeHtml(t["patient.phone"])}</p>
       <p><strong>Адрес:</strong> ${escapeHtml(t["patient.address"])}</p>
-      <p><strong>Паспорт:</strong> ${escapeHtml(t["patient.passport"])} · <strong>СНИЛС:</strong> ${escapeHtml(t["patient.snils"])}</p>
+      <p><strong>Паспорт:</strong> ${escapeHtml(t["patient.passport"])}</p>
+      <p><strong>Кем выдан:</strong> ${escapeHtml(t["patient.passportIssuedBy"])} · <strong>Код подразделения:</strong> ${escapeHtml(t["patient.passportIssuerCode"])} · <strong>Дата выдачи:</strong> ${escapeHtml(t["patient.passportIssuedAt"])}</p>
+      <p><strong>СНИЛС:</strong> ${escapeHtml(t["patient.snils"])}</p>
       <p><strong>Договор №:</strong> ${escapeHtml(t["patient.contractNumber"])} · <strong>Дата визита:</strong> ${escapeHtml(t["appointment.date"])}</p>
       ${childBlock}
     </section>`;

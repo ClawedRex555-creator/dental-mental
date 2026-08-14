@@ -28,6 +28,7 @@ import {
 import {
   digitsOnly,
   formatBirthCertificateNumber,
+  formatPassportIssuerCode,
   formatPassportNumber,
   formatPassportSeries,
   formatSnils,
@@ -41,6 +42,7 @@ import {
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { canViewPatientPhone } from "@/lib/rbac";
 import { PhoneInput } from "@/components/shared/phone-input";
+import { AddressInput } from "@/components/shared/address-input";
 import {
   getPatientDebtAmount,
   parseDebtInput,
@@ -116,6 +118,9 @@ function emptyPatientFields() {
     snils: "",
     passportSeries: "",
     passportNumber: "",
+    passportIssuedBy: "",
+    passportIssuedAt: "",
+    passportIssuerCode: "",
     isChild: false,
     birthCertificateSeries: "",
     birthCertificateNumber: "",
@@ -217,6 +222,9 @@ export function PatientModal({
         snils: patient.snils ?? "",
         passportSeries: patient.passportSeries ?? "",
         passportNumber: patient.passportNumber ?? "",
+        passportIssuedBy: patient.passportIssuedBy ?? "",
+        passportIssuedAt: patient.passportIssuedAt ?? "",
+        passportIssuerCode: patient.passportIssuerCode ?? "",
         isChild: patient.isChild ?? false,
         birthCertificateSeries: patient.birthCertificateSeries ?? "",
         birthCertificateNumber: patient.birthCertificateNumber ?? "",
@@ -372,6 +380,21 @@ export function PatientModal({
         : fields.isChild
           ? undefined
           : formatPassportNumber(fields.passportNumber),
+      passportIssuedBy: withoutDocuments
+        ? undefined
+        : fields.isChild
+          ? undefined
+          : fields.passportIssuedBy.trim() || undefined,
+      passportIssuedAt: withoutDocuments
+        ? undefined
+        : fields.isChild || !fields.passportIssuedAt
+          ? undefined
+          : fields.passportIssuedAt,
+      passportIssuerCode: withoutDocuments
+        ? undefined
+        : fields.isChild
+          ? undefined
+          : formatPassportIssuerCode(fields.passportIssuerCode) || undefined,
       isChild: fields.isChild || undefined,
       birthCertificateSeries:
         withoutDocuments || !fields.isChild
@@ -608,6 +631,9 @@ export function PatientModal({
                         snils: "",
                         passportSeries: "",
                         passportNumber: "",
+                        passportIssuedBy: "",
+                        passportIssuedAt: "",
+                        passportIssuerCode: "",
                         birthCertificateSeries: "",
                         birthCertificateNumber: "",
                         representativeFullName: "",
@@ -690,6 +716,39 @@ export function PatientModal({
                 )}
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>{UI.passportIssuedBy}</Label>
+              <Input
+                value={fields.passportIssuedBy}
+                onChange={(e) => set("passportIssuedBy", e.target.value)}
+                placeholder="ГУ МВД России по … области"
+                disabled={withoutDocuments || fields.isChild}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>{UI.passportIssuedAt}</Label>
+                <Input
+                  type="date"
+                  value={fields.passportIssuedAt}
+                  onChange={(e) => set("passportIssuedAt", e.target.value)}
+                  disabled={withoutDocuments || fields.isChild}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{UI.passportIssuerCode}</Label>
+                <Input
+                  value={fields.passportIssuerCode}
+                  onChange={(e) =>
+                    set("passportIssuerCode", formatPassportIssuerCode(e.target.value))
+                  }
+                  placeholder="770-001"
+                  inputMode="numeric"
+                  maxLength={7}
+                  disabled={withoutDocuments || fields.isChild}
+                />
+              </div>
+            </div>
             {fields.isChild && !withoutDocuments && (
               <p className="text-xs text-[var(--muted)]">
                 Для ребёнка укажите свидетельство о рождении и паспорт законного представителя
@@ -703,6 +762,16 @@ export function PatientModal({
                 заполнить СНИЛС и паспорт.
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Адрес</Label>
+            <AddressInput
+              value={fields.address}
+              onChange={(v) => set("address", v)}
+              knownAddresses={patients.map((p) => p.address)}
+              placeholder="Город, улица, дом, квартира"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -840,6 +909,9 @@ export function PatientModal({
                     ...prev,
                     passportSeries: "",
                     passportNumber: "",
+                    passportIssuedBy: "",
+                    passportIssuedAt: "",
+                    passportIssuerCode: "",
                   }));
                   setDocErrors((prev) => {
                     const next = { ...prev };
@@ -1010,14 +1082,6 @@ export function PatientModal({
                 placeholder="Когда, где, что делали..."
               />
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Адрес</Label>
-            <Input
-              value={fields.address}
-              onChange={(e) => set("address", e.target.value)}
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -342,7 +342,6 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
             <CardHeader><CardTitle className="text-base">Основные данные</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <p><span className="text-slate-500">Источник:</span> {patient.source}</p>
-              <p><span className="text-slate-500">Адрес:</span> {patient.address || "—"}</p>
               <p><span className="text-slate-500">СНИЛС{patient.isChild ? " ребёнка" : ""}:</span> {patient.snils || "—"}</p>
               {patient.isChild && !patient.snils && (
                 <p className="text-xs text-slate-500">
@@ -373,13 +372,30 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                   </p>
                 </>
               ) : (
-                <p>
-                  <span className="text-slate-500">Паспорт:</span>{" "}
-                  {patient.passportSeries && patient.passportNumber
-                    ? `${patient.passportSeries} ${patient.passportNumber}`
-                    : "—"}
-                </p>
+                <>
+                  <p>
+                    <span className="text-slate-500">Паспорт:</span>{" "}
+                    {patient.passportSeries && patient.passportNumber
+                      ? `${patient.passportSeries} ${patient.passportNumber}`
+                      : "—"}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Кем выдан:</span>{" "}
+                    {patient.passportIssuedBy || "—"}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Код подразделения:</span>{" "}
+                    {patient.passportIssuerCode || "—"}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Дата выдачи:</span>{" "}
+                    {patient.passportIssuedAt
+                      ? formatDate(patient.passportIssuedAt)
+                      : "—"}
+                  </p>
+                </>
               )}
+              <p><span className="text-slate-500">Адрес:</span> {patient.address || "—"}</p>
               <p>
                 <span className="text-slate-500">Инвалидность:</span>{" "}
                 {DISABILITY_LABELS[patient.disability ?? "not_specified"]}

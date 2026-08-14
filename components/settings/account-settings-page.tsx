@@ -11,6 +11,7 @@ import { ROLE_LABELS, UI } from "@/lib/constants";
 import { normalizeWeeklySchedule } from "@/lib/clinic-schedule";
 import { sanitizeHttpImageUrl } from "@/lib/safe-url";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { AddressInput } from "@/components/shared/address-input";
 import type { ClinicSettings, UserRole } from "@/lib/types";
 import { ModuleGate } from "@/components/clinic/module-guard";
 import { PanelErrorBoundary } from "@/components/shared/panel-error-boundary";
@@ -49,6 +50,7 @@ export default function AccountSettingsPage() {
   const {
     currentUser,
     clinicSettings,
+    patients,
     updateClinicSettings,
     updateCurrentUser,
   } = useClinicStore();
@@ -266,9 +268,10 @@ export default function AccountSettingsPage() {
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Адрес</Label>
-            <Input
+            <AddressInput
               value={clinicForm.address}
-              onChange={(e) => setClinicField("address", e.target.value)}
+              onChange={(v) => setClinicField("address", v)}
+              knownAddresses={patients.map((p) => p.address)}
               placeholder="г. Москва, ул. Примерная, 1"
             />
           </div>

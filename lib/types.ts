@@ -103,6 +103,12 @@ export interface Patient {
   snils?: string;
   passportSeries?: string;
   passportNumber?: string;
+  /** Кем выдан паспорт */
+  passportIssuedBy?: string;
+  /** Дата выдачи паспорта (yyyy-MM-dd) */
+  passportIssuedAt?: string;
+  /** Код подразделения (XXX-XXX) */
+  passportIssuerCode?: string;
   /** Пациент — ребёнок (документы в birthCertificate* и representative*) */
   isChild?: boolean;
   birthCertificateSeries?: string;

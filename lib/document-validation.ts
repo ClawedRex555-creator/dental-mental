@@ -25,6 +25,13 @@ export function formatPassportNumber(value: string): string {
   return digitsOnly(value).slice(0, 6);
 }
 
+/** Код подразделения: XXX-XXX */
+export function formatPassportIssuerCode(value: string): string {
+  const d = digitsOnly(value).slice(0, 6);
+  if (d.length <= 3) return d;
+  return `${d.slice(0, 3)}-${d.slice(3)}`;
+}
+
 export function validateSnils(value: string): ValidationResult {
   const d = digitsOnly(value);
   if (!d) return { valid: false, message: "Укажите СНИЛС" };

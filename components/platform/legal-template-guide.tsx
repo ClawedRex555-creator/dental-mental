@@ -56,6 +56,9 @@ export function LegalTemplateGuide() {
               <code className="text-xs">{"{patient_or_repr_fio}"}</code>,{" "}
               <code className="text-xs">{"{patient_or_repr_birth}"}</code>,{" "}
               <code className="text-xs">{"{patient_repr_birth}"}</code>,{" "}
+              <code className="text-xs">{"{passport_issued_by}"}</code>,{" "}
+              <code className="text-xs">{"{passport_issued_at}"}</code>,{" "}
+              <code className="text-xs">{"{passport_issuer_code}"}</code>,{" "}
               <code className="text-xs">{"{clinic_name}"}</code> — см. таблицу ниже.
             </li>
             <li>

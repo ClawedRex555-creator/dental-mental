@@ -12,6 +12,9 @@ const WORD_FIELD_SHORT_NAMES: Record<string, string> = {
   "patient.representativeBirthDate": "patient_repr_birth",
   "patient.representativePassport": "patient_repr_pass",
   "patient.birthCertificate": "patient_birth_cert",
+  "patient.passportIssuedBy": "passport_issued_by",
+  "patient.passportIssuedAt": "passport_issued_at",
+  "patient.passportIssuerCode": "passport_issuer_code",
   "doctor.specialization": "doctor_specialty",
   "patientOrRepresentative.fullName": "patient_or_repr_fio",
   "patientOrRepresentative.passport": "patient_or_repr_pass",
@@ -105,6 +108,27 @@ export const LEGAL_PDF_FIELD_CATALOG: LegalPdfFieldDef[] = [
   field("patient.email", "patient", "Email", "patient@example.com"),
   field("patient.address", "patient", "Адрес", "г. Ростов-на-Дону, ул. …"),
   field("patient.passport", "patient", "Паспорт (серия и номер)", "6012 345678"),
+  field(
+    "patient.passportIssuedBy",
+    "patient",
+    "Паспорт — кем выдан",
+    "ОВД … района",
+    "Из карточки пациента. В Word: {passport_issued_by}"
+  ),
+  field(
+    "patient.passportIssuedAt",
+    "patient",
+    "Паспорт — дата выдачи",
+    "18.02.2015",
+    "Из карточки пациента. В Word: {passport_issued_at}"
+  ),
+  field(
+    "patient.passportIssuerCode",
+    "patient",
+    "Паспорт — код подразделения",
+    "770-001",
+    "Из карточки пациента (XXX-XXX). В Word: {passport_issuer_code}"
+  ),
   field("patient.snils", "patient", "СНИЛС", "123-456-789 00"),
   field(
     "patient.contractNumber",
@@ -179,6 +203,9 @@ export const LEGAL_PDF_TEMPLATE_PRESETS: { title: string; fields: string[] }[] =
       "patient_repr_birth",
       "patient_phone",
       "patient_passport",
+      "passport_issued_by",
+      "passport_issued_at",
+      "passport_issuer_code",
       "patient_contract_no",
       "clinic_name",
       "clinic_inn",

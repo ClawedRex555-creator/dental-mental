@@ -16,6 +16,7 @@ import {
 } from "@/lib/document-validation";
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { PhoneInput } from "@/components/shared/phone-input";
+import { AddressInput } from "@/components/shared/address-input";
 import { useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ function specializationKeyFromDoctor(spec: string): string {
 }
 
 export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
-  const { addDoctor, updateDoctor, assignStaffToCabinet, cabinets } = useClinicStore();
+  const { addDoctor, updateDoctor, assignStaffToCabinet, cabinets, patients } = useClinicStore();
   const isEdit = !!member;
 
   const [name, setName] = useState("");
@@ -536,9 +537,10 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
               <Label>
                 {UI.doctorAddress} <span className="text-[var(--muted)]">({UI.optional})</span>
               </Label>
-              <Input
+              <AddressInput
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={setAddress}
+                knownAddresses={patients.map((p) => p.address)}
                 placeholder="г. Москва, ул. ..."
               />
             </div>
