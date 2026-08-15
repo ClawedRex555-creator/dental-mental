@@ -651,24 +651,41 @@ describe("isSuspiciousClinicDataDowngrade", () => {
     assert.equal(merged.legalDocuments[0]?.id, "ld1");
   });
 
-  it("mergeClinicDataOnWriteConflict keeps client clinicSettings over server", () => {
+  it("mergeClinicDataOnWriteConflict keeps server clinicSettings over stale client", () => {
     const existing = createFreshPersistedState();
     existing.clinicSettings = {
       ...existing.clinicSettings,
-      name: "Старое название",
-      phone: "+79000000000",
+      name: "Новое название",
+      phone: "+79001112233",
     };
     const incoming = {
       ...existing,
       clinicSettings: {
         ...existing.clinicSettings,
-        name: "Новое название",
-        phone: "+79001112233",
+        name: "Старое название",
+        phone: "+79000000000",
       },
     };
     const merged = mergeClinicDataOnWriteConflict(existing, incoming);
     assert.equal(merged.clinicSettings.name, "Новое название");
     assert.equal(merged.clinicSettings.phone, "+79001112233");
+  });
+
+  it("mergeClinicDataForSave keeps server clinicSettings over stale client PUT", () => {
+    const existing = createFreshPersistedState();
+    existing.clinicSettings = {
+      ...existing.clinicSettings,
+      name: "Тстом",
+    };
+    const incoming = {
+      ...existing,
+      clinicSettings: {
+        ...existing.clinicSettings,
+        name: "Tstom",
+      },
+    };
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.clinicSettings.name, "Тстом");
   });
 
   it("mergeLegalDocumentsState keeps fileDataUrl when slim pending overwrites metadata", () => {

@@ -1438,6 +1438,9 @@ export function mergeClinicDataForSave(
       existing.assistantManualHours ?? {},
       incoming.assistantManualHours ?? {}
     ),
+    // Настройки клиники — только через /api/clinic/settings (replaceAppliedSnapshot).
+    // Иначе stale full PUT после ack чужого revision затирает название/телефон.
+    clinicSettings: existing.clinicSettings,
   };
 
   if (!hasPatientDeletion) {
@@ -1585,7 +1588,7 @@ export function mergeClinicDataOnWriteConflict(
       existing.assistantManualHours ?? {},
       incoming.assistantManualHours ?? {}
     ),
-    clinicSettings: incoming.clinicSettings ?? existing.clinicSettings,
+    clinicSettings: existing.clinicSettings,
     userThemePreferences: {
       ...incoming.userThemePreferences,
       ...existing.userThemePreferences,

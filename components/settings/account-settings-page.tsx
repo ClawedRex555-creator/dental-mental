@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,12 @@ import { AddressInput } from "@/components/shared/address-input";
 import type { ClinicSettings, UserRole } from "@/lib/types";
 import { ModuleGate } from "@/components/clinic/module-guard";
 import { PanelErrorBoundary } from "@/components/shared/panel-error-boundary";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  beginClinicEditorSession,
+  endClinicEditorSession,
+  markClinicSyncedAfterCommand,
+} from "@/lib/clinic-data-sync.client";
+import { runWithoutClinicFlush, useClinicStore } from "@/store/useClinicStore";
 import { toast } from "sonner";
 
 const ComplianceSettingsPanel = dynamic(
@@ -65,14 +70,24 @@ export default function AccountSettingsPage() {
     ...clinicSettings,
     weeklySchedule: normalizeWeeklySchedule(clinicSettings.weeklySchedule),
   });
+  const [clinicFormDirty, setClinicFormDirty] = useState(false);
+  const [savingClinic, setSavingClinic] = useState(false);
   const [userName, setUserName] = useState(currentUser.name);
   const [userEmail, setUserEmail] = useState(currentUser.email);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingAccount, setSavingAccount] = useState(false);
+  const clinicFormDirtyRef = useRef(false);
+  clinicFormDirtyRef.current = clinicFormDirty;
 
   useEffect(() => {
+    beginClinicEditorSession();
+    return () => endClinicEditorSession();
+  }, []);
+
+  useEffect(() => {
+    if (clinicFormDirtyRef.current) return;
     setClinicForm({
       ...clinicSettings,
       weeklySchedule: normalizeWeeklySchedule(clinicSettings.weeklySchedule),
@@ -85,6 +100,7 @@ export default function AccountSettingsPage() {
   }, [currentUser.name, currentUser.email]);
 
   const setClinicField = <K extends keyof ClinicSettings>(key: K, value: ClinicSettings[K]) => {
+    setClinicFormDirty(true);
     setClinicForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -93,7 +109,7 @@ export default function AccountSettingsPage() {
       toast.error("Укажите название клиники");
       return;
     }
-    updateClinicSettings({
+    const payload: ClinicSettings = {
       name: clinicForm.name.trim(),
       phone: clinicForm.phone.trim(),
       email: clinicForm.email.trim(),
@@ -104,9 +120,47 @@ export default function AccountSettingsPage() {
       medicalLicense: clinicForm.medicalLicense?.trim() || undefined,
       medicalLicenseAuthority: clinicForm.medicalLicenseAuthority?.trim() || undefined,
       weeklySchedule: normalizeWeeklySchedule(clinicForm.weeklySchedule),
+      workHours: clinicForm.workHours,
       logo: sanitizeHttpImageUrl(clinicForm.logo?.trim()) || undefined,
-    });
-    toast.success("Настройки клиники сохранены");
+    };
+    setSavingClinic(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/clinic/settings", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clinicSettings: payload }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          clinicSettings?: ClinicSettings;
+          updatedAt?: string | null;
+          revision?: number | null;
+        };
+        if (!res.ok || !data.ok) {
+          toast.error(data.error ?? "Не удалось сохранить настройки клиники");
+          return;
+        }
+        const saved = data.clinicSettings ?? payload;
+        runWithoutClinicFlush(() => {
+          updateClinicSettings(saved);
+        });
+        setClinicForm({
+          ...saved,
+          weeklySchedule: normalizeWeeklySchedule(saved.weeklySchedule),
+        });
+        setClinicFormDirty(false);
+        markClinicSyncedAfterCommand(data.updatedAt ?? null, data.revision ?? null);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        toast.success("Настройки клиники сохранены");
+      } catch {
+        toast.error("Ошибка сети при сохранении настроек");
+      } finally {
+        setSavingClinic(false);
+      }
+    })();
   };
 
   const handleSaveAccount = async () => {
@@ -290,7 +344,9 @@ export default function AccountSettingsPage() {
             />
           </div>
           <div className="sm:col-span-2">
-            <Button onClick={handleSaveClinic}>{UI.save}</Button>
+            <Button onClick={handleSaveClinic} disabled={savingClinic}>
+              {savingClinic ? "Сохранение…" : UI.save}
+            </Button>
           </div>
         </CardContent>
       </Card>

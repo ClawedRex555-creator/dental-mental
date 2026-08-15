@@ -7,6 +7,7 @@ import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
 import { removeStaffFromClinicSnapshot } from "@/lib/clinic-data-db.server";
+import { removeAuthAccountByStaffId } from "@/lib/auth-accounts-server";
 import { deleteStaffDb, listStaffDb, upsertStaffDb } from "@/lib/staff-db.server";
 import type { Doctor } from "@/lib/types";
 
@@ -141,6 +142,14 @@ export async function DELETE(request: Request) {
       const message =
         snapErr instanceof Error ? snapErr.message : "Ошибка обновления снимка клиники";
       return NextResponse.json({ error: message }, { status: 409 });
+    }
+    // Сначала учётка: иначе логин остаётся в auth_users и «уже зарегистрирован».
+    try {
+      await removeAuthAccountByStaffId(staffId, session.clinicId);
+    } catch (authErr) {
+      const message =
+        authErr instanceof Error ? authErr.message : "Не удалось удалить учётную запись";
+      return NextResponse.json({ error: message }, { status: 400 });
     }
     await deleteStaffDb(session.clinicId, staffId);
     return NextResponse.json({ ok: true });
