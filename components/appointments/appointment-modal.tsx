@@ -8,6 +8,7 @@ import { DENTAL_COMPLAINTS } from "@/lib/catalogs";
 import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options";
 import { calcEndTime, SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/appointment-utils";
 import { resolveCabinetIdForDoctor } from "@/lib/cabinet-utils";
+import { getDoctorHoursForDate } from "@/lib/clinic-schedule";
 import { validateAppointmentSave } from "@/lib/validate-appointment-save";
 import { workActHasFilledItems } from "@/lib/work-act-utils";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@/store/useClinicStore";
 import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
 import { canViewPatientPhone } from "@/lib/rbac";
+import { partnerBookingBadgeLabel, partnerBookingStamp } from "@/lib/partner-clinic";
 import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import {
   beginClinicEditorSession,
@@ -78,6 +80,7 @@ export function AppointmentModal({
     cabinets,
     appointments,
     workActs,
+    doctorSchedules,
     currentUser,
     addAppointment,
     updateAppointment,
@@ -88,6 +91,7 @@ export function AppointmentModal({
   const userRole = currentUser.role;
   const isAdmin = userRole === "admin" || userRole === "owner";
   const isDoctor = userRole === "doctor";
+  const isPartner = userRole === "partner";
   const legalEnabled = useIsModuleEnabled("legal");
 
   const [patientId, setPatientId] = useState("");
@@ -105,6 +109,12 @@ export function AppointmentModal({
   const [actMode, setActMode] = useState<WorkActModalMode>("standard");
   const [existingActId, setExistingActId] = useState<string | undefined>();
   const [docsModalOpen, setDocsModalOpen] = useState(false);
+
+  const doctorHours = doctorId
+    ? getDoctorHoursForDate(doctorId, date, doctorSchedules)
+    : null;
+  const timeMin = doctorHours?.startTime ?? SCHEDULE_DAY_START;
+  const timeMax = doctorHours?.endTime ?? SCHEDULE_DAY_END;
 
   useEffect(() => {
     if (!legalEnabled && docsModalOpen) setDocsModalOpen(false);
@@ -278,9 +288,18 @@ export function AppointmentModal({
       isOtherClinicVisit: appointment?.isOtherClinicVisit,
       externalClaimId: appointment?.externalClaimId,
       externalSource: appointment?.externalSource,
+      bookedByPartner: appointment?.bookedByPartner,
+      partnerClinicName: appointment?.partnerClinicName,
+      ...(!appointment ? partnerBookingStamp(currentUser) : {}),
     };
 
-    const conflictError = validateAppointmentSave(appointments, payload, patients, doctors);
+    const conflictError = validateAppointmentSave(
+      appointments,
+      payload,
+      patients,
+      doctors,
+      doctorSchedules
+    );
     if (conflictError) {
       toast.error(conflictError);
       return;
@@ -377,6 +396,13 @@ export function AppointmentModal({
                 {appointment ? "Редактировать запись" : "Новая запись"}
               </DialogTitle>
             </DialogHeader>
+            {(appointment?.bookedByPartner || isPartner) && (
+              <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-900">
+                {partnerBookingBadgeLabel(
+                  appointment ?? { bookedByPartner: true, partnerClinicName: currentUser.name }
+                ) ?? "Запись от партнёрской клиники"}
+              </p>
+            )}
             {formLocked && (
               <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 {appointment?.status === "ready_for_payment"
@@ -400,7 +426,7 @@ export function AppointmentModal({
                   : "Открыть или восстановить акт"}
               </Button>
             )}
-            {linkedActId && linkedActPaid && (
+            {linkedActId && linkedActPaid && !isPartner && (
               <Button
                 variant="secondary"
                 className="w-full"
@@ -475,6 +501,7 @@ export function AppointmentModal({
                         </p>
                       )}
                     </div>
+                    {!isPartner && (
                     <Button
                       type="button"
                       variant="outline"
@@ -491,6 +518,7 @@ export function AppointmentModal({
                     >
                       Карточка
                     </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -585,12 +613,20 @@ export function AppointmentModal({
                   <Input
                     type="time"
                     className="h-10"
-                    min={SCHEDULE_DAY_START}
-                    max={SCHEDULE_DAY_END}
+                    min={timeMin}
+                    max={timeMax}
                     value={startTime}
-                    disabled={formLocked}
+                    disabled={formLocked || (doctorHours === null && Boolean(doctorId))}
                     onChange={(e) => setStartTime(e.target.value)}
                   />
+                  {doctorId && doctorHours === null && (
+                    <p className="text-xs text-amber-700">Врач в этот день не работает</p>
+                  )}
+                  {doctorHours && (
+                    <p className="text-xs text-muted-foreground">
+                      Смена: {doctorHours.startTime}–{doctorHours.endTime}
+                    </p>
+                  )}
                 </div>
                 <div className="flex min-w-0 flex-col gap-2">
                   <Label className="flex min-h-10 items-end text-sm leading-snug">
@@ -617,7 +653,7 @@ export function AppointmentModal({
                   <select
                     className={selectClass}
                     value={status}
-                    disabled={formLocked && !doctorCanEdit}
+                    disabled={(formLocked && !doctorCanEdit) || isPartner}
                     onChange={(e) => handleStatusChange(e.target.value as AppointmentStatus)}
                   >
                     {statusOptions.map(({ key, label }) => (
@@ -645,7 +681,7 @@ export function AppointmentModal({
                 )}
               </div>
 
-              {legalEnabled && patientId && (appointment?.status === "in_progress" || status === "in_progress") && (
+              {legalEnabled && !isPartner && patientId && (appointment?.status === "in_progress" || status === "in_progress") && (
                 <Button
                   type="button"
                   variant="secondary"
@@ -696,7 +732,7 @@ export function AppointmentModal({
         }}
       />
 
-      {legalEnabled && (
+      {legalEnabled && !isPartner && (
         <AppointmentDocumentsModal
           open={docsModalOpen}
           onOpenChange={setDocsModalOpen}

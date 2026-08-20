@@ -175,6 +175,52 @@ export function getDoctorHoursForDate(
   return { startTime: shift.startTime, endTime: shift.endTime };
 }
 
+/** Слот/интервал полностью внутри смены врача (конец смены включительно как «до»). */
+export function isIntervalWithinDoctorHours(
+  doctorId: string,
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  schedules: DoctorMonthSchedule[]
+): boolean {
+  const hours = getDoctorHoursForDate(doctorId, dateStr, schedules);
+  if (!hours) return false;
+  const startMin = toMinutes(startTime);
+  const endMin = toMinutes(endTime);
+  if (endMin <= startMin) return false;
+  return startMin >= toMinutes(hours.startTime) && endMin <= toMinutes(hours.endTime);
+}
+
+/** Стартовый слот сетки доступен, если 30‑мин интервал умещается в смену. */
+export function isScheduleSlotWithinDoctorHours(
+  doctorId: string,
+  dateStr: string,
+  slotStart: string,
+  schedules: DoctorMonthSchedule[],
+  slotMinutes = 30
+): boolean {
+  const endTime = addMinutesToTime(slotStart, slotMinutes);
+  return isIntervalWithinDoctorHours(
+    doctorId,
+    dateStr,
+    slotStart,
+    endTime,
+    schedules
+  );
+}
+
+function toMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function addMinutesToTime(time: string, minutes: number): string {
+  const total = toMinutes(time) + minutes;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export function needsScheduleReminder(
   schedules: DoctorMonthSchedule[],
   doctorIds: string[],

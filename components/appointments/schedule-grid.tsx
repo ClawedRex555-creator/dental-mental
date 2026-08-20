@@ -10,13 +10,18 @@ import {
   appointmentBlocksSlot,
   SCHEDULE_DAY_START,
   SCHEDULE_DAY_END,
+  SCHEDULE_SLOT_MINUTES,
 } from "@/lib/appointment-utils";
 import {
   getScheduleAppointmentCellClass,
   getScheduleAppointmentStatusLabel,
   resolveAppointmentWorkAct,
 } from "@/lib/appointment-schedule-display";
-import { getDoctorHoursForDate } from "@/lib/clinic-schedule";
+import {
+  getDoctorHoursForDate,
+  isScheduleSlotWithinDoctorHours,
+} from "@/lib/clinic-schedule";
+import { partnerBookingBadgeLabel } from "@/lib/partner-clinic";
 import type { Appointment, Doctor, DoctorMonthSchedule, Patient, Payment, WorkAct } from "@/lib/types";
 
 interface ScheduleGridProps {
@@ -123,14 +128,21 @@ export function ScheduleGrid({
                     >
                       {doc.name}
                     </div>
-                    {hours && (
+                    {hours ? (
                       <div
                         className="text-xs font-medium"
                         style={{ color: "var(--schedule-muted)" }}
                       >
                         {hours.startTime}–{hours.endTime}
                       </div>
-                    )}
+                    ) : doc.id !== "_none" ? (
+                      <div
+                        className="text-xs font-medium"
+                        style={{ color: "var(--schedule-muted)" }}
+                      >
+                        Выходной
+                      </div>
+                    ) : null}
                     {doc.specialization && (
                       <div
                         className="text-xs font-normal"
@@ -175,6 +187,16 @@ export function ScheduleGrid({
                   const free =
                     docId &&
                     isSlotFree(appointments, dateStr, slot, docId, apt?.id);
+                  const withinHours =
+                    !docId ||
+                    isScheduleSlotWithinDoctorHours(
+                      docId,
+                      dateStr,
+                      slot,
+                      doctorSchedules,
+                      SCHEDULE_SLOT_MINUTES
+                    );
+                  const canBook = Boolean(docId && free && withinHours);
 
                   if (apt) {
                     const patient = patients.find((p) => p.id === apt.patientId);
@@ -225,6 +247,11 @@ export function ScheduleGrid({
                             </span>
                             <span className="block truncate font-semibold">{patientName}</span>
                             <span className="block truncate text-xs opacity-85">{statusLabel}</span>
+                            {partnerBookingBadgeLabel(apt) && (
+                              <span className="mt-0.5 inline-block max-w-full truncate rounded bg-violet-100 px-1 py-px text-[10px] font-semibold text-violet-900">
+                                {partnerBookingBadgeLabel(apt)}
+                              </span>
+                            )}
                           </button>
                           {linkedAct && (
                             <button
@@ -246,13 +273,20 @@ export function ScheduleGrid({
                       className="border-b border-r p-1"
                       style={{
                         borderColor: "var(--schedule-border)",
-                        backgroundColor: "var(--schedule-cell-bg)",
+                        backgroundColor: withinHours
+                          ? "var(--schedule-cell-bg)"
+                          : "var(--schedule-time-bg)",
                       }}
+                      title={
+                        docId && !withinHours
+                          ? "Вне графика смены врача"
+                          : undefined
+                      }
                     >
-                      {docId && free ? (
+                      {canBook ? (
                         <button
                           type="button"
-                          onClick={() => onSlotClick(dateStr, slot, docId)}
+                          onClick={() => onSlotClick(dateStr, slot, docId!)}
                           className="flex h-[52px] w-full items-center justify-center rounded border border-dashed text-lg transition-colors hover:border-teal-500 hover:bg-teal-500/10 hover:text-teal-600"
                           style={{
                             borderColor: "var(--schedule-border)",
@@ -262,7 +296,12 @@ export function ScheduleGrid({
                           +
                         </button>
                       ) : (
-                        <div className="h-[52px]" />
+                        <div
+                          className={cn(
+                            "h-[52px]",
+                            !withinHours && "opacity-40"
+                          )}
+                        />
                       )}
                     </td>
                   );

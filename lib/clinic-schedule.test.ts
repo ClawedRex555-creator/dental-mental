@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   formatScheduleMonthLabel,
+  isIntervalWithinDoctorHours,
+  isScheduleSlotWithinDoctorHours,
   needsScheduleReminder,
   shouldPromptForNextMonthSchedule,
 } from "./clinic-schedule";
+import type { DoctorMonthSchedule } from "./types";
 
 describe("shouldPromptForNextMonthSchedule", () => {
   it("does not prompt before the 21st", () => {
@@ -45,5 +48,71 @@ describe("needsScheduleReminder", () => {
 describe("formatScheduleMonthLabel", () => {
   it("formats month key in Russian", () => {
     assert.equal(formatScheduleMonthLabel("2026-08"), "Август 2026");
+  });
+});
+
+describe("isScheduleSlotWithinDoctorHours", () => {
+  const schedules: DoctorMonthSchedule[] = [
+    {
+      doctorId: "doc-1",
+      month: "2026-08",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+      days: {
+        "2026-08-10": { working: true, startTime: "11:00", endTime: "16:00" },
+        "2026-08-11": { working: false, startTime: "10:00", endTime: "19:00" },
+      },
+    },
+  ];
+
+  it("allows slots fully inside the shift", () => {
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-10", "11:00", schedules),
+      true
+    );
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-10", "15:30", schedules),
+      true
+    );
+  });
+
+  it("blocks slots before or after the shift", () => {
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-10", "10:00", schedules),
+      false
+    );
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-10", "16:00", schedules),
+      false
+    );
+  });
+
+  it("blocks all slots on a day off", () => {
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-11", "12:00", schedules),
+      false
+    );
+  });
+
+  it("rejects intervals that spill past shift end", () => {
+    assert.equal(
+      isIntervalWithinDoctorHours(
+        "doc-1",
+        "2026-08-10",
+        "15:00",
+        "16:30",
+        schedules
+      ),
+      false
+    );
+    assert.equal(
+      isIntervalWithinDoctorHours(
+        "doc-1",
+        "2026-08-10",
+        "15:00",
+        "16:00",
+        schedules
+      ),
+      true
+    );
   });
 });

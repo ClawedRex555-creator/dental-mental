@@ -75,7 +75,9 @@ function appointmentsEqual(a: Appointment, b: Appointment): boolean {
     a.price === b.price &&
     a.paymentStatus === b.paymentStatus &&
     a.workActId === b.workActId &&
-    a.isOtherClinicVisit === b.isOtherClinicVisit
+    a.isOtherClinicVisit === b.isOtherClinicVisit &&
+    a.bookedByPartner === b.bookedByPartner &&
+    a.partnerClinicName === b.partnerClinicName
   );
 }
 
@@ -122,7 +124,8 @@ export function applyCreateAppointmentToPersistedState(
     nextState.appointments,
     appointment,
     nextState.patients,
-    nextState.doctors
+    nextState.doctors,
+    nextState.doctorSchedules
   );
   if (conflictError) {
     return { ok: false, error: conflictError };
@@ -208,7 +211,8 @@ export function applyUpdateAppointmentToPersistedState(
       state.appointments,
       next,
       state.patients,
-      state.doctors
+      state.doctors,
+      state.doctorSchedules
     );
     if (conflictError) {
       return { ok: false, error: conflictError };
