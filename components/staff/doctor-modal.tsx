@@ -17,7 +17,10 @@ import {
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { AddressInput } from "@/components/shared/address-input";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +31,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { saveStaffToServer } from "@/lib/clinic-staff-client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 
 interface DoctorModalProps {
   open: boolean;
@@ -176,7 +184,12 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
       return;
     }
     const specsForDoctor = role === "doctor" ? resolvedDoctorSpecs() : [];
-    const specSingle = role === "doctor" ? specsForDoctor[0] : resolvedSpecialization;
+    const specSingle =
+      role === "doctor"
+        ? specsForDoctor[0]
+        : role === "partner"
+          ? "Партнёрская клиника"
+          : resolvedSpecialization;
     if (!specSingle) {
       toast.error(
         role === "doctor" ? "Выберите хотя бы одну специализацию" : "Укажите специализацию"
@@ -238,11 +251,6 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
     }
 
     if (isEdit && member) {
-      updateDoctor(member.id, payload);
-      if (role === "doctor" && cabinetId) {
-        assignStaffToCabinet(cabinetId, member.id);
-      }
-
       const passwordChange =
         authPassword.length > 0 || authPasswordConfirm.length > 0;
       const profileChanged =
@@ -251,24 +259,24 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
         member.name.trim() !== name.trim();
       const needsAuthSync = passwordChange || profileChanged;
 
-      if (needsAuthSync) {
-        if (!loginEmail) {
-          toast.error("Укажите email — он используется как логин для входа");
-          return;
-        }
-        if (passwordChange) {
-          if (authPassword.length < 8) {
-            toast.error("Пароль для входа — не менее 8 символов");
+      try {
+        setSaving(true);
+        if (needsAuthSync) {
+          if (!loginEmail) {
+            toast.error("Укажите email — он используется как логин для входа");
             return;
           }
-          if (authPassword !== authPasswordConfirm) {
-            toast.error("Пароли не совпадают");
-            return;
+          if (passwordChange) {
+            if (authPassword.length < 8) {
+              toast.error("Пароль для входа — не менее 8 символов");
+              return;
+            }
+            if (authPassword !== authPasswordConfirm) {
+              toast.error("Пароли не совпадают");
+              return;
+            }
           }
-        }
 
-        try {
-          setSaving(true);
           const res = await fetch("/api/auth/accounts", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -286,19 +294,38 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
             toast.error(data.error ?? "Не удалось обновить доступ для входа");
             return;
           }
-          toast.success(
-            passwordChange
+        }
+
+        const staffRes = await saveStaffToServer({
+          id: member.id,
+          ...payload,
+          status: member.status ?? "active",
+        });
+        if (!staffRes.ok) {
+          toast.error(staffRes.error ?? "Не удалось сохранить сотрудника на сервере");
+          return;
+        }
+
+        runWithoutClinicFlush(() => {
+          updateDoctor(member.id, payload);
+          if (role === "doctor" && cabinetId) {
+            assignStaffToCabinet(cabinetId, member.id);
+          }
+        });
+        markClinicSyncedAfterCommand(staffRes.updatedAt, staffRes.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        toast.success(
+          needsAuthSync
+            ? passwordChange
               ? "Сотрудник, роль и пароль для входа обновлены"
               : "Сотрудник и роль для входа обновлены"
-          );
-        } catch {
-          toast.error("Не удалось обновить доступ. Проверьте соединение.");
-          return;
-        } finally {
-          setSaving(false);
-        }
-      } else {
-        toast.success("Сотрудник обновлён");
+            : "Сотрудник обновлён"
+        );
+      } catch {
+        toast.error("Не удалось сохранить сотрудника. Проверьте соединение.");
+      } finally {
+        setSaving(false);
       }
 
       onOpenChange(false);
@@ -326,14 +353,28 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
         return;
       }
 
-      addDoctor({
+      const staffRes = await saveStaffToServer({
         id: staffId,
         ...payload,
         status: "active",
       });
-      if (role === "doctor" && cabinetId) {
-        assignStaffToCabinet(cabinetId, staffId);
+      if (!staffRes.ok) {
+        toast.error(staffRes.error ?? "Учётка создана, но сотрудника не удалось сохранить");
+        return;
       }
+      runWithoutClinicFlush(() => {
+        addDoctor({
+          id: staffId,
+          ...payload,
+          status: "active",
+        });
+        if (role === "doctor" && cabinetId) {
+          assignStaffToCabinet(cabinetId, staffId);
+        }
+      });
+      markClinicSyncedAfterCommand(staffRes.updatedAt, staffRes.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
       toast.success("Сотрудник и учётная запись для входа созданы");
       onOpenChange(false);
     } catch {
@@ -351,11 +392,11 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>ФИО</Label>
+            <Label>{role === "partner" ? "Название / ФИО" : "ФИО"}</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Dr. Иван Иванов"
+              placeholder={role === "partner" ? "Стоматология «Партнёр»" : "Dr. Иван Иванов"}
             />
           </div>
 
@@ -366,7 +407,7 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
             >
-              {(["doctor", "admin", "assistant", "accountant"] as UserRole[]).map((r) => (
+              {(["doctor", "admin", "assistant", "accountant", "partner"] as UserRole[]).map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABELS[r]}
                 </option>
@@ -405,6 +446,11 @@ export function DoctorModal({ open, onOpenChange, member }: DoctorModalProps) {
                 />
               )}
             </div>
+          ) : role === "partner" ? (
+            <p className="text-sm text-slate-500">
+              Доступ только к расписанию (запись и просмотр без телефонов) и к прайсу услуг
+              без технички. В настройках — смена пароля.
+            </p>
           ) : (
             <>
               <div className="space-y-2">

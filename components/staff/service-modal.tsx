@@ -22,7 +22,20 @@ import {
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { UI } from "@/lib/constants";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  deleteServiceViaCommandApi,
+  upsertServiceViaCommandApi,
+} from "@/lib/clinic-service.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import { generateId, serviceNotes } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +66,7 @@ export function ServiceModal({
   const { addService, updateService, removeService, services } = useClinicStore();
   const isEdit = !!service;
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<ServiceCategory>(SERVICE_CATEGORIES[0]);
+  const [category, setCategory] = useState<string>(SERVICE_CATEGORIES[0]);
   const [price, setPrice] = useState("");
   const [priceIsFrom, setPriceIsFrom] = useState(false);
   const [notes, setNotes] = useState("");
@@ -97,7 +110,7 @@ export function ServiceModal({
     initialized.current = true;
     if (service) {
       setName(service.name);
-      setCategory(service.category as ServiceCategory);
+      setCategory(service.category || SERVICE_CATEGORIES[0]);
       setPrice(String(service.price));
       setPriceIsFrom(Boolean(service.priceIsFrom));
       setNotes(serviceNotes(service) ?? "");
@@ -109,9 +122,7 @@ export function ServiceModal({
       setDeleteConfirmText("");
     } else {
       setName("");
-      setCategory(
-        (isTechnicalMode ? SERVICE_CATEGORY_TECHNICAL : SERVICE_CATEGORIES[0]) as ServiceCategory
-      );
+      setCategory(isTechnicalMode ? SERVICE_CATEGORY_TECHNICAL : SERVICE_CATEGORIES[0]);
       setPrice("");
       setPriceIsFrom(false);
       setNotes("");
@@ -133,7 +144,11 @@ export function ServiceModal({
     }
   };
 
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
   const handleSave = () => {
+    if (savingRef.current) return;
     if (isTechnicalMode) {
       if (!price.trim()) {
         toast.error("Укажите стоимость технички");
@@ -198,25 +213,66 @@ export function ServiceModal({
       return;
     }
 
-    if (isEdit && service) {
-      updateService(service.id, payload);
-      toast.success("Услуга обновлена");
-    } else {
-      addService(payload);
-      toast.success("Услуга добавлена");
-    }
-    onOpenChange(false);
+    savingRef.current = true;
+    setSaving(true);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await upsertServiceViaCommandApi(payload);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось сохранить услугу на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          if (isEdit && service) {
+            updateService(service.id, payload);
+          } else {
+            addService(payload);
+          }
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        toast.success(isEdit ? "Услуга обновлена" : "Услуга добавлена");
+        onOpenChange(false);
+      } finally {
+        endClinicCommandMutation();
+        savingRef.current = false;
+        setSaving(false);
+      }
+    })();
   };
 
   const handleDelete = () => {
-    if (!service) return;
+    if (!service || savingRef.current) return;
     if (deleteConfirmText.trim() !== service.name.trim()) {
       toast.error("Введите точное название услуги для удаления");
       return;
     }
-    removeService(service.id);
-    toast.success("Услуга удалена из прайса");
-    onOpenChange(false);
+    savingRef.current = true;
+    setSaving(true);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const api = await deleteServiceViaCommandApi(service.id);
+        if (!api.ok) {
+          toast.error(api.error ?? "Не удалось удалить услугу на сервере");
+          return;
+        }
+        runWithoutClinicFlush(() => {
+          removeService(service.id);
+        });
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        toast.success("Услуга удалена из прайса");
+        onOpenChange(false);
+      } finally {
+        endClinicCommandMutation();
+        savingRef.current = false;
+        setSaving(false);
+      }
+    })();
   };
 
   const selectedNmuName = nmuCode.trim() ? getNmuDisplayName(nmuCode) : undefined;
@@ -302,10 +358,16 @@ export function ServiceModal({
                 <div className="space-y-2">
                   <Label>Категория</Label>
                   <select
-                    className="flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
+                    className="relative z-30 flex h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--foreground)]"
                     value={category}
-                    onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+                    onChange={(e) => setCategory(e.target.value)}
                   >
+                    {/* Текущая категория, если её нет в справочнике — иначе select «залипает» */}
+                    {category &&
+                      !SERVICE_CATEGORIES.includes(category as ServiceCategory) &&
+                      category !== SERVICE_CATEGORY_TECHNICAL && (
+                        <option value={category}>{category}</option>
+                      )}
                     {SERVICE_CATEGORIES.filter((c) => c !== SERVICE_CATEGORY_TECHNICAL).map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -406,7 +468,7 @@ export function ServiceModal({
                       type="button"
                       className="bg-red-600 hover:bg-red-700"
                       onClick={handleDelete}
-                      disabled={deleteConfirmText.trim() !== service.name.trim()}
+                      disabled={saving || deleteConfirmText.trim() !== service.name.trim()}
                     >
                       Подтвердить удаление
                     </Button>
@@ -416,10 +478,12 @@ export function ServiceModal({
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               {UI.cancel}
             </Button>
-            <Button onClick={handleSave}>{UI.save}</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "Сохранение…" : UI.save}
+            </Button>
           </div>
         </div>
       </DialogContent>

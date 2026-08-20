@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import type { Doctor, DoctorShiftDay } from "@/lib/types";
 import { WEEKDAY_SHORT } from "@/lib/constants";
 import { monthKey, normalizeShiftDay } from "@/lib/clinic-schedule";
-import { useClinicStore } from "@/store/useClinicStore";
+import { runWithoutClinicFlush, useClinicStore } from "@/store/useClinicStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { upsertDoctorScheduleViaCommandApi } from "@/lib/clinic-snapshot-command.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 
 interface DoctorScheduleModalProps {
   open: boolean;
@@ -39,7 +44,7 @@ export function DoctorScheduleModal({
   onOpenChange,
   doctor,
 }: DoctorScheduleModalProps) {
-  const { doctorSchedules, saveDoctorMonthSchedule } = useClinicStore();
+  const { saveDoctorMonthSchedule } = useClinicStore();
   const [month, setMonth] = useState(monthKey());
   const [days, setDays] = useState<Record<string, DoctorShiftDay>>({});
   const [defaultStart, setDefaultStart] = useState("10:00");
@@ -60,10 +65,11 @@ export function DoctorScheduleModal({
 
   useEffect(() => {
     if (!open || !doctor) return;
-    const mk = month;
-    const existing = doctorSchedules.find(
-      (s) => s.doctorId === doctor.id && s.month === mk
-    );
+    // Грузим только при открытии / смене врача / месяца.
+    // Не реагируем на doctorSchedules из pull — иначе sync затирает правки в форме.
+    const existing = useClinicStore
+      .getState()
+      .doctorSchedules.find((s) => s.doctorId === doctor.id && s.month === month);
     const loaded: Record<string, DoctorShiftDay> = {};
     if (existing?.days) {
       for (const [dateStr, raw] of Object.entries(existing.days)) {
@@ -75,7 +81,9 @@ export function DoctorScheduleModal({
     }
     setDays(loaded);
     setSelectedDay(null);
-  }, [open, doctor, month, doctorSchedules, defaultStart, defaultEnd]);
+    // defaultStart/defaultEnd намеренно не в deps: смена дефолта не должна сбрасывать календарь
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, doctor, month]);
 
   const toggleDay = (dateStr: string) => {
     setSelectedDay(dateStr);
@@ -123,14 +131,26 @@ export function DoctorScheduleModal({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!doctor) return;
-    saveDoctorMonthSchedule({
+    const schedule = {
       doctorId: doctor.id,
       month,
       days,
-      updatedAt: format(new Date(), "yyyy-MM-dd"),
+      // ISO: иначе при merge «день = день» stale PUT откатывает график.
+      updatedAt: new Date().toISOString(),
+    };
+    const api = await upsertDoctorScheduleViaCommandApi(schedule);
+    if (!api.ok) {
+      toast.error(api.error ?? "Не удалось сохранить график на сервере");
+      return;
+    }
+    runWithoutClinicFlush(() => {
+      saveDoctorMonthSchedule(schedule);
     });
+    markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+    useClinicStore.getState().pauseClinicAutoSave(15_000);
+    notifyClinicDataChanged();
     toast.success("График смен сохранён");
     onOpenChange(false);
   };
@@ -264,7 +284,7 @@ export function DoctorScheduleModal({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Отмена
             </Button>
-            <Button onClick={handleSave}>Сохранить график</Button>
+            <Button onClick={() => void handleSave()}>Сохранить график</Button>
           </div>
         </div>
       </DialogContent>

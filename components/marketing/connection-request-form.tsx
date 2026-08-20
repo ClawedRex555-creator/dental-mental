@@ -33,7 +33,11 @@ const EMPTY_FORM: FormState = {
   marketingConsent: false,
 };
 
-export function ConnectionRequestForm() {
+export function ConnectionRequestForm({
+  variant = "card",
+}: {
+  variant?: "card" | "landing";
+}) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,6 +82,107 @@ export function ConnectionRequestForm() {
       setSubmitting(false);
     }
   };
+
+  if (variant === "landing") {
+    return (
+      <form className="demo-form" id="request" onSubmit={submit}>
+        <div className="field">
+          <label htmlFor="clinic">Название клиники</label>
+          <input
+            id="clinic"
+            name="clinic"
+            placeholder="Например, Тстом"
+            required
+            value={form.clinicName}
+            onChange={(e) => update("clinicName", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="contactName">Ваше имя</label>
+          <input
+            id="contactName"
+            name="name"
+            placeholder="Как к вам обращаться"
+            required
+            value={form.contactName}
+            onChange={(e) => update("contactName", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="phone">Телефон</label>
+          <input
+            id="phone"
+            name="phone"
+            placeholder="+7 (___) ___-__-__"
+            required
+            value={form.phone}
+            onChange={(e) => update("phone", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="name@clinic.ru"
+            required
+            value={form.email}
+            onChange={(e) => update("email", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="desiredSlug">Желаемый адрес клиники</label>
+          <input
+            id="desiredSlug"
+            name="desiredSlug"
+            placeholder="например tstom"
+            value={form.desiredSlug}
+            onChange={(e) => update("desiredSlug", e.target.value.toLowerCase())}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="message">Комментарий</label>
+          <textarea
+            id="message"
+            name="message"
+            placeholder="Опционально"
+            value={form.message}
+            onChange={(e) => update("message", e.target.value)}
+          />
+        </div>
+        <label className="consent">
+          <input
+            type="checkbox"
+            required
+            checked={form.pdConsent}
+            onChange={(e) => update("pdConsent", e.target.checked)}
+          />
+          <span>
+            {pdConsentCheckboxLabel}{" "}
+            <Link href={PLATFORM_OPERATOR.consentPath} target="_blank">
+              Согласие
+            </Link>
+            {" · "}
+            <Link href={PLATFORM_OPERATOR.privacyPath} target="_blank">
+              Политика
+            </Link>
+          </span>
+        </label>
+        <label className="consent">
+          <input
+            type="checkbox"
+            checked={form.marketingConsent}
+            onChange={(e) => update("marketingConsent", e.target.checked)}
+          />
+          <span>{marketingConsentShortText}</span>
+        </label>
+        <button className="btn primary field full" type="submit" disabled={submitting}>
+          {submitting ? "Отправляем..." : "Получить демонстрацию"}
+        </button>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">

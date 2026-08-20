@@ -12,10 +12,15 @@ const WINDOW_MS = 2000;
 interface HiddenAdminLogoProps {
   className?: string;
   logoSize?: number;
+  children?: React.ReactNode;
 }
 
 /** Скрытый вход супер-админа: 5 быстрых кликов по логотипу на emkaro.ru */
-export function HiddenAdminLogo({ className, logoSize = 56 }: HiddenAdminLogoProps) {
+export function HiddenAdminLogo({
+  className,
+  logoSize = 56,
+  children,
+}: HiddenAdminLogoProps) {
   const router = useRouter();
   const clicks = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,7 +54,7 @@ export function HiddenAdminLogo({ className, logoSize = 56 }: HiddenAdminLogoPro
       )}
       aria-label={APP_NAME}
     >
-      <AppLogo size={logoSize} className="h-full w-full" />
+      {children ?? <AppLogo size={logoSize} className="h-full w-full" />}
     </button>
   );
 }

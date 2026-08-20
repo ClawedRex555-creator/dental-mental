@@ -23,6 +23,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  outputFileTracingIncludes: {
+    "/": ["./components/marketing/emkaro-landing-body.html"],
+  },
   env: {
     APP_ROOT_DOMAIN: process.env.APP_ROOT_DOMAIN,
     DEFAULT_CLINIC_SLUG: process.env.DEFAULT_CLINIC_SLUG,

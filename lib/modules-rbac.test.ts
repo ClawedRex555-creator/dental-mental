@@ -11,6 +11,7 @@ describe("modules-rbac", () => {
     assert.equal(canViewPatientPhone("admin"), true);
     assert.equal(canViewPatientPhone("assistant"), true);
     assert.equal(canViewPatientPhone("accountant"), false);
+    assert.equal(canViewPatientPhone("partner"), false);
   });
 
   it("parseClinicModules always keeps settings enabled", () => {
@@ -35,6 +36,21 @@ describe("modules-rbac", () => {
     const target = resolveSafeRedirectPath("owner", modules, "/legal");
     assert.notEqual(target, "/legal");
     assert.equal(canAccessPath("owner", target, modules), true);
+  });
+
+  it("partner can access schedule, services and settings only", () => {
+    const modules = defaultClinicModules();
+    assert.equal(canAccessPath("partner", "/appointments", modules), true);
+    assert.equal(canAccessPath("partner", "/warehouse", modules), true);
+    assert.equal(canAccessPath("partner", "/settings", modules), true);
+    assert.equal(canAccessPath("partner", "/patients", modules), false);
+    assert.equal(canAccessPath("partner", "/finance", modules), false);
+    assert.equal(canAccessPath("partner", "/staff", modules), false);
+    const nav = navItemsForRole("partner", modules);
+    assert.deepEqual(
+      nav.map((item) => item.href).sort(),
+      ["/appointments", "/settings", "/warehouse"].sort()
+    );
   });
 
   it("doctor can access services catalog (read-only route)", () => {

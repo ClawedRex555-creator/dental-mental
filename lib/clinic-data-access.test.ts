@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createFreshPersistedState } from "./clinic-persisted-state";
 import {
   canAccessFullClinicDataSync,
+  canUseDayToDaySnapshotPut,
   canReadClinicDataSync,
   canWriteClinicDataSync,
   filterClinicSnapshotForAccountant,
@@ -18,6 +19,7 @@ describe("clinic data sync access", () => {
     assert.equal(canReadClinicDataSync("doctor"), true);
     assert.equal(canReadClinicDataSync("assistant"), true);
     assert.equal(canReadClinicDataSync("accountant"), true);
+    assert.equal(canReadClinicDataSync("partner"), true);
   });
 
   it("write: owner, admin, doctor, assistant", () => {
@@ -26,6 +28,7 @@ describe("clinic data sync access", () => {
     assert.equal(canWriteClinicDataSync("doctor"), true);
     assert.equal(canWriteClinicDataSync("assistant"), true);
     assert.equal(canWriteClinicDataSync("accountant"), false);
+    assert.equal(canWriteClinicDataSync("partner"), true);
   });
 
   it("canAccessFullClinicDataSync matches write", () => {
@@ -33,11 +36,21 @@ describe("clinic data sync access", () => {
     assert.equal(canAccessFullClinicDataSync("accountant"), false);
   });
 
+  it("day-to-day snapshot PUT is limited to owner/admin", () => {
+    assert.equal(canUseDayToDaySnapshotPut("owner"), true);
+    assert.equal(canUseDayToDaySnapshotPut("admin"), true);
+    assert.equal(canUseDayToDaySnapshotPut("doctor"), false);
+    assert.equal(canUseDayToDaySnapshotPut("assistant"), false);
+    assert.equal(canUseDayToDaySnapshotPut("accountant"), false);
+    assert.equal(canUseDayToDaySnapshotPut("partner"), false);
+  });
+
   it("canManageServices: owner/admin only", () => {
     assert.equal(canManageServices("owner"), true);
     assert.equal(canManageServices("admin"), true);
     assert.equal(canManageServices("doctor"), false);
     assert.equal(canManageServices("assistant"), false);
+    assert.equal(canManageServices("partner"), false);
   });
 
   it("filterClinicSnapshotForAccountant strips PHI and non-finance data", () => {

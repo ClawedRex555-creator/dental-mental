@@ -20,20 +20,20 @@ export const APP_TAGLINE = "Система для стоматологическ
 export const APP_LOGO_TEXT = "Em";
 
 export const NAV_ITEMS = [
-  { href: "/appointments", label: "Расписание", icon: "Calendar", roles: ["owner", "admin", "doctor", "assistant"] as UserRole[] },
+  { href: "/appointments", label: "Расписание", icon: "Calendar", roles: ["owner", "admin", "doctor", "assistant", "partner"] as UserRole[] },
   { href: "/patients", label: "Пациенты", icon: "Users", roles: ["owner", "admin", "doctor", "assistant"] as UserRole[] },
   { href: "/medical-records", label: "Медкарты", icon: "FileText", roles: ["owner", "admin", "doctor", "assistant"] as UserRole[] },
   { href: "/treatment-plans", label: "Планы лечения", icon: "ClipboardList", roles: ["owner", "admin", "doctor"] as UserRole[] },
   { href: "/my-salary", label: "Моя зарплата", icon: "Wallet", roles: ["doctor"] as UserRole[] },
   { href: "/finance", label: "Финансы", icon: "Wallet", roles: ["owner", "admin", "accountant"] as UserRole[] },
-  { href: "/warehouse", label: "Услуги", icon: "Package", roles: ["owner", "admin", "doctor"] as UserRole[] },
+  { href: "/warehouse", label: "Услуги", icon: "Package", roles: ["owner", "admin", "doctor", "partner"] as UserRole[] },
   { href: "/dashboard", label: "Аналитика", icon: "LayoutDashboard", roles: ["owner", "admin", "accountant"] as UserRole[] },
   { href: "/reports", label: "Отчёты", icon: "BarChart3", roles: ["owner", "admin", "accountant"] as UserRole[] },
   { href: "/staff", label: "Сотрудники", icon: "UserCog", roles: ["owner", "admin"] as UserRole[] },
   { href: "/legal", label: "Юр. отдел", icon: "FileText", roles: ["owner", "admin"] as UserRole[] },
   { href: "/online-booking", label: "Онлайн-запись", icon: "Globe", roles: ["owner", "admin"] as UserRole[] },
   { href: "/notifications", label: "Уведомления", icon: "Bell", roles: ["owner", "admin", "doctor"] as UserRole[] },
-  { href: "/settings", label: "Настройки", icon: "Settings", roles: ["owner", "admin", "doctor", "assistant", "accountant"] as UserRole[] },
+  { href: "/settings", label: "Настройки", icon: "Settings", roles: ["owner", "admin", "doctor", "assistant", "accountant", "partner"] as UserRole[] },
 ] as const;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -42,6 +42,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   doctor: "Врач-стоматолог",
   assistant: "Ассистент",
   accountant: "Бухгалтер",
+  partner: "Партнёрская клиника",
 };
 
 export const PATIENT_NOTE_CATEGORIES: {

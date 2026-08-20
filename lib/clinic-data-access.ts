@@ -8,7 +8,8 @@ export function canReadClinicDataSync(role: UserRole): boolean {
     role === "admin" ||
     role === "doctor" ||
     role === "assistant" ||
-    role === "accountant"
+    role === "accountant" ||
+    role === "partner"
   );
 }
 
@@ -18,8 +19,17 @@ export function canWriteClinicDataSync(role: UserRole): boolean {
     role === "owner" ||
     role === "admin" ||
     role === "doctor" ||
-    role === "assistant"
+    role === "assistant" ||
+    role === "partner"
   );
+}
+
+/**
+ * Day-to-day полный PUT снимка.
+ * После миграции на command API оставляем только owner/admin как fallback.
+ */
+export function canUseDayToDaySnapshotPut(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
 }
 
 /** @deprecated используйте canReadClinicDataSync / canWriteClinicDataSync */

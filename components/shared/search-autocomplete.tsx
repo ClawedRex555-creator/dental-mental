@@ -14,6 +14,8 @@ interface SearchAutocompleteProps {
   multiline?: boolean;
   required?: boolean;
   compact?: boolean;
+  /** Подсказка под полем; пустая строка — скрыть */
+  hint?: string;
 }
 
 export function SearchAutocomplete({
@@ -25,11 +27,13 @@ export function SearchAutocomplete({
   multiline = false,
   required,
   compact,
+  hint,
 }: SearchAutocompleteProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSuggestions = open && value.trim().length > 0;
   const suggestions = filterCatalog(catalog, value);
 
@@ -45,15 +49,53 @@ export function SearchAutocomplete({
     setHighlight(0);
   }, [value]);
 
+  useEffect(() => {
+    return () => {
+      if (blurTimer.current) clearTimeout(blurTimer.current);
+    };
+  }, []);
+
   const pick = (text: string) => {
     onChange(text);
     setOpen(false);
+  };
+
+  const closeSoon = () => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+    // Даём время onMouseDown по пункту списка сработать до закрытия
+    blurTimer.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  const keepOpen = () => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+  };
+
+  const onSuggestKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSuggestions || !suggestions.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && suggestions[highlight]) {
+      // Обычный Enter не подменяет текст — иначе при табе/сохранении имя «само» меняется
+      e.preventDefault();
+      pick(suggestions[highlight].label);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
   };
 
   const inputClassName = cn(
     "w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20",
     multiline && "min-h-[72px] resize-y"
   );
+
+  const hintText =
+    hint === undefined
+      ? "Подсказки по каталогу — выберите кликом или Ctrl+Enter. Свой текст можно оставить как есть."
+      : hint;
 
   return (
     <div ref={containerRef} className={cn("relative", compact ? "" : "space-y-2")}>
@@ -72,22 +114,12 @@ export function SearchAutocomplete({
             onChange(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (!showSuggestions || !suggestions.length) return;
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setHighlight((h) => Math.max(h - 1, 0));
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && suggestions[highlight]) {
-              e.preventDefault();
-              pick(suggestions[highlight].label);
-            } else if (e.key === "Escape") {
-              setOpen(false);
-            }
+          onFocus={() => {
+            keepOpen();
+            setOpen(true);
           }}
+          onBlur={closeSoon}
+          onKeyDown={onSuggestKeyDown}
           autoComplete="off"
         />
       ) : (
@@ -100,22 +132,12 @@ export function SearchAutocomplete({
             onChange(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (!showSuggestions || !suggestions.length) return;
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setHighlight((h) => Math.max(h - 1, 0));
-            } else if (e.key === "Enter" && suggestions[highlight]) {
-              e.preventDefault();
-              pick(suggestions[highlight].label);
-            } else if (e.key === "Escape") {
-              setOpen(false);
-            }
+          onFocus={() => {
+            keepOpen();
+            setOpen(true);
           }}
+          onBlur={closeSoon}
+          onKeyDown={onSuggestKeyDown}
           autoComplete="off"
         />
       )}
@@ -123,7 +145,8 @@ export function SearchAutocomplete({
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-[200] mt-1 max-h-48 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
+          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
+          onMouseDown={keepOpen}
         >
           {suggestions.map((item, i) => (
             <li key={item.label}>
@@ -146,11 +169,9 @@ export function SearchAutocomplete({
           ))}
         </ul>
       )}
-      {!compact && (
-        <p className="text-xs text-[var(--muted)]">
-          Введите ключевое слово — выберите из списка или допишите свой текст
-        </p>
-      )}
+      {!compact && hintText ? (
+        <p className="text-xs text-[var(--muted)]">{hintText}</p>
+      ) : null}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { ServiceModal } from "@/components/staff/service-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { canManageServices } from "@/lib/rbac";
+import { canManageServices, canViewTechnicalServices } from "@/lib/rbac";
 import {
   getClinicBillableServices,
   getTechnicalServices,
@@ -20,6 +20,7 @@ import { useClinicStore } from "@/store/useClinicStore";
 export default function ServicesPage() {
   const { services, currentUser } = useClinicStore();
   const canEdit = canManageServices(currentUser.role);
+  const showTechnical = canViewTechnicalServices(currentUser.role);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -72,7 +73,8 @@ export default function ServicesPage() {
   }, [filteredTechnical]);
 
   const totalShown =
-    filteredByCategory.reduce((n, g) => n + g.items.length, 0) + filteredTechnical.length;
+    filteredByCategory.reduce((n, g) => n + g.items.length, 0) +
+    (showTechnical ? filteredTechnical.length : 0);
 
   const openAdd = () => {
     setEditingService(null);
@@ -110,7 +112,9 @@ export default function ServicesPage() {
           <p className="text-sm text-[var(--muted)]">
             {canEdit
               ? "Прайс клиники и технические прайсы по техникам"
-              : "Прайс клиники — только просмотр"}
+              : showTechnical
+                ? "Прайс клиники — только просмотр"
+                : "Прайс клиники — только просмотр, без технички"}
           </p>
         </div>
         {canEdit && (
@@ -195,6 +199,7 @@ export default function ServicesPage() {
               </section>
             );
           })}
+          {showTechnical && (
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">Техническая</h2>
@@ -274,6 +279,7 @@ export default function ServicesPage() {
               </div>
             )}
           </section>
+          )}
           {q && totalShown === 0 && (
             <p className="text-center text-sm text-[var(--muted)]">
               Ничего не найдено по запросу «{search}»

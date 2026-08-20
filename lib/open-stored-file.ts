@@ -87,7 +87,11 @@ const PRINT_ON_LOAD_SCRIPT =
   `window.addEventListener("load",function(){setTimeout(__emkaroPrint,400);});` +
   `setTimeout(__emkaroPrint,2000);</script>`;
 
-function buildPdfPrintShellHtml(blobUrl: string, title: string): string {
+function buildPdfPrintShellHtml(
+  blobUrl: string,
+  title: string,
+  autoPrint: boolean
+): string {
   const safeTitle = escapeHtml(title);
   const safeUrl = blobUrl.replace(/"/g, "&quot;");
   return (
@@ -95,12 +99,16 @@ function buildPdfPrintShellHtml(blobUrl: string, title: string): string {
     `<title>${safeTitle}</title>` +
     `<style>html,body{margin:0;height:100%;}embed{width:100%;height:100%;}</style></head>` +
     `<body><embed src="${safeUrl}" type="application/pdf" />` +
-    PRINT_ON_LOAD_SCRIPT +
+    (autoPrint ? PRINT_ON_LOAD_SCRIPT : "") +
     `</body></html>`
   );
 }
 
-function buildImagePrintShellHtml(src: string, title: string): string {
+function buildImagePrintShellHtml(
+  src: string,
+  title: string,
+  autoPrint: boolean
+): string {
   const safeTitle = escapeHtml(title);
   const safeSrc = src.replace(/"/g, "&quot;");
   return (
@@ -108,14 +116,35 @@ function buildImagePrintShellHtml(src: string, title: string): string {
     `<title>${safeTitle}</title></head>` +
     `<body style="margin:0;text-align:center">` +
     `<img src="${safeSrc}" alt="" style="max-width:100%;max-height:100vh" />` +
-    PRINT_ON_LOAD_SCRIPT +
+    (autoPrint ? PRINT_ON_LOAD_SCRIPT : "") +
     `</body></html>`
   );
 }
 
+export type PrintInTabOptions = {
+  /** По умолчанию true. При нескольких вкладках оставляйте true только у первой. */
+  autoPrint?: boolean;
+};
+
 /** Печать HTML в заранее открытой вкладке (как акт оказанных услуг) */
-export function printHtmlDocumentInTab(tab: Window | null, html: string): boolean {
-  if (isTabAccessible(tab) && writeHtmlToTab(tab, html)) return true;
+export function printHtmlDocumentInTab(
+  tab: Window | null,
+  html: string,
+  options?: PrintInTabOptions
+): boolean {
+  const autoPrint = options?.autoPrint !== false;
+  let payload = html;
+  if (!autoPrint) {
+    payload = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+    if (!/Ctrl\+P|Cmd\+P/.test(payload)) {
+      payload = payload.replace(
+        /<\/body>/i,
+        `<p style="margin:16px;font:14px system-ui,sans-serif">Нажмите Ctrl+P (Cmd+P) для печати</p></body>`
+      );
+    }
+  }
+
+  if (isTabAccessible(tab) && writeHtmlToTab(tab, payload)) return true;
   closeBrowserTab(tab);
 
   const win = window.open("", "_blank");
@@ -123,7 +152,7 @@ export function printHtmlDocumentInTab(tab: Window | null, html: string): boolea
     toast.error("Разрешите всплывающие окна для печати");
     return false;
   }
-  if (writeHtmlToTab(win, html)) return true;
+  if (writeHtmlToTab(win, payload)) return true;
   closeBrowserTab(win);
   toast.error("Не удалось открыть окно печати");
   return false;
@@ -133,7 +162,8 @@ export function printHtmlDocumentInTab(tab: Window | null, html: string): boolea
 export function printPdfBytesInTab(
   tab: Window | null,
   bytes: Uint8Array,
-  fileName = "document.pdf"
+  fileName = "document.pdf",
+  options?: PrintInTabOptions
 ): boolean {
   if (!isNonEmptyPdfBytes(bytes)) {
     closeBrowserTab(tab);
@@ -141,11 +171,12 @@ export function printPdfBytesInTab(
     return false;
   }
 
+  const autoPrint = options?.autoPrint !== false;
   const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   scheduleBlobUrlRevoke(url);
 
-  const html = buildPdfPrintShellHtml(url, fileName);
+  const html = buildPdfPrintShellHtml(url, fileName, autoPrint);
   if (isTabAccessible(tab) && writeHtmlToTab(tab, html)) return true;
   closeBrowserTab(tab);
 
@@ -196,7 +227,7 @@ export function printStoredDataUrlInTab(
     return printPdfBytesInTab(tab, bytes, fileName);
   }
 
-  const html = buildImagePrintShellHtml(parsed.dataUrl, fileName);
+  const html = buildImagePrintShellHtml(parsed.dataUrl, fileName, true);
   if (isTabAccessible(tab) && writeHtmlToTab(tab, html)) return true;
   closeBrowserTab(tab);
   return printHtmlDocumentInTab(null, html);

@@ -128,7 +128,10 @@ export function WorkActModal({
     updatePrepayment,
     currentUser,
   } = useClinicStore();
-  const activeDoctors = doctors.filter((d) => d.role === "doctor");
+  const activeDoctors = useMemo(
+    () => doctors.filter((d) => d.role === "doctor"),
+    [doctors]
+  );
   const clinicServices = useMemo(
     () => getClinicBillableServices(services),
     [services]
@@ -584,6 +587,9 @@ export function WorkActModal({
       }
 
       runWithoutClinicFlush(() => {
+        // После успешного command API гарантируем, что локальный акт =
+        // то, что ушло на сервер (скидка/сумма), а не устаревший store.
+        updateWorkAct(act.id, act);
         options.afterLocalPersist?.(act);
       });
       markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
@@ -772,16 +778,34 @@ export function WorkActModal({
   };
 
   const handleGoToPayment = () => {
-    const existingId = savedActIdRef.current;
-    const act = existingId
-      ? (workActs.find((a) => a.id === existingId) ?? persistAct())
-      : persistAct();
-    const actId = act?.id ?? savedActIdRef.current;
-    if (!actId) {
-      toast.error("Сначала сохраните акт с услугами");
-      return;
-    }
-    navigateToPayment(actId);
+    // Всегда сохраняем форму (скидка/позиции) на сервер, иначе оплата
+    // открывается со старым актом из store без только что введённой скидки.
+    if (actSaveLock.current) return;
+    actSaveLock.current = true;
+    void (async () => {
+      try {
+        const ok = await saveActViaCommand({
+          submittedToAdmin:
+            mode === "doctor"
+              ? false
+              : (existingAct?.submittedToAdmin ??
+                workActs.find((a) => a.id === (savedActIdRef.current ?? existingActId))
+                  ?.submittedToAdmin ??
+                true),
+          successMessage: (act) => `Акт № ${act.actNumber} сохранён`,
+          closeOnSuccess: false,
+        });
+        if (!ok) return;
+        const actId = savedActIdRef.current;
+        if (!actId) {
+          toast.error("Сначала сохраните акт с услугами");
+          return;
+        }
+        navigateToPayment(actId);
+      } finally {
+        actSaveLock.current = false;
+      }
+    })();
   };
 
   const title =

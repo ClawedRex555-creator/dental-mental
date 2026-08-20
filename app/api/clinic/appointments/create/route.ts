@@ -9,6 +9,7 @@ import {
   parseAppointmentPayload,
   parsePatientPayload,
 } from "@/lib/parse-appointment-command-body";
+import { isPartnerClinicRole, partnerBookingStamp } from "@/lib/partner-clinic";
 
 /** Command API: создать запись без полного client PUT snapshot. */
 export async function POST(request: Request) {
@@ -41,7 +42,11 @@ export async function POST(request: Request) {
     );
   }
 
+  const stamped = isPartnerClinicRole(auth.role)
+    ? { ...appointment, ...partnerBookingStamp({ role: auth.role, name: auth.name }) }
+    : { ...appointment, bookedByPartner: undefined, partnerClinicName: undefined };
+
   return saveAppointmentCommandResult(auth.clinicId, (state) =>
-    applyCreateAppointmentToPersistedState(state, appointment, patient)
+    applyCreateAppointmentToPersistedState(state, stamped, patient)
   );
 }

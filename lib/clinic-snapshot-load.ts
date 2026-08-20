@@ -167,6 +167,19 @@ function preferRemoteKeepLocalOnlyEntities(
     })(),
     services: appendLocalOnly(remote.services, local.services),
     cabinets: appendLocalOnly(remote.cabinets, local.cabinets),
+    doctorSchedules: (() => {
+      const remoteKeys = new Set(
+        (remote.doctorSchedules ?? []).map(
+          (row) => `${row.doctorId}:${row.month}`
+        )
+      );
+      const localOnly = (local.doctorSchedules ?? []).filter(
+        (row) => !remoteKeys.has(`${row.doctorId}:${row.month}`)
+      );
+      return localOnly.length
+        ? [...(remote.doctorSchedules ?? []), ...localOnly]
+        : (remote.doctorSchedules ?? []);
+    })(),
     teethByPatient: {
       ...remote.teethByPatient,
       ...Object.fromEntries(
@@ -180,8 +193,8 @@ function preferRemoteKeepLocalOnlyEntities(
 
 /**
  * Снимок после pull:
- * - с локальными правками — полное слияние (local content wins for shared ids)
- * - без правок — контент remote, но локальные-only сущности (новый пациент и т.п.) не теряются
+ * - для совпадающих id приоритет у remote (server wins)
+ * - локально сохраняем только сущности с новыми id (ещё не дошли до сервера)
  */
 export function mergeRemoteSnapshotForPull(
   remote: ClinicPersistedState,
@@ -194,9 +207,8 @@ export function mergeRemoteSnapshotForPull(
       ...(local.deletedWorkActIds ?? []),
     ]),
   ];
-  const base = hasUnsavedUserEdits
-    ? mergeClinicSnapshotWithLocal(remote, local)
-    : preferRemoteKeepLocalOnlyEntities(remote, local);
+  void hasUnsavedUserEdits;
+  const base = preferRemoteKeepLocalOnlyEntities(remote, local);
   const deletedLegalDocumentIds = [
     ...new Set([
       ...(remote.deletedLegalDocumentIds ?? []),
@@ -261,7 +273,7 @@ export function mergeRemoteSnapshotForPull(
       deletedWorkActIds
     ),
   });
-  return hasUnsavedUserEdits ? repairIfOrphans(withTombstones) : withTombstones;
+  return repairIfOrphans(withTombstones);
 }
 
 /** Есть ли на сервере изменения относительно baseline (обычно текущий экран) */

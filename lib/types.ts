@@ -5,7 +5,8 @@ export type UserRole =
   | "admin"
   | "doctor"
   | "assistant"
-  | "accountant";
+  | "accountant"
+  | "partner";
 
 export type PatientStatus = "active" | "new" | "archived" | "debtor" | "vip";
 export type PatientSource =
@@ -269,6 +270,10 @@ export interface Appointment {
   externalClaimId?: string;
   /** Источник внешней записи */
   externalSource?: string;
+  /** Запись создана партнёрской клиникой */
+  bookedByPartner?: boolean;
+  /** Название партнёра (ФИО/организация из учётки) */
+  partnerClinicName?: string;
 }
 
 export type ClinicDocumentCategory = "contract" | "consent" | "egisz_refusal";

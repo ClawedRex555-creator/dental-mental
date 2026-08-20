@@ -44,6 +44,8 @@ export function parseExpectedCas(body: {
 type SessionOk = {
   ok: true;
   clinicId: string;
+  role: import("@/lib/types").UserRole;
+  name: string;
 };
 
 type SessionFail = { ok: false; response: NextResponse };
@@ -97,7 +99,7 @@ export async function requireAppointmentCommandSession(
     };
   }
 
-  return { ok: true, clinicId: session.clinicId };
+  return { ok: true, clinicId: session.clinicId, role, name: authUser.name || session.name };
 }
 
 async function maybeNotifyAfterAppointmentCommand(

@@ -64,6 +64,7 @@ export default function AccountSettingsPage() {
     currentRole === "doctor" ||
     currentRole === "assistant" ||
     currentRole === "accountant";
+  const isPartner = currentRole === "partner";
   const canManageClinic = currentRole === "owner" || currentRole === "admin";
 
   const [clinicForm, setClinicForm] = useState<ClinicSettings>({
@@ -164,13 +165,19 @@ export default function AccountSettingsPage() {
   };
 
   const handleSaveAccount = async () => {
-    if (!userName.trim()) {
-      toast.error("Укажите имя");
-      return;
-    }
     const email = userEmail.trim().toLowerCase();
-    if (!email || !email.includes("@")) {
-      toast.error("Укажите корректный email для входа");
+    if (!isPartner) {
+      if (!userName.trim()) {
+        toast.error("Укажите имя");
+        return;
+      }
+      if (!email || !email.includes("@")) {
+        toast.error("Укажите корректный email для входа");
+        return;
+      }
+    }
+    if (isPartner && !newPassword) {
+      toast.error("Введите новый пароль");
       return;
     }
     if (newPassword || confirmPassword || currentPassword) {
@@ -238,7 +245,11 @@ export default function AccountSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Настройки</h1>
         <p className="text-sm text-slate-500">
-          {isLimitedStaff ? "Профиль и тема интерфейса" : "Профиль клиники и параметры"}
+          {isPartner
+            ? "Смена пароля для входа"
+            : isLimitedStaff
+              ? "Профиль и тема интерфейса"
+              : "Профиль клиники и параметры"}
         </p>
       </div>
 
@@ -354,9 +365,10 @@ export default function AccountSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Ваш аккаунт</CardTitle>
+          <CardTitle>{isPartner ? "Смена пароля" : "Ваш аккаунт"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!isPartner && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Имя</Label>
@@ -372,7 +384,9 @@ export default function AccountSettingsPage() {
               />
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 border-t border-[var(--border)] pt-4">
+          )}
+          <div className={`grid gap-4 sm:grid-cols-2 ${isPartner ? "" : "border-t border-[var(--border)] pt-4"}`}>
+            {!isPartner && (
             <div className="space-y-2 sm:col-span-2">
               <p className="text-sm font-medium text-[var(--foreground)]">Смена пароля</p>
               <p className="text-xs text-[var(--muted)]">
@@ -380,6 +394,7 @@ export default function AccountSettingsPage() {
                 ролей пароль хранится на сервере.
               </p>
             </div>
+            )}
             <div className="space-y-2">
               <Label>Текущий пароль</Label>
               <Input
@@ -408,6 +423,7 @@ export default function AccountSettingsPage() {
               />
             </div>
           </div>
+          {!isPartner && (
           <div className="space-y-2 max-w-md border-t border-[var(--border)] pt-4">
             <Label>Тема интерфейса</Label>
             <ThemeToggle showLabels />
@@ -416,12 +432,15 @@ export default function AccountSettingsPage() {
               Сохраняется на этом устройстве и синхронизируется с сервером клиники.
             </p>
           </div>
+          )}
+          {!isPartner && (
           <p className="text-sm text-[var(--muted)]">
             Роль: <strong>{roleLabel(currentRole)}</strong>. Имя в шапке справа — это поле
             «Имя» выше. Роль меняет владелец или администратор в «Сотрудники».
           </p>
+          )}
           <Button onClick={() => void handleSaveAccount()} disabled={savingAccount}>
-            {savingAccount ? "Сохранение…" : `${UI.save} профиль`}
+            {savingAccount ? "Сохранение…" : isPartner ? "Сохранить пароль" : `${UI.save} профиль`}
           </Button>
         </CardContent>
       </Card>

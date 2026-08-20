@@ -50,6 +50,12 @@ export function isPathBlockedByModules(
     return false;
   }
   if (
+    (path === "/appointments" || path.startsWith("/appointments/")) &&
+    role === "partner"
+  ) {
+    return false;
+  }
+  if (
     (path === "/treatment-plans" || path.startsWith("/treatment-plans/")) &&
     role === "doctor"
   ) {

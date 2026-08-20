@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Cabinet } from "@/lib/types";
-import { useClinicStore } from "@/store/useClinicStore";
+import { runWithoutClinicFlush, useClinicStore } from "@/store/useClinicStore";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { upsertCabinetViaCommandApi } from "@/lib/clinic-snapshot-command.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 
 interface CabinetModalProps {
   open: boolean;
@@ -31,7 +36,7 @@ export function CabinetModal({ open, onOpenChange }: CabinetModalProps) {
     setNumber("");
   }, [open]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       toast.error("Укажите название кабинета");
       return;
@@ -44,7 +49,17 @@ export function CabinetModal({ open, onOpenChange }: CabinetModalProps) {
       staffIds: [],
       status: "active",
     };
-    addCabinet(cabinet);
+    const api = await upsertCabinetViaCommandApi(cabinet);
+    if (!api.ok) {
+      toast.error(api.error ?? "Не удалось сохранить кабинет на сервере");
+      return;
+    }
+    runWithoutClinicFlush(() => {
+      addCabinet(cabinet);
+    });
+    markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+    useClinicStore.getState().pauseClinicAutoSave(15_000);
+    notifyClinicDataChanged();
     toast.success("Кабинет добавлен");
     onOpenChange(false);
   };
@@ -68,7 +83,7 @@ export function CabinetModal({ open, onOpenChange }: CabinetModalProps) {
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Отмена
             </Button>
-            <Button onClick={handleSave}>Сохранить</Button>
+            <Button onClick={() => void handleSave()}>Сохранить</Button>
           </div>
         </div>
       </DialogContent>

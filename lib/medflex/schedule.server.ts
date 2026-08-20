@@ -125,17 +125,23 @@ export function buildMedflexServicesSchedulePayload(
 
   /** Техническая не уходит в ПроДокторов / MedFlex */
   const billableServices = getClinicBillableServices(state.services).filter(
-    (s) => s.active !== false
+    (s) => s.active !== false && Number(s.price) > 0
   );
   const billableServiceIds = billableServices.map((s) => s.id);
 
   const basic: Record<string, unknown> = {};
   for (const service of billableServices) {
+    const nmu = service.nmuCode?.trim();
     basic[service.id] = {
       name: service.name,
       category: service.category || "Стоматология",
-      price: service.price,
+      // MedFlex: government_code опционален; без кода — null
+      government_code: nmu || null,
+      price: Number(service.price),
       duration: SCHEDULE_SLOT_MINUTES,
+      // На каждой basic-услуге: список доп. услуг [{id, required}] или []
+      additional_services: [] as Array<{ id: string; required: boolean }>,
+      // Ячейки на услуге не шлём — слоты уходят в doctors.intervals
       intervals: [] as unknown[],
     };
   }
@@ -145,17 +151,18 @@ export function buildMedflexServicesSchedulePayload(
     if (doctor.status !== "active") continue;
     if (doctor.role !== "doctor") continue;
     const cells = buildDoctorScheduleCells(state, doctor.id, days);
+    // Без интервалов MedFlex не привязывает врача к каталогу услуг
+    if (cells.length === 0) continue;
     doctors[doctor.id] = {
       efio: doctor.name.trim(),
       services: billableServiceIds,
-      intervals: cells
-        .filter((c) => c.free)
-        .map((c) => ({
-          dt: c.dt,
-          time_start: c.time_start,
-          time_end: c.time_end,
-          free: true,
-        })),
+      // Как в doctors/send_schedule: и free, и занятые слоты
+      intervals: cells.map((c) => ({
+        dt: c.dt,
+        time_start: c.time_start,
+        time_end: c.time_end,
+        free: c.free,
+      })),
     };
   }
 
@@ -164,7 +171,8 @@ export function buildMedflexServicesSchedulePayload(
       [filialId]: filialName,
       data: {
         [filialId]: {
-          services: { basic, additional_services: {} },
+          // top-level additional — пустой объект; additional_services[] — на каждой услуге в basic
+          services: { basic, additional: {} },
           doctors,
           devices: {},
         },

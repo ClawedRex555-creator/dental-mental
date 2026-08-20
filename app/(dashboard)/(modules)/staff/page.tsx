@@ -11,13 +11,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
   requestForcePullClinicDataFromServer,
 } from "@/lib/clinic-data-sync.client";
 import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
 import { ROLE_LABELS } from "@/lib/constants";
 import { deleteStaffOnServer } from "@/lib/clinic-staff-client";
+import {
+  assignStaffToCabinetViaCommandApi,
+  deleteCabinetViaCommandApi,
+} from "@/lib/clinic-snapshot-command.client";
 import type { Doctor } from "@/lib/types";
-import { useClinicStore } from "@/store/useClinicStore";
+import { runWithoutClinicFlush, useClinicStore } from "@/store/useClinicStore";
 
 export default function StaffPage() {
   const { doctors, cabinets, assignStaffToCabinet, removeDoctor, removeCabinet } =
@@ -46,41 +51,47 @@ export default function StaffPage() {
     ) {
       return;
     }
-    // 1) отключаем доступ к учётке входа (auth_users)
-    const authRes = await fetch(`/api/auth/accounts?staffId=${encodeURIComponent(member.id)}`, {
-      method: "DELETE",
-      credentials: "same-origin",
-    });
-    if (!authRes.ok) {
-      const data = (await authRes.json().catch(() => ({}))) as { error?: string };
-      toast.error(data.error ?? "Не удалось отключить доступ сотрудника");
-      return;
-    }
-
-    // 2) clinic_snapshots + staff_members на сервере
+    // 1) clinic_snapshots + auth_users + staff_members на сервере
     const staffRes = await deleteStaffOnServer(member.id);
     if (!staffRes.ok) {
       toast.error(staffRes.error ?? "Не удалось удалить сотрудника в базе");
       return;
     }
 
-    // 3) локально: без flush и без pending-буфера (иначе merge возвращал сотрудника)
+    // 2) локально: без flush и без pending-буфера (иначе merge возвращал сотрудника)
     clearPendingClinicSnapshot();
     useClinicStore.getState().pauseClinicAutoSave();
     useClinicStore.getState().setClinicDataSaveError(null);
     useClinicStore.getState().setClinicSaveStatus("idle");
-    removeDoctor(member.id, { skipFlush: true });
+    runWithoutClinicFlush(() => {
+      removeDoctor(member.id, { skipFlush: true });
+    });
     await requestForcePullClinicDataFromServer({
       force: true,
       allowApplyDespitePending: true,
       allowDuringSaveCooldown: true,
     });
-    markClinicSyncedAfterCommand();
+    markClinicSyncedAfterCommand(staffRes.updatedAt, staffRes.revision);
 
     toast.success("Сотрудник удалён, доступ отключён");
   };
 
-  const handleRemoveCabinet = (cabId: string, cabName: string) => {
+  const handleAssignStaffToCabinet = async (cabId: string, staffId: string) => {
+    const api = await assignStaffToCabinetViaCommandApi(cabId, staffId);
+    if (!api.ok) {
+      toast.error(api.error ?? "Не удалось назначить сотрудника в кабинет");
+      return;
+    }
+    runWithoutClinicFlush(() => {
+      assignStaffToCabinet(cabId, staffId);
+    });
+    markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+    useClinicStore.getState().pauseClinicAutoSave(15_000);
+    notifyClinicDataChanged();
+    toast.success("Сотрудник назначен в кабинет");
+  };
+
+  const handleRemoveCabinet = async (cabId: string, cabName: string) => {
     if (
       !window.confirm(
         `Удалить кабинет «${cabName}»? Сотрудники будут откреплены от кабинета.`
@@ -88,7 +99,17 @@ export default function StaffPage() {
     ) {
       return;
     }
-    removeCabinet(cabId);
+    const api = await deleteCabinetViaCommandApi(cabId);
+    if (!api.ok) {
+      toast.error(api.error ?? "Не удалось удалить кабинет");
+      return;
+    }
+    runWithoutClinicFlush(() => {
+      removeCabinet(cabId);
+    });
+    markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+    useClinicStore.getState().pauseClinicAutoSave(15_000);
+    notifyClinicDataChanged();
     toast.success("Кабинет удалён");
   };
 
@@ -231,9 +252,7 @@ export default function StaffPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
-                      onClick={() =>
-                        handleRemoveCabinet(cab.id, `${cab.name} №${cab.number}`)
-                      }
+                    onClick={() => void handleRemoveCabinet(cab.id, `${cab.name} №${cab.number}`)}
                       title="Удалить кабинет"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -256,7 +275,9 @@ export default function StaffPage() {
                     className="mt-2 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-900"
                     defaultValue=""
                     onChange={(e) => {
-                      if (e.target.value) assignStaffToCabinet(cab.id, e.target.value);
+                      if (e.target.value) {
+                        void handleAssignStaffToCabinet(cab.id, e.target.value);
+                      }
                       e.target.value = "";
                     }}
                   >

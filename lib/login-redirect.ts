@@ -7,6 +7,7 @@ const ROLE_HOME: Record<UserRole, string> = {
   doctor: "/appointments",
   assistant: "/appointments",
   accountant: "/finance",
+  partner: "/appointments",
 };
 
 export function loginRedirectForRole(role: UserRole): string {

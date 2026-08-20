@@ -14,16 +14,20 @@ function isServicesCatalogPath(path: string): boolean {
   return path === SERVICES_CATALOG_PATH || path.startsWith(`${SERVICES_CATALOG_PATH}/`);
 }
 
+function isAppointmentsPath(path: string): boolean {
+  return path === "/appointments" || path.startsWith("/appointments/");
+}
+
 function isTreatmentPlansPath(path: string): boolean {
   return path === TREATMENT_PLANS_PATH || path.startsWith(`${TREATMENT_PLANS_PATH}/`);
 }
 
-/** Прайс услуг: врач всегда видит только чтение; остальные — при включённом модуле «склад» */
+/** Прайс услуг: врач и партнёр всегда видят только чтение; остальные — при включённом модуле «склад» */
 export function canAccessServicesCatalog(
   role: UserRole,
   modules?: ClinicModules
 ): boolean {
-  if (role === "doctor") return true;
+  if (role === "doctor" || role === "partner") return true;
   return !modules || isModuleEnabled(modules, "warehouse");
 }
 
@@ -33,6 +37,7 @@ export function canAccessTreatmentPlansCatalog(
   modules?: ClinicModules
 ): boolean {
   if (role === "doctor") return true;
+  if (role === "partner") return false;
   return !modules || isModuleEnabled(modules, "treatment_plans");
 }
 
@@ -58,9 +63,13 @@ export function canAccessPath(
     return settingsNav?.roles.includes(role) ?? false;
   }
 
-  // Врач: прайс на /warehouse (proxy вызывает без modules — отдельная ветка)
-  if (isServicesCatalogPath(path) && role === "doctor") {
+  // Врач / партнёр: прайс на /warehouse (proxy вызывает без modules — отдельная ветка)
+  if (isServicesCatalogPath(path) && (role === "doctor" || role === "partner")) {
     return canAccessServicesCatalog(role, modules);
+  }
+
+  if (isAppointmentsPath(path) && role === "partner") {
+    return true;
   }
 
   if (isTreatmentPlansPath(path) && role === "doctor") {
@@ -70,9 +79,11 @@ export function canAccessPath(
   const moduleId = resolvePathModule(path);
   if (modules && moduleId && !isModuleEnabled(modules, moduleId)) {
     if (isServicesCatalogPath(path) && canAccessServicesCatalog(role, modules)) {
-      // read-only catalog for doctors
+      // read-only catalog for doctors / partner
     } else if (isTreatmentPlansPath(path) && canAccessTreatmentPlansCatalog(role, modules)) {
       // все планы клиники для врачей
+    } else if (isAppointmentsPath(path) && role === "partner") {
+      // партнёр всегда видит расписание
     } else {
       return false;
     }
@@ -93,6 +104,7 @@ export function filterNavByModules<T extends { href: string }>(
   if (!modules) return items;
   return items.filter((item) => {
     if (item.href === "/profile" || item.href === "/settings") return true;
+    if (item.href === "/appointments" && role === "partner") return true;
     if (item.href === SERVICES_CATALOG_PATH && role) {
       return canAccessServicesCatalog(role, modules);
     }
@@ -116,8 +128,18 @@ export function navItemsForRole(role: UserRole, modules?: ClinicModules) {
   return filterNavByModules(roleNav, modules, role);
 }
 
+/** Технический прайс — не для партнёрской клиники */
+export function canViewTechnicalServices(role: UserRole): boolean {
+  return role !== "partner";
+}
+
 /** Справочник услуг (прайс): создание и редактирование */
 export function canManageServices(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Юр. отдел: создание и редактирование документов */
+export function canManageLegalDocuments(role: UserRole): boolean {
   return role === "owner" || role === "admin";
 }
 

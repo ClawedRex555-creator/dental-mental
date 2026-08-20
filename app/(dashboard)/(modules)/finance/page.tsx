@@ -17,7 +17,7 @@ import { WorkActModal } from "@/components/finance/work-act-modal";
 import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { PayActDialog } from "@/components/finance/pay-act-dialog";
 import { FinanceSummaryStrip } from "@/components/finance/finance-summary-strip";
-import type { PaymentMethod, PaymentStatus, WorkAct } from "@/lib/types";
+import type { ClinicExpense, PaymentMethod, PaymentStatus, WorkAct } from "@/lib/types";
 import {
   getWorkActPaidAmount,
   getPaymentReportingDate,
@@ -48,6 +48,11 @@ import {
 import { updateAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
 import { deleteWorkActViaCommandApi } from "@/lib/clinic-work-act.client";
 import { payWorkActViaCommandApi } from "@/lib/clinic-work-act-pay.client";
+import {
+  deleteClinicExpenseViaCommandApi,
+  setAssistantManualHoursViaCommandApi,
+  upsertClinicExpenseViaCommandApi,
+} from "@/lib/clinic-snapshot-command.client";
 import {
   beginClinicCommandMutation,
   endClinicCommandMutation,
@@ -101,12 +106,17 @@ export default function FinancePage() {
     new Map()
   );
   const assistantHoursPrevious = useRef<Map<string, number | undefined>>(new Map());
+  const manualHoursSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const manualHoursPrevious = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
-    const timers = assistantHoursSaveTimers.current;
+    const aptTimers = assistantHoursSaveTimers.current;
+    const manualTimers = manualHoursSaveTimers.current;
     return () => {
-      for (const timer of timers.values()) clearTimeout(timer);
-      timers.clear();
+      for (const timer of aptTimers.values()) clearTimeout(timer);
+      for (const timer of manualTimers.values()) clearTimeout(timer);
+      aptTimers.clear();
+      manualTimers.clear();
     };
   }, []);
 
@@ -149,6 +159,104 @@ export default function FinancePage() {
       persistAssistantHours(appointmentId);
     }, 600);
     assistantHoursSaveTimers.current.set(appointmentId, timer);
+  };
+
+  const manualHoursKey = (assistantId: string, date: string) => `${assistantId}::${date}`;
+
+  const persistManualHours = (assistantId: string, date: string) => {
+    const key = manualHoursKey(assistantId, date);
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const latestHours =
+          useClinicStore.getState().assistantManualHours[assistantId]?.[date] ?? "";
+        const api = await setAssistantManualHoursViaCommandApi(
+          assistantId,
+          date,
+          latestHours
+        );
+        if (!api.ok) {
+          const rollbackValue = manualHoursPrevious.current.get(key) ?? "";
+          runWithoutClinicFlush(() => {
+            setAssistantManualHours(assistantId, date, rollbackValue);
+          });
+          toast.error(api.error ?? "Не удалось сохранить часы ассистента");
+          return;
+        }
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+        manualHoursPrevious.current.delete(key);
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
+  };
+
+  const scheduleManualHoursSave = (assistantId: string, date: string) => {
+    const key = manualHoursKey(assistantId, date);
+    const active = manualHoursSaveTimers.current.get(key);
+    if (active) clearTimeout(active);
+    const timer = setTimeout(() => {
+      manualHoursSaveTimers.current.delete(key);
+      persistManualHours(assistantId, date);
+    }, 600);
+    manualHoursSaveTimers.current.set(key, timer);
+  };
+
+  const flushManualHoursSave = (assistantId: string, date: string) => {
+    const key = manualHoursKey(assistantId, date);
+    const pending = manualHoursSaveTimers.current.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      manualHoursSaveTimers.current.delete(key);
+      persistManualHours(assistantId, date);
+      return;
+    }
+    if (manualHoursPrevious.current.has(key)) {
+      persistManualHours(assistantId, date);
+    }
+  };
+
+  const handleManualHoursChange = (
+    assistantId: string,
+    date: string,
+    raw: string,
+    options?: { immediate?: boolean }
+  ) => {
+    const key = manualHoursKey(assistantId, date);
+    if (!manualHoursPrevious.current.has(key)) {
+      const current = useClinicStore.getState().assistantManualHours[assistantId]?.[date] ?? "";
+      manualHoursPrevious.current.set(key, current);
+    }
+    runWithoutClinicFlush(() => {
+      setAssistantManualHours(assistantId, date, raw);
+    });
+    if (options?.immediate) {
+      flushManualHoursSave(assistantId, date);
+      return;
+    }
+    scheduleManualHoursSave(assistantId, date);
+  };
+
+  const saveClinicExpense = async (expense: ClinicExpense) => {
+    beginClinicCommandMutation();
+    try {
+      const api = await upsertClinicExpenseViaCommandApi(expense);
+      if (!api.ok) {
+        toast.error(api.error ?? "Не удалось сохранить расход на сервере");
+        return false;
+      }
+      runWithoutClinicFlush(() => {
+        addClinicExpense(expense);
+      });
+      markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
+      return true;
+    } finally {
+      endClinicCommandMutation();
+    }
   };
 
   const handleAssistantHoursChange = (appointmentId: string, raw: string) => {
@@ -1011,10 +1119,11 @@ export default function FinancePage() {
                         toast.error("Укажите количество часов");
                         return;
                       }
-                      setAssistantManualHours(
+                      handleManualHoursChange(
                         manualShiftAssistantId,
                         manualShiftDate,
-                        String(hours)
+                        String(hours),
+                        { immediate: true }
                       );
                       setManualShiftHours("");
                       toast.success("Смена сохранена");
@@ -1054,12 +1163,13 @@ export default function FinancePage() {
                               className="ml-auto w-20 text-right"
                               value={row.hours > 0 ? row.hours : ""}
                               onChange={(e) =>
-                                setAssistantManualHours(
+                                handleManualHoursChange(
                                   row.assistantId,
                                   row.date,
                                   e.target.value
                                 )
                               }
+                              onBlur={() => flushManualHoursSave(row.assistantId, row.date)}
                             />
                           </td>
                           <td className="px-4 py-3 text-right">{formatCurrency(row.rate)}</td>
@@ -1072,7 +1182,12 @@ export default function FinancePage() {
                               variant="ghost"
                               size="icon"
                               onClick={() =>
-                                setAssistantManualHours(row.assistantId, row.date, "")
+                                handleManualHoursChange(
+                                  row.assistantId,
+                                  row.date,
+                                  "",
+                                  { immediate: true }
+                                )
                               }
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />
@@ -1269,9 +1384,14 @@ export default function FinancePage() {
                     if (!file || !expenseAmount) return;
                     const reader = new FileReader();
                     reader.onload = () => {
-                      addClinicExpense(buildClinicExpense(reader.result as string));
-                      toast.success("Расход добавлен");
-                      resetExpenseForm();
+                      void (async () => {
+                        const ok = await saveClinicExpense(
+                          buildClinicExpense(reader.result as string)
+                        );
+                        if (!ok) return;
+                        toast.success("Расход добавлен");
+                        resetExpenseForm();
+                      })();
                     };
                     reader.readAsDataURL(file);
                     e.target.value = "";
@@ -1281,9 +1401,12 @@ export default function FinancePage() {
               <Button
                 onClick={() => {
                   if (!expenseAmount) return;
-                  addClinicExpense(buildClinicExpense());
-                  toast.success("Расход добавлен");
-                  resetExpenseForm();
+                  void (async () => {
+                    const ok = await saveClinicExpense(buildClinicExpense());
+                    if (!ok) return;
+                    toast.success("Расход добавлен");
+                    resetExpenseForm();
+                  })();
                 }}
               >
                 Добавить расход
@@ -1327,8 +1450,25 @@ export default function FinancePage() {
                               className="h-8 w-8"
                               title="Удалить расход"
                               onClick={() => {
-                                removeClinicExpense(e.id);
-                                toast.success("Расход удалён");
+                                void (async () => {
+                                  beginClinicCommandMutation();
+                                  try {
+                                    const api = await deleteClinicExpenseViaCommandApi(e.id);
+                                    if (!api.ok) {
+                                      toast.error(api.error ?? "Не удалось удалить расход");
+                                      return;
+                                    }
+                                    runWithoutClinicFlush(() => {
+                                      removeClinicExpense(e.id);
+                                    });
+                                    markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+                                    useClinicStore.getState().pauseClinicAutoSave(15_000);
+                                    notifyClinicDataChanged();
+                                    toast.success("Расход удалён");
+                                  } finally {
+                                    endClinicCommandMutation();
+                                  }
+                                })();
                               }}
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />

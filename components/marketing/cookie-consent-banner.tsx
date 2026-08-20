@@ -74,13 +74,13 @@ function loadYandexMetrika(counterId: string) {
 }
 
 export function CookieConsentBanner() {
-  const [visible, setVisible] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return readConsent() === null;
-  });
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const existing = readConsent();
+    if (existing === null) {
+      setVisible(true);
+    }
     if (existing?.analytics && YANDEX_METRIKA_ID) {
       loadYandexMetrika(YANDEX_METRIKA_ID);
     }
@@ -100,7 +100,7 @@ export function CookieConsentBanner() {
     <div
       role="dialog"
       aria-label="Согласие на использование cookie"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 p-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur"
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-3xl text-sm text-slate-700">
@@ -118,11 +118,11 @@ export function CookieConsentBanner() {
             .
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => decide(false)}>
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap">
+          <Button type="button" variant="outline" size="sm" className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => decide(false)}>
             Только необходимые
           </Button>
-          <Button type="button" size="sm" onClick={() => decide(true)}>
+          <Button type="button" size="sm" className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => decide(true)}>
             Принять аналитику
           </Button>
         </div>

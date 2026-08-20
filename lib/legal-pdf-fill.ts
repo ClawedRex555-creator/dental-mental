@@ -55,6 +55,8 @@ export type FillLegalPdfResult =
       filledCount: number;
       fieldCount: number;
       unmatchedFields: string[];
+      /** PDF без AcroForm — печатаем оригинал без автозаполнения */
+      passthrough?: boolean;
     }
   | { ok: false; error: string; fieldCount?: number; fieldNames?: string[] };
 
@@ -101,20 +103,6 @@ export async function inspectLegalPdf(dataUrl: string): Promise<InspectLegalPdfR
   }
 }
 
-function noFormFieldsError(acroFormMarker: boolean): string {
-  if (acroFormMarker) {
-    return (
-      "В PDF есть следы формы, но поля не читаются. В Word используйте только " +
-      "«Разработчик → Элементы управления для предыдущих версий → Поле текста» " +
-      "(не обычное подчёркивание и не современное «Поле формы»). Затем «Сохранить как → PDF»."
-    );
-  }
-  return (
-    "В PDF нет заполняемых полей формы. Обычное подчёркивание ______ или скан " +
-    "заполнить нельзя — в Word вставьте «Поле текста» (legacy) с именем patient_full_name и т.д."
-  );
-}
-
 /** Заполняет PDF с полями формы (AcroForm) данными пациента и клиники */
 export async function fillLegalPdf(
   dataUrl: string,
@@ -133,13 +121,16 @@ export async function fillLegalPdf(
     const form = pdfDoc.getForm();
     const fields = form.getFields();
     const fieldNames = fields.map((f) => f.getName());
-    const acroFormMarker = pdfBytesContainAcroFormMarker(sourceBytes);
 
     if (fields.length === 0) {
+      // Скан / PDF без полей формы: всё равно отдаём оригинал на печать
       return {
-        ok: false,
-        error: noFormFieldsError(acroFormMarker),
+        ok: true,
+        bytes: sourceBytes,
+        filledCount: 0,
         fieldCount: 0,
+        unmatchedFields: [],
+        passthrough: true,
       };
     }
 
@@ -209,6 +200,22 @@ export async function fillLegalPdf(
     const message = e instanceof Error ? e.message : "Ошибка обработки PDF";
     return { ok: false, error: message };
   }
+}
+
+/** Склеивает несколько PDF в один файл для одной печати */
+export async function mergePdfByteArrays(parts: Uint8Array[]): Promise<Uint8Array> {
+  if (parts.length === 0) {
+    throw new Error("Нет PDF для объединения");
+  }
+  if (parts.length === 1) return parts[0];
+
+  const out = await PDFDocument.create();
+  for (const bytes of parts) {
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pages = await out.copyPages(src, src.getPageIndices());
+    for (const page of pages) out.addPage(page);
+  }
+  return out.save();
 }
 
 export { LEGAL_PDF_FIELD_HINTS } from "@/lib/legal-pdf-fields";

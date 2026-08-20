@@ -4,6 +4,7 @@ import type { LegalDocument } from "@/lib/types";
 export const LEGAL_CATEGORY_JOURNALS = "Журналы";
 export const LEGAL_CATEGORY_CONTRACTS = "Договоры";
 export const LEGAL_CATEGORY_CONSENTS = "Согласия";
+export const LEGAL_CATEGORY_HEALTH_CARD = "Карточка здоровья";
 export const LEGAL_CATEGORY_LEDGER = "Книги учёта";
 export const LEGAL_CATEGORY_ACTS = "Акты";
 export const LEGAL_CATEGORY_EGISZ_REFUSAL = "Отказ от отправки данных ЕГИСЗ";
@@ -13,6 +14,7 @@ export const LEGAL_CATEGORIES = [
   LEGAL_CATEGORY_JOURNALS,
   LEGAL_CATEGORY_CONTRACTS,
   LEGAL_CATEGORY_CONSENTS,
+  LEGAL_CATEGORY_HEALTH_CARD,
   LEGAL_CATEGORY_LEDGER,
   LEGAL_CATEGORY_ACTS,
   LEGAL_CATEGORY_EGISZ_REFUSAL,
@@ -25,7 +27,7 @@ export type LegalCategory = (typeof LEGAL_CATEGORIES)[number];
 export interface ArrivalPrintDocument {
   id: string;
   name: string;
-  kind: "contract" | "consent" | "egisz_refusal";
+  kind: "contract" | "consent" | "health_card" | "egisz_refusal";
   fileDataUrl?: string;
   templateUrl?: string;
   fileName?: string;
@@ -36,6 +38,7 @@ export function legalDocumentToArrival(doc: LegalDocument): ArrivalPrintDocument
   let kind: ArrivalPrintDocument["kind"] | null = null;
   if (doc.category === LEGAL_CATEGORY_CONTRACTS) kind = "contract";
   else if (doc.category === LEGAL_CATEGORY_CONSENTS) kind = "consent";
+  else if (doc.category === LEGAL_CATEGORY_HEALTH_CARD) kind = "health_card";
   else if (doc.category === LEGAL_CATEGORY_EGISZ_REFUSAL) kind = "egisz_refusal";
   else return null;
 
@@ -53,6 +56,7 @@ export function legalDocumentToArrival(doc: LegalDocument): ArrivalPrintDocument
 export function arrivalDocumentsFromLegal(legalDocuments: LegalDocument[]) {
   const contracts: ArrivalPrintDocument[] = [];
   const consents: ArrivalPrintDocument[] = [];
+  const healthCards: ArrivalPrintDocument[] = [];
   const egiszRefusals: ArrivalPrintDocument[] = [];
 
   for (const doc of legalDocuments) {
@@ -60,8 +64,9 @@ export function arrivalDocumentsFromLegal(legalDocuments: LegalDocument[]) {
     if (!arrival) continue;
     if (arrival.kind === "contract") contracts.push(arrival);
     else if (arrival.kind === "consent") consents.push(arrival);
+    else if (arrival.kind === "health_card") healthCards.push(arrival);
     else egiszRefusals.push(arrival);
   }
 
-  return { contracts, consents, egiszRefusals };
+  return { contracts, consents, healthCards, egiszRefusals };
 }

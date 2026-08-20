@@ -13,6 +13,7 @@ import {
 } from "@/lib/clinic-client-mode";
 import {
   canReadClinicDataSync,
+  canUseDayToDaySnapshotPut,
   canWriteClinicDataSync,
 } from "@/lib/clinic-data-access";
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
@@ -98,6 +99,7 @@ export function ClinicDataSync() {
   const initialLoadDone = useRef(false);
   const syncForbidden = useRef(false);
   const canWrite = useRef(false);
+  const canSnapshotPut = useRef(false);
   const saving = useRef(false);
   const pulling = useRef(false);
   /** replacePersistedState синхронно дергает subscribe — не считать это правкой пользователя */
@@ -156,7 +158,7 @@ export function ClinicDataSync() {
       const json = JSON.stringify(pickPersistedState(storeNow));
       if (json !== lastSavedJson.current) {
         // Для read-only вкладок "самопочинка" снимка не должна блокировать pull бесконечно.
-        if (!canWrite.current) {
+        if (!canSnapshotPut.current) {
           lastSavedJson.current = json;
           return false;
         }
@@ -321,6 +323,11 @@ export function ClinicDataSync() {
     };
 
     const scheduleDeferredFlush = () => {
+      if (!canSnapshotPut.current) {
+        setClinicDataUnsaved(false);
+        setClinicSaveStatus("idle");
+        return;
+      }
       setClinicSaveStatus("pending");
       setClinicDataUnsaved(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -577,7 +584,7 @@ export function ClinicDataSync() {
       /** Не требовать запись pending в localStorage (quota / файлы) */
       skipPendingBuffer?: boolean;
     }): Promise<{ ok: boolean; conflict?: boolean }> => {
-      if (!syncReady.current || syncForbidden.current || !canWrite.current || saving.current) {
+      if (!syncReady.current || syncForbidden.current || !canSnapshotPut.current || saving.current) {
         return { ok: false };
       }
       if (!initialLoadDone.current) {
@@ -667,6 +674,7 @@ export function ClinicDataSync() {
           syncForbidden.current = true;
           syncReady.current = false;
           canWrite.current = false;
+          canSnapshotPut.current = false;
           setClinicSaveStatus("failed");
           finishPhase("read_only");
           return { ok: false };
@@ -858,7 +866,12 @@ export function ClinicDataSync() {
         snap = snapFingerprint(snapshot);
       } catch {
         // Даже без fingerprint продолжаем flush на сервер
-        if (!saving.current && syncReady.current && canWrite.current && initialLoadDone.current) {
+        if (
+          !saving.current &&
+          syncReady.current &&
+          canSnapshotPut.current &&
+          initialLoadDone.current
+        ) {
           scheduleDeferredFlush();
         }
         return;
@@ -883,7 +896,7 @@ export function ClinicDataSync() {
         return;
       }
 
-      if (!syncReady.current || syncForbidden.current || !canWrite.current) return;
+      if (!syncReady.current || syncForbidden.current || !canSnapshotPut.current) return;
 
       if (!initialLoadDone.current) {
         flushAfterBaseline.current = true;
@@ -943,7 +956,7 @@ export function ClinicDataSync() {
     window.addEventListener("online", onOnline);
 
     periodicTimer.current = setInterval(() => {
-      if (!syncReady.current || !canWrite.current || !initialLoadDone.current) return;
+      if (!syncReady.current || !canSnapshotPut.current || !initialLoadDone.current) return;
       const json = JSON.stringify(pickPersistedState(useClinicStore.getState()));
       if (json !== lastSavedJson.current) void flushSave();
     }, PERIODIC_FLUSH_MS);
@@ -1106,6 +1119,9 @@ export function ClinicDataSync() {
           canWrite.current = canWriteClinicDataSync(
             useClinicStore.getState().currentUser.role
           );
+          canSnapshotPut.current = canUseDayToDaySnapshotPut(
+            useClinicStore.getState().currentUser.role
+          );
           finishPhase("local_only");
           armSaveBaseline();
           useClinicStore.getState().repairPaidActAppointments();
@@ -1127,6 +1143,7 @@ export function ClinicDataSync() {
 
         const role = useClinicStore.getState().currentUser.role;
         canWrite.current = canWriteClinicDataSync(role);
+        canSnapshotPut.current = canUseDayToDaySnapshotPut(role);
 
         if (remote.forbidden || !canReadClinicDataSync(role)) {
           syncForbidden.current = true;
@@ -1156,7 +1173,7 @@ export function ClinicDataSync() {
           }
 
           const needsPush =
-            canWrite.current &&
+            canSnapshotPut.current &&
             shouldPushSnapshotAfterServerFetch(remote.data, snapshot, serverDbOpts);
 
           if (needsPush) {
@@ -1229,7 +1246,7 @@ export function ClinicDataSync() {
         finishPhase(canWrite.current ? "ready" : "read_only");
         armSaveBaseline();
 
-        if (canWrite.current && hasClinicData(localSnapshot)) {
+        if (canSnapshotPut.current && hasClinicData(localSnapshot)) {
           scheduleIdleWork(() => {
             if (cancelled) return;
             void (async () => {
@@ -1324,7 +1341,7 @@ export function ClinicDataSync() {
       if (pullAfterCooldownTimer.current) clearTimeout(pullAfterCooldownTimer.current);
       if (periodicTimer.current) clearInterval(periodicTimer.current);
       if (pullTimer.current) clearTimeout(pullTimer.current);
-      if (syncReady.current && canWrite.current && !syncForbidden.current) {
+      if (syncReady.current && canSnapshotPut.current && !syncForbidden.current) {
         void flushSave({ keepalive: true });
       }
     };

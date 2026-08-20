@@ -41,6 +41,7 @@ import {
 } from "@/lib/document-validation";
 import { normalizePhoneInput } from "@/lib/phone-utils";
 import { canViewPatientPhone } from "@/lib/rbac";
+import { partnerBookingStamp } from "@/lib/partner-clinic";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { AddressInput } from "@/components/shared/address-input";
 import {
@@ -156,6 +157,10 @@ export function PatientModal({
     currentUser,
   } = useClinicStore();
   const showPhone = canViewPatientPhone(currentUser.role);
+  const isPartner = currentUser.role === "partner";
+  const canEnterPhoneOnCreate =
+    currentUser.role === "doctor" || currentUser.role === "partner";
+  const canEditPhone = showPhone || (canEnterPhoneOnCreate && !patient);
   const [fields, setFields] = useState(emptyPatientFields);
   const [appointmentFields, setAppointmentFields] = useState(emptyAppointmentFields);
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
@@ -283,12 +288,12 @@ export function PatientModal({
     }
 
     const errors: Record<string, string> = {};
-    if (showPhone) {
+    if (canEditPhone) {
       const phoneCheck = validatePhone(fields.phone);
       if (!phoneCheck.valid) errors.phone = phoneCheck.message!;
     }
 
-    if (!withoutDocuments) {
+    if (!isPartner && !withoutDocuments) {
       const snilsDigits = digitsOnly(fields.snils);
       if (!fields.isChild || snilsDigits) {
         const snilsCheck = validateSnils(fields.snils);
@@ -356,7 +361,7 @@ export function PatientModal({
       firstName: fields.firstName.trim(),
       lastName: fields.lastName.trim(),
       middleName: fields.middleName.trim() || undefined,
-      phone: showPhone
+      phone: canEditPhone
         ? normalizePhoneInput(fields.phone)
         : patient?.phone ?? normalizePhoneInput(fields.phone),
       email: fields.email.trim() || undefined,
@@ -364,60 +369,55 @@ export function PatientModal({
       gender: fields.gender,
       source: fields.source,
       status,
-      address: fields.address.trim() || undefined,
-      withoutIdentityDocuments: withoutDocuments,
+      address: isPartner ? undefined : fields.address.trim() || undefined,
+      withoutIdentityDocuments: isPartner || withoutDocuments,
       snils:
-        withoutDocuments || !digitsOnly(fields.snils)
+        isPartner || withoutDocuments || !digitsOnly(fields.snils)
           ? undefined
           : formatSnils(fields.snils),
-      passportSeries: withoutDocuments
-        ? undefined
-        : fields.isChild
+      passportSeries:
+        isPartner || withoutDocuments || fields.isChild
           ? undefined
           : formatPassportSeries(fields.passportSeries),
-      passportNumber: withoutDocuments
-        ? undefined
-        : fields.isChild
+      passportNumber:
+        isPartner || withoutDocuments || fields.isChild
           ? undefined
           : formatPassportNumber(fields.passportNumber),
-      passportIssuedBy: withoutDocuments
-        ? undefined
-        : fields.isChild
+      passportIssuedBy:
+        isPartner || withoutDocuments || fields.isChild
           ? undefined
           : fields.passportIssuedBy.trim() || undefined,
-      passportIssuedAt: withoutDocuments
-        ? undefined
-        : fields.isChild || !fields.passportIssuedAt
+      passportIssuedAt:
+        isPartner || withoutDocuments || fields.isChild || !fields.passportIssuedAt
           ? undefined
           : fields.passportIssuedAt,
-      passportIssuerCode: withoutDocuments
-        ? undefined
-        : fields.isChild
+      passportIssuerCode:
+        isPartner || withoutDocuments || fields.isChild
           ? undefined
           : formatPassportIssuerCode(fields.passportIssuerCode) || undefined,
       isChild: fields.isChild || undefined,
       birthCertificateSeries:
-        withoutDocuments || !fields.isChild
+        isPartner || withoutDocuments || !fields.isChild
           ? undefined
           : fields.birthCertificateSeries.trim() || undefined,
       birthCertificateNumber:
-        withoutDocuments || !fields.isChild
+        isPartner || withoutDocuments || !fields.isChild
           ? undefined
           : formatBirthCertificateNumber(fields.birthCertificateNumber) || undefined,
       representativeFullName:
-        withoutDocuments || !fields.isChild
+        isPartner || withoutDocuments || !fields.isChild
           ? undefined
           : fields.representativeFullName.trim() || undefined,
       representativeBirthDate:
-        withoutDocuments || !fields.isChild || !fields.representativeBirthDate
+        isPartner || withoutDocuments || !fields.isChild || !fields.representativeBirthDate
           ? undefined
           : fields.representativeBirthDate,
       representativePassportSeries:
-        withoutDocuments || !fields.isChild
+        isPartner || withoutDocuments || !fields.isChild
           ? undefined
           : formatPassportSeries(fields.representativePassportSeries),
       representativePassportNumber:
-        withoutDocuments || !fields.isChild
+        isPartner || withoutDocuments || !fields.isChild
           ? undefined
           : formatPassportNumber(fields.representativePassportNumber),
       diagnosis: fields.diagnosis.trim() || undefined,
@@ -433,7 +433,12 @@ export function PatientModal({
       chronicDiseases: patient?.chronicDiseases ?? [],
       lastVisitDate: patient?.lastVisitDate,
       nextVisitDate: patient?.nextVisitDate,
-      notificationPrefs: fields.notifyConsent
+      notificationPrefs: isPartner
+        ? {
+            consentForNotifications: false,
+            notificationsEnabled: false,
+          }
+        : fields.notifyConsent
         ? {
             consentForNotifications: true,
             notificationsEnabled: true,
@@ -456,6 +461,7 @@ export function PatientModal({
           appointmentFields,
           fields.diagnosis
         ),
+        ...partnerBookingStamp(currentUser),
       };
       void (async () => {
         const apiResult = await createAppointmentViaCommandApi(apt, {
@@ -585,7 +591,7 @@ export function PatientModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{patient ? "Редактировать пациента" : "Новый пациент"}</DialogTitle>
+          <DialogTitle>{patient ? "Редактировать пациента" : isPartner ? "Запись пациента" : "Новый пациент"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -612,6 +618,7 @@ export function PatientModal({
             />
           </div>
 
+          {!isPartner && (
           <div className="form-panel space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="form-panel-title">
@@ -763,7 +770,9 @@ export function PatientModal({
               </p>
             )}
           </div>
+          )}
 
+          {!isPartner && (
           <div className="space-y-2">
             <Label>Адрес</Label>
             <AddressInput
@@ -773,17 +782,23 @@ export function PatientModal({
               placeholder="Город, улица, дом, квартира"
             />
           </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>{UI.phone} {showPhone ? "*" : ""}</Label>
-              {!showPhone ? (
+              <Label>{UI.phone} {canEditPhone ? "*" : ""}</Label>
+              {!canEditPhone ? (
                 <p className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--muted)]">
-                  Телефон скрыт для роли врача
+                  Телефон скрыт
                 </p>
               ) : (
                 <>
-              {fields.isChild && (
+              {canEnterPhoneOnCreate && !showPhone && (
+                <p className="text-xs text-[var(--muted)]">
+                  Номер нужен для записи. После сохранения он будет скрыт.
+                </p>
+              )}
+              {fields.isChild && !isPartner && (
                 <div className="space-y-1">
                   <select
                     className={selectClass}
@@ -847,6 +862,7 @@ export function PatientModal({
                 onChange={(e) => set("email", e.target.value)}
               />
             </div>
+            {!isPartner && (
             <div className="space-y-2 sm:col-span-2">
               <label className="flex items-start gap-2 text-sm">
                 <input
@@ -860,6 +876,8 @@ export function PatientModal({
                 </span>
               </label>
             </div>
+            )}
+            {!isPartner && (
             <div className="space-y-2 sm:col-span-2">
               <Label>Telegram chat ID (если пациент привязал бота)</Label>
               <Input
@@ -869,6 +887,7 @@ export function PatientModal({
                 className="font-mono text-xs"
               />
             </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -943,7 +962,7 @@ export function PatientModal({
             Пациент — ребёнок
           </label>
 
-          {fields.isChild && (
+          {fields.isChild && !isPartner && (
             <div className="form-panel space-y-3 border-teal-200 dark:border-teal-800">
               <p className="form-panel-title">Документы ребёнка и представителя</p>
               <div className="grid grid-cols-2 gap-3">
@@ -1192,14 +1211,20 @@ export function PatientModal({
               <strong className="text-slate-900">{duplicateName}</strong> (
               {PATIENT_DUPLICATE_REASON_LABELS[duplicateMatch.reason]}).
             </p>
-            <p>Новую запись с теми же данными создавать не нужно — откройте существующую карточку.</p>
+            <p>
+              {isPartner
+                ? "Новую карточку с теми же данными создавать не нужно — измените ФИО или телефон либо выберите пациента в поиске записи."
+                : "Новую запись с теми же данными создавать не нужно — откройте существующую карточку."}
+            </p>
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" type="button" onClick={() => setDuplicateMatch(null)}>
                 Изменить данные
               </Button>
+              {!isPartner && (
               <Button type="button" onClick={goToDuplicateCard}>
                 Перейти к карточке
               </Button>
+              )}
             </div>
           </div>
         )}

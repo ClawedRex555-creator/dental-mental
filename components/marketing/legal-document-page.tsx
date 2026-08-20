@@ -34,12 +34,46 @@ export function LegalDocumentPage({ doc }: { doc: LegalDocument }) {
                   ))}
                 </ul>
               )}
+              {section.afterList?.map((p) => (
+                <p key={p.slice(0, 48)} className="mt-3">
+                  {p}
+                </p>
+              ))}
+              {section.table && (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[32rem] border-collapse text-left text-xs sm:text-sm">
+                    <thead>
+                      <tr>
+                        {section.table.headers.map((header) => (
+                          <th
+                            key={header}
+                            className="border border-slate-200 bg-slate-50 px-2 py-1.5 font-semibold text-slate-800"
+                          >
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.table.rows.map((row) => (
+                        <tr key={row.join("|")}>
+                          {row.map((cell, i) => (
+                            <td
+                              key={`${row[0]}-${i}`}
+                              className="border border-slate-200 px-2 py-1.5 align-top"
+                            >
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           ))}
         </div>
-        <p className="mt-10 border-t border-slate-200 pt-4 text-xs text-slate-500">
-          {doc.footerNote}
-        </p>
       </article>
     </PlatformPublicShell>
   );

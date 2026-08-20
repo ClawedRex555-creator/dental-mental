@@ -59,7 +59,7 @@ export function PlatformPublicShell({
           </div>
         </div>
         <div className="border-t border-slate-100 px-4 py-3 text-center text-[11px] text-slate-400">
-          © {new Date().getFullYear()} {APP_NAME}. Черновики правовых текстов — рекомендуется проверка юристом.
+          © {new Date().getFullYear()} {APP_NAME}
         </div>
       </footer>
 

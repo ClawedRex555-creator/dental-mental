@@ -49,9 +49,9 @@ export async function getLegalDocumentUploadFeedback(
       : "В PDF нет полей формы";
     return {
       status: "no_fields",
-      message,
+      message: `${message}. При печати откроется как есть (без автозаполнения).`,
       hint:
-        "Проще: сохраните договор как .docx и вставьте {patient_full_name} обычным текстом — без «Разработчика».",
+        "Чтобы подставлять ФИО и данные: сохраните как .docx с {patient_full_name} в тексте — или добавьте поля формы в PDF.",
     };
   }
 

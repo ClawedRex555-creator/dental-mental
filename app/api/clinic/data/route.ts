@@ -15,6 +15,7 @@ import {
 } from "@/lib/clinic-data-db.server";
 import {
   canReadClinicDataSync,
+  canUseDayToDaySnapshotPut,
   canWriteClinicDataSync,
   filterClinicSnapshotForAccountant,
   preservePatientPhiForRedactedRoles,
@@ -34,6 +35,69 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "private, no-store, must-revalidate",
   Vary: "Cookie",
 };
+
+type ProtectedFieldTouch = {
+  field: string;
+  ids?: string[];
+};
+
+function changedOverlappingIds<T extends { id: string }>(
+  existing: T[],
+  incoming: T[],
+  equal?: (a: T, b: T) => boolean
+): string[] {
+  const isEqual = equal ?? ((a: T, b: T) => JSON.stringify(a) === JSON.stringify(b));
+  const existingById = new Map(existing.map((row) => [row.id, row]));
+  const changed: string[] = [];
+  for (const row of incoming) {
+    const current = existingById.get(row.id);
+    if (!current) continue;
+    if (isEqual(current, row)) continue;
+    changed.push(row.id);
+    if (changed.length >= 8) break;
+  }
+  return changed;
+}
+
+function collectProtectedFieldTouches(
+  existing: import("@/lib/clinic-persisted-state").ClinicPersistedState,
+  incoming: import("@/lib/clinic-persisted-state").ClinicPersistedState
+): ProtectedFieldTouch[] {
+  const touches: ProtectedFieldTouch[] = [];
+
+  if (JSON.stringify(existing.clinicSettings) !== JSON.stringify(incoming.clinicSettings)) {
+    touches.push({ field: "clinicSettings" });
+  }
+
+  const serviceIds = changedOverlappingIds(existing.services, incoming.services);
+  if (serviceIds.length) touches.push({ field: "services", ids: serviceIds });
+
+  const legalIds = changedOverlappingIds(existing.legalDocuments, incoming.legalDocuments, (a, b) => {
+    const aFileSize = typeof a.fileDataUrl === "string" ? a.fileDataUrl.length : 0;
+    const bFileSize = typeof b.fileDataUrl === "string" ? b.fileDataUrl.length : 0;
+    return (
+      a.title === b.title &&
+      a.category === b.category &&
+      a.date === b.date &&
+      (a.fileName ?? "") === (b.fileName ?? "") &&
+      (a.templateUrl ?? "") === (b.templateUrl ?? "") &&
+      (a.notes ?? "") === (b.notes ?? "") &&
+      aFileSize === bFileSize
+    );
+  });
+  if (legalIds.length) touches.push({ field: "legalDocuments", ids: legalIds });
+
+  const paymentIds = changedOverlappingIds(existing.payments, incoming.payments);
+  if (paymentIds.length) touches.push({ field: "payments", ids: paymentIds });
+
+  const invoiceIds = changedOverlappingIds(existing.invoices, incoming.invoices);
+  if (invoiceIds.length) touches.push({ field: "invoices", ids: invoiceIds });
+
+  const workActIds = changedOverlappingIds(existing.workActs, incoming.workActs);
+  if (workActIds.length) touches.push({ field: "workActs", ids: workActIds });
+
+  return touches;
+}
 
 function isSessionRevokedForAccount(
   session: ClinicBoundSession,
@@ -153,6 +217,17 @@ export async function PUT(request: Request) {
       { status: 403, headers: NO_STORE_HEADERS }
     );
   }
+  if (!canUseDayToDaySnapshotPut(role)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "FULL_SNAPSHOT_PUT_DISABLED",
+        error:
+          "Полное сохранение снимка отключено для этой роли. Используйте command API из интерфейса.",
+      },
+      { status: 410, headers: NO_STORE_HEADERS }
+    );
+  }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_PAYLOAD_BYTES) {
@@ -198,6 +273,20 @@ export async function PUT(request: Request) {
             Number.isFinite(Number(body.expectedRevision))
           ? Math.max(0, Math.floor(Number(body.expectedRevision)))
           : null;
+
+    if (existing?.data) {
+      const touches = collectProtectedFieldTouches(existing.data, parsed);
+      if (touches.length > 0) {
+        console.warn("[clinic/data] incoming PUT touched protected fields", {
+          clinicId: session.clinicId,
+          userId: session.userId,
+          role,
+          expectedUpdatedAt,
+          expectedRevision,
+          touches,
+        });
+      }
+    }
 
     // Hard guard: never accept writes from tabs that do not carry
     // a sync baseline when snapshot already exists on server.

@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Trash2, Upload, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { useClinicStore } from "@/store/useClinicStore";
+import {
+  beginClinicCommandMutation,
+  endClinicCommandMutation,
+  runWithoutClinicFlush,
+  useClinicStore,
+} from "@/store/useClinicStore";
 import {
   legalFileUploadErrorMessage,
   readFileAsDataUrl,
@@ -14,6 +19,14 @@ import {
   resolveLegalDocumentDataUrl,
 } from "@/lib/resolve-legal-document-source";
 import { missingLegalConsentBundleEntries } from "@/lib/legal-consents-bundle.generated";
+import {
+  deleteLegalDocumentViaCommandApi,
+  upsertLegalDocumentViaCommandApi,
+} from "@/lib/clinic-legal.client";
+import {
+  markClinicSyncedAfterCommand,
+  notifyClinicDataChanged,
+} from "@/lib/clinic-data-sync.client";
 import { generateId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,10 +54,36 @@ export default function LegalPage() {
   const [notes, setNotes] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [busy, setBusy] = useState(false);
   const bundleImported = useRef(false);
 
+  const persistDocument = async (
+    doc: LegalDocument,
+    applyLocal: () => void,
+    successMessage?: string
+  ): Promise<boolean> => {
+    beginClinicCommandMutation();
+    setBusy(true);
+    try {
+      const api = await upsertLegalDocumentViaCommandApi(doc);
+      if (!api.ok) {
+        toast.error(api.error ?? "Не удалось сохранить документ на сервере");
+        return false;
+      }
+      runWithoutClinicFlush(applyLocal);
+      markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
+      if (successMessage) toast.success(successMessage);
+      return true;
+    } finally {
+      endClinicCommandMutation();
+      setBusy(false);
+    }
+  };
+
   useEffect(() => {
-    if (bundleImported.current) return;
+    if (bundleImported.current || busy) return;
     // Не поднимать удалённые согласия заново при возврате на вкладку
     const missing = missingLegalConsentBundleEntries(legalDocuments, {
       deletedIds: deletedLegalDocumentIds,
@@ -52,27 +91,35 @@ export default function LegalPage() {
     if (missing.length === 0) return;
     bundleImported.current = true;
     const today = new Date().toISOString().slice(0, 10);
-    for (const entry of missing) {
-      addLegalDocument({
-        id: entry.id,
-        title: entry.title,
-        category: LEGAL_CATEGORY_CONSENTS,
-        date: today,
-        templateUrl: entry.templateUrl,
-        fileName: entry.fileName,
-      });
-    }
-    toast.success(`Добавлен комплект ИДС: ${missing.length} документов`);
+    void (async () => {
+      let added = 0;
+      for (const entry of missing) {
+        const doc: LegalDocument = {
+          id: entry.id,
+          title: entry.title,
+          category: LEGAL_CATEGORY_CONSENTS,
+          date: today,
+          templateUrl: entry.templateUrl,
+          fileName: entry.fileName,
+        };
+        const ok = await persistDocument(doc, () => addLegalDocument(doc));
+        if (ok) added += 1;
+        else break;
+      }
+      if (added > 0) {
+        toast.success(`Добавлен комплект ИДС: ${added} документов`);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз при первом открытии
   }, [legalDocuments.length, deletedLegalDocumentIds.length]);
 
-  const handleAdd = (fileDataUrl?: string, fileName?: string) => {
+  const handleAdd = async (fileDataUrl?: string, fileName?: string): Promise<boolean> => {
     const docTitle = title.trim() || fileName?.replace(/\.[^.]+$/, "") || "";
     if (!docTitle) {
       toast.error("Укажите название документа");
-      return;
+      return false;
     }
-    addLegalDocument({
+    const doc: LegalDocument = {
       id: generateId("legal"),
       title: docTitle,
       category,
@@ -80,7 +127,9 @@ export default function LegalPage() {
       notes: notes.trim() || undefined,
       fileDataUrl,
       fileName,
-    });
+    };
+    const ok = await persistDocument(doc, () => addLegalDocument(doc));
+    if (!ok) return false;
     setTitle("");
     setNotes("");
     if (!fileDataUrl) {
@@ -93,6 +142,7 @@ export default function LegalPage() {
     ) {
       toast.success("Документ сохранён — нажмите «Открыть»");
     }
+    return true;
   };
 
   const notifyFileUpload = async (dataUrl: string, fileName: string) => {
@@ -114,15 +164,25 @@ export default function LegalPage() {
   };
 
   const attachFile = async (docId: string, file: File) => {
+    const current = legalDocuments.find((d) => d.id === docId);
+    if (!current) return;
     warnIfFileTooLarge(file);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      updateLegalDocument(docId, {
+      const next: LegalDocument = {
+        ...current,
         fileDataUrl: dataUrl,
         fileName: file.name,
         templateUrl: undefined,
-      });
-      await notifyFileUpload(dataUrl, file.name);
+      };
+      const ok = await persistDocument(next, () =>
+        updateLegalDocument(docId, {
+          fileDataUrl: dataUrl,
+          fileName: file.name,
+          templateUrl: undefined,
+        })
+      );
+      if (ok) await notifyFileUpload(dataUrl, file.name);
     } catch (err) {
       toast.error(legalFileUploadErrorMessage(err));
     }
@@ -143,18 +203,44 @@ export default function LegalPage() {
     setEditingTitle(doc.title);
   };
 
-  const commitEditTitle = (docId: string) => {
-    const next = editingTitle.trim();
-    if (!next) {
+  const commitEditTitle = async (docId: string) => {
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle) {
       toast.error("Название не может быть пустым");
       return;
     }
-    updateLegalDocument(docId, { title: next });
+    const current = legalDocuments.find((d) => d.id === docId);
+    if (!current) return;
+    const next: LegalDocument = { ...current, title: nextTitle };
+    const ok = await persistDocument(next, () =>
+      updateLegalDocument(docId, { title: nextTitle })
+    );
+    if (!ok) return;
     setEditingId(null);
     setEditingTitle("");
   };
 
-  const importBundle = () => {
+  const handleRemove = async (docId: string) => {
+    beginClinicCommandMutation();
+    setBusy(true);
+    try {
+      const api = await deleteLegalDocumentViaCommandApi(docId);
+      if (!api.ok) {
+        toast.error(api.error ?? "Не удалось удалить документ на сервере");
+        return;
+      }
+      runWithoutClinicFlush(() => removeLegalDocument(docId));
+      markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
+      toast.success("Документ удалён");
+    } finally {
+      endClinicCommandMutation();
+      setBusy(false);
+    }
+  };
+
+  const importBundle = async () => {
     // Явный импорт может вернуть ранее удалённые согласия комплекта
     const missing = missingLegalConsentBundleEntries(legalDocuments, {
       deletedIds: deletedLegalDocumentIds,
@@ -165,17 +251,21 @@ export default function LegalPage() {
       return;
     }
     const today = new Date().toISOString().slice(0, 10);
+    let added = 0;
     for (const entry of missing) {
-      addLegalDocument({
+      const doc: LegalDocument = {
         id: entry.id,
         title: entry.title,
         category: LEGAL_CATEGORY_CONSENTS,
         date: today,
         templateUrl: entry.templateUrl,
         fileName: entry.fileName,
-      });
+      };
+      const ok = await persistDocument(doc, () => addLegalDocument(doc));
+      if (!ok) break;
+      added += 1;
     }
-    toast.success(`Добавлено согласий: ${missing.length}`);
+    if (added > 0) toast.success(`Добавлено согласий: ${added}`);
   };
 
   const grouped = LEGAL_CATEGORIES.map((cat) => ({
@@ -189,10 +279,16 @@ export default function LegalPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Юр. отдел</h1>
           <p className="text-sm text-slate-500">
-            Юридический сборник клиники: журналы, договоры, книги учёта, акты
+            Юридический сборник клиники: журналы, договоры, согласия, карточка здоровья, книги учёта, акты
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={importBundle}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => void importBundle()}
+        >
           Импортировать комплект ИДС
         </Button>
       </div>
@@ -229,7 +325,12 @@ export default function LegalPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <Button type="button" variant="outline" onClick={() => handleAdd()}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void handleAdd()}
+            >
               <Plus className="h-4 w-4" />
               Добавить без файла
             </Button>
@@ -240,14 +341,15 @@ export default function LegalPage() {
                 type="file"
                 accept=".pdf,image/*,.docx"
                 className="hidden"
+                disabled={busy}
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   warnIfFileTooLarge(file);
                   try {
                     const dataUrl = await readFileAsDataUrl(file);
-                    handleAdd(dataUrl, file.name);
-                    await notifyFileUpload(dataUrl, file.name);
+                    const ok = await handleAdd(dataUrl, file.name);
+                    if (ok) await notifyFileUpload(dataUrl, file.name);
                   } catch (err) {
                     toast.error(legalFileUploadErrorMessage(err));
                   }
@@ -282,7 +384,7 @@ export default function LegalPage() {
                               value={editingTitle}
                               onChange={(e) => setEditingTitle(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") commitEditTitle(doc.id);
+                                if (e.key === "Enter") void commitEditTitle(doc.id);
                                 if (e.key === "Escape") setEditingId(null);
                               }}
                               autoFocus
@@ -290,7 +392,8 @@ export default function LegalPage() {
                             <Button
                               type="button"
                               size="sm"
-                              onClick={() => commitEditTitle(doc.id)}
+                              disabled={busy}
+                              onClick={() => void commitEditTitle(doc.id)}
                             >
                               OK
                             </Button>
@@ -335,7 +438,8 @@ export default function LegalPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeLegalDocument(doc.id)}
+                        disabled={busy}
+                        onClick={() => void handleRemove(doc.id)}
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
@@ -358,9 +462,10 @@ export default function LegalPage() {
                           type="file"
                           accept=".pdf,image/*,.docx"
                           className="hidden"
+                          disabled={busy}
                           onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file) attachFile(doc.id, file);
+                            if (file) void attachFile(doc.id, file);
                             e.target.value = "";
                           }}
                         />

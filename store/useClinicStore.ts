@@ -91,6 +91,8 @@ export function isClinicCommandOptimisticUpdate(): boolean {
 }
 
 function scheduleClinicDataFlush(): void {
+  const role = useClinicStore.getState().currentRole;
+  if (!canUseDayToDaySnapshotPut(role)) return;
   if (clinicCommandOptimisticDepth > 0) return;
   if (typeof queueMicrotask === "undefined") {
     requestClinicDataFlush();
@@ -170,6 +172,7 @@ import {
   readThemePreferencesFromStorage,
 } from "@/lib/user-theme-storage";
 import { canManageServices } from "@/lib/rbac";
+import { canUseDayToDaySnapshotPut } from "@/lib/clinic-data-access";
 import {
   mergeAssistantManualHours,
   normalizeAssistantManualHours,
@@ -441,7 +444,6 @@ export const useClinicStore = create<ClinicState>()(
           }
           return { clinicSettings: next };
         });
-        scheduleClinicDataFlush();
       },
 
       updateCurrentUser: (data) =>
@@ -490,7 +492,6 @@ export const useClinicStore = create<ClinicState>()(
               : schedules,
           };
         });
-        scheduleClinicDataFlush();
       },
 
       setDoctors: (doctors) => set({ doctors }),
@@ -499,7 +500,6 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({
           doctors: s.doctors.map((d) => (d.id === id ? { ...d, ...data } : d)),
         }));
-        scheduleClinicDataFlush();
       },
 
       removeDoctor: (id, options) => {
@@ -530,7 +530,6 @@ export const useClinicStore = create<ClinicState>()(
           ),
           };
         });
-        if (!options?.skipFlush) scheduleClinicDataFlush();
       },
 
       addCabinet: (cabinet) =>
@@ -576,14 +575,12 @@ export const useClinicStore = create<ClinicState>()(
 
       addClinicExpense: (expense) => {
         set((s) => ({ clinicExpenses: [expense, ...s.clinicExpenses] }));
-        scheduleClinicDataFlush();
       },
 
       removeClinicExpense: (id) => {
         set((s) => ({
           clinicExpenses: s.clinicExpenses.filter((e) => e.id !== id),
         }));
-        scheduleClinicDataFlush();
       },
 
       addLegalDocument: (doc) => {
@@ -593,7 +590,7 @@ export const useClinicStore = create<ClinicState>()(
             (documentId) => documentId !== doc.id
           ),
         }));
-        scheduleClinicDataFlush();
+        // Юр. документы — через /api/clinic/legal/*; полный PUT откатывал файл/название.
       },
 
       updateLegalDocument: (id, data) => {
@@ -602,7 +599,6 @@ export const useClinicStore = create<ClinicState>()(
             d.id === id ? { ...d, ...data } : d
           ),
         }));
-        scheduleClinicDataFlush();
       },
 
       removeLegalDocument: (id) => {
@@ -610,7 +606,6 @@ export const useClinicStore = create<ClinicState>()(
           legalDocuments: s.legalDocuments.filter((d) => d.id !== id),
           deletedLegalDocumentIds: [...new Set([...(s.deletedLegalDocumentIds ?? []), id])],
         }));
-        scheduleClinicDataFlush();
       },
 
       addService: (service) => {
@@ -621,7 +616,7 @@ export const useClinicStore = create<ClinicState>()(
             (serviceId) => serviceId !== service.id
           ),
         }));
-        scheduleClinicDataFlush();
+        // Прайс — через /api/clinic/services/*; полный PUT откатывал правки.
       },
 
       updateService: (id, data) => {
@@ -631,7 +626,6 @@ export const useClinicStore = create<ClinicState>()(
             svc.id === id ? normalizeServiceFields({ ...svc, ...data }) : svc
           ),
         }));
-        scheduleClinicDataFlush();
       },
 
       removeService: (id) => {
@@ -640,7 +634,6 @@ export const useClinicStore = create<ClinicState>()(
           services: s.services.filter((svc) => svc.id !== id),
           deletedServiceIds: [...new Set([...(s.deletedServiceIds ?? []), id])],
         }));
-        scheduleClinicDataFlush();
       },
 
       addPatient: (patient) => {
@@ -649,14 +642,12 @@ export const useClinicStore = create<ClinicState>()(
           teethByPatient: { ...s.teethByPatient, [patient.id]: generateDefaultTeeth() },
           deletedPatientIds: (s.deletedPatientIds ?? []).filter((id) => id !== patient.id),
         }));
-        scheduleClinicDataFlush();
       },
 
       updatePatient: (id, data) => {
         set((s) => ({
           patients: s.patients.map((p) => (p.id === id ? { ...p, ...data } : p)),
         }));
-        scheduleClinicDataFlush();
       },
 
       syncOtherClinicVisitForPatient: (patient) =>
@@ -716,7 +707,6 @@ export const useClinicStore = create<ClinicState>()(
             ],
           };
         });
-        scheduleClinicDataFlush();
         return true;
       },
 
@@ -735,7 +725,6 @@ export const useClinicStore = create<ClinicState>()(
           patients: n.patients,
           deletedAppointmentIds: n.deletedAppointmentIds ?? [],
         });
-        if (!options?.skipFlush) scheduleClinicDataFlush();
       },
 
       updateAppointment: (id, data, options) => {
@@ -751,7 +740,6 @@ export const useClinicStore = create<ClinicState>()(
           appointments: n.appointments,
           patients: n.patients,
         });
-        if (!options?.skipFlush) scheduleClinicDataFlush();
       },
 
       setAssistantManualHours: (assistantId, date, hours) => {
@@ -765,12 +753,10 @@ export const useClinicStore = create<ClinicState>()(
           else next[assistantId] = byDay;
           return { assistantManualHours: next };
         });
-        scheduleClinicDataFlush();
       },
 
       addMedicalRecord: (record) => {
         set((s) => ({ medicalRecords: [record, ...s.medicalRecords] }));
-        scheduleClinicDataFlush();
       },
 
       deleteMedicalRecord: (id) => {
@@ -785,13 +771,11 @@ export const useClinicStore = create<ClinicState>()(
           ),
           deletedMedicalRecordIds: [...new Set([...(s.deletedMedicalRecordIds ?? []), id])],
         }));
-        scheduleClinicDataFlush();
         return true;
       },
 
       addTreatmentPlan: (plan) => {
         set((s) => ({ treatmentPlans: [plan, ...s.treatmentPlans] }));
-        scheduleClinicDataFlush();
       },
 
       updateTreatmentPlan: (id, data) => {
@@ -800,7 +784,6 @@ export const useClinicStore = create<ClinicState>()(
             p.id === id ? { ...p, ...data } : p
           ),
         }));
-        scheduleClinicDataFlush();
       },
 
       deleteTreatmentPlan: (id) => {
@@ -813,18 +796,15 @@ export const useClinicStore = create<ClinicState>()(
           ),
           deletedTreatmentPlanIds: [...new Set([...(s.deletedTreatmentPlanIds ?? []), id])],
         }));
-        scheduleClinicDataFlush();
         return true;
       },
 
       addPayment: (payment) => {
         set((s) => ({ payments: [payment, ...s.payments] }));
-        scheduleClinicDataFlush();
       },
 
       addInvoice: (invoice) => {
         set((s) => ({ invoices: [invoice, ...s.invoices] }));
-        scheduleClinicDataFlush();
       },
 
       getNextActNumber: () => {
@@ -845,7 +825,6 @@ export const useClinicStore = create<ClinicState>()(
             patients: withPatientVisitFields(s.patients, appointments, act.patientId),
           };
         });
-        scheduleClinicDataFlush();
       },
 
       updateWorkAct: (id, data) => {
@@ -870,7 +849,6 @@ export const useClinicStore = create<ClinicState>()(
             ),
           };
         });
-        scheduleClinicDataFlush();
       },
 
       saveDoctorMonthSchedule: (schedule) => {
@@ -881,7 +859,6 @@ export const useClinicStore = create<ClinicState>()(
           );
           return { doctorSchedules: [schedule, ...rest] };
         });
-        scheduleClinicDataFlush();
       },
 
       addPrepayment: (prepayment) => {
@@ -891,7 +868,6 @@ export const useClinicStore = create<ClinicState>()(
             prepayments: [prepayment, ...prepayments],
           };
         });
-        scheduleClinicDataFlush();
       },
 
       updatePrepayment: (id, data) => {
@@ -900,7 +876,6 @@ export const useClinicStore = create<ClinicState>()(
             p.id === id ? { ...p, ...data } : p
           ),
         }));
-        scheduleClinicDataFlush();
       },
 
       linkWorkActToMedicalRecord: (actId, recordId) => {
@@ -912,7 +887,6 @@ export const useClinicStore = create<ClinicState>()(
             r.id === recordId ? { ...r, workActId: actId } : r
           ),
         }));
-        scheduleClinicDataFlush();
       },
 
       syncMedicalRecordForWorkAct: (act) => {
@@ -926,7 +900,6 @@ export const useClinicStore = create<ClinicState>()(
             ),
           };
         });
-        scheduleClinicDataFlush();
       },
 
       payWorkAct: (actId, method = "cash", amount?: number) => {
@@ -946,7 +919,6 @@ export const useClinicStore = create<ClinicState>()(
           medicalRecords: n.medicalRecords,
           teethByPatient: n.teethByPatient,
         });
-        scheduleClinicDataFlush();
         return true;
       },
 
@@ -969,7 +941,6 @@ export const useClinicStore = create<ClinicState>()(
           patients = withPatientVisitFields(patients, appointments, patientId);
         }
         set({ appointments, patients });
-        scheduleClinicDataFlush();
       },
 
       deleteWorkAct: (actId) => {
@@ -1041,7 +1012,6 @@ export const useClinicStore = create<ClinicState>()(
             ),
           };
         });
-        scheduleClinicDataFlush();
         return true;
       },
 

@@ -1,0 +1,3578 @@
+@media (max-width:980px){
+  .emkaro-marketing.nav-open .nav-links{
+    display:flex !important;
+    flex-direction:column;
+    position:absolute;
+    top:74px;
+    left:0;
+    right:0;
+    background:#fff;
+    border-bottom:1px solid #dfe7f5;
+    padding:12px 20px 20px;
+    z-index:40;
+    gap:4px;
+    max-height:calc(100dvh - 74px);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    box-shadow:0 18px 40px rgba(31,68,136,.12);
+  }
+  .emkaro-marketing.nav-open .nav-links a{
+    display:flex;
+    align-items:center;
+    min-height:44px;
+    padding:10px 4px;
+    border-radius:12px;
+  }
+  .emkaro-marketing.nav-open .nav-links a:active{
+    background:#f5f8ff;
+  }
+  .emkaro-marketing.nav-open .nav-mobile-cta{
+    margin-top:8px;
+    justify-content:center;
+    width:100%;
+  }
+}
+
+html.emkaro-nav-locked,
+html.emkaro-nav-locked body{
+  overflow:hidden;
+}
+
+.emkaro-marketing .nav{position:relative}
+
+.emkaro-marketing .brand-hit{
+  display:inline-flex;
+  align-items:center;
+  border:0;
+  background:transparent;
+  padding:0;
+  cursor:pointer;
+  font:inherit;
+}
+
+.emkaro-marketing .demo-form .field input,
+.emkaro-marketing .demo-form .field textarea{
+  width:100%;
+}
+
+.emkaro-marketing{
+      --blue:#2f63c8;
+      --blue-2:#4779d8;
+      --blue-3:#0f3f99;
+      --ink:#111827;
+      --muted:#667085;
+      --soft:#f5f8ff;
+      --line:#dfe7f5;
+      --white:#ffffff;
+      --green:#12b76a;
+      --shadow:0 24px 70px rgba(31,68,136,.12);
+      --radius:24px;
+    }
+    .emkaro-marketing *{box-sizing:border-box}
+    .emkaro-marketing{scroll-behavior:smooth}
+    .emkaro-marketing{margin:0;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:#fff;line-height:1.5}
+    .emkaro-marketing a{color:inherit;text-decoration:none}
+    .emkaro-marketing button, .emkaro-marketing input{font:inherit}
+    .emkaro-marketing .container{width:min(1180px,calc(100% - 40px));margin:0 auto}
+    .emkaro-marketing .section{padding:100px 0}
+    .emkaro-marketing .section.soft{background:linear-gradient(180deg,#f9fbff 0%,#f3f7ff 100%)}
+    .emkaro-marketing .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid #d7e3fb;border-radius:999px;background:#f8fbff;color:#2e5cb6;font-size:13px;font-weight:700;letter-spacing:.02em}
+    .emkaro-marketing h1, .emkaro-marketing h2, .emkaro-marketing h3, .emkaro-marketing p{margin-top:0}
+    .emkaro-marketing h1{font-size:clamp(42px,6.2vw,76px);line-height:1.02;letter-spacing:-.045em;margin-bottom:24px;max-width:1000px}
+    .emkaro-marketing h2{font-size:clamp(34px,4vw,54px);line-height:1.08;letter-spacing:-.035em;margin-bottom:18px}
+    .emkaro-marketing h3{font-size:22px;line-height:1.25;margin-bottom:12px}
+    .emkaro-marketing .lead{font-size:20px;line-height:1.6;color:var(--muted);max-width:760px}
+    .emkaro-marketing .section-head{display:flex;justify-content:space-between;gap:40px;align-items:end;margin-bottom:44px}
+    .emkaro-marketing .section-head .lead{margin-bottom:0;max-width:580px}
+    .emkaro-marketing .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;padding:0 21px;border-radius:14px;border:1px solid transparent;font-weight:700;cursor:pointer;transition:.2s ease}
+    .emkaro-marketing .btn.primary{background:var(--blue);color:#fff;box-shadow:0 12px 30px rgba(47,99,200,.24)}
+    .emkaro-marketing .btn.primary:hover{background:#2456b7;transform:translateY(-1px)}
+    .emkaro-marketing .btn.secondary{border-color:#cfd9eb;background:#fff;color:#234a92}
+    .emkaro-marketing .btn.secondary:hover{background:#f6f9ff}
+    .emkaro-marketing .btn.dark{background:#fff;color:#143f8f}
+
+    /* Header */
+    .emkaro-marketing .site-header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.86);backdrop-filter:blur(14px);border-bottom:1px solid rgba(220,228,240,.8)}
+    .emkaro-marketing .nav{height:74px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+    .emkaro-marketing .brand{font-weight:800;font-size:29px;letter-spacing:-.04em;color:#1d4da7}
+    .emkaro-marketing .nav-links{display:flex;align-items:center;gap:25px;color:#475467;font-size:14px;font-weight:600}
+    .emkaro-marketing .nav-links a:hover{color:#1d4da7}
+    .emkaro-marketing .nav-actions{display:flex;gap:10px;align-items:center}
+    .emkaro-marketing .menu-btn{display:none;border:0;background:transparent;font-size:26px;width:44px;height:44px;border-radius:12px;align-items:center;justify-content:center;color:#1d4da7;cursor:pointer;touch-action:manipulation}
+    .emkaro-marketing .nav-mobile-cta{display:none}
+
+    /* Hero */
+    .emkaro-marketing .hero{padding:82px 0 76px;overflow:hidden;position:relative}
+    .emkaro-marketing .hero:before{content:"";position:absolute;right:-170px;top:-230px;width:620px;height:620px;background:radial-gradient(circle,rgba(89,132,220,.22),rgba(89,132,220,0) 68%);pointer-events:none}
+    .emkaro-marketing .hero-copy{position:relative;z-index:2;max-width:960px}
+    .emkaro-marketing .hero h1 span{color:var(--blue)}
+    .emkaro-marketing .hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin:32px 0 46px}
+    .emkaro-marketing .trust-line{display:flex;gap:30px;flex-wrap:wrap;color:#475467;font-size:14px}
+    .emkaro-marketing .trust-item{display:flex;align-items:center;gap:9px}
+    .emkaro-marketing .dot-check{width:20px;height:20px;border-radius:50%;background:#e8f8ef;color:#058a4e;display:grid;place-items:center;font-size:12px;font-weight:900}
+
+    /* Comparison tables */
+    .emkaro-marketing .table-card{background:#fff;border:1px solid #dce5f4;border-radius:22px;overflow:hidden;box-shadow:var(--shadow)}
+    .emkaro-marketing table{width:100%;border-collapse:collapse}
+    .emkaro-marketing th, .emkaro-marketing td{padding:18px 20px;text-align:left;border-bottom:1px solid #e7edf6;vertical-align:middle}
+    .emkaro-marketing th{font-size:14px;text-transform:uppercase;letter-spacing:.055em;color:#5f6b7b;background:#f5f8fe}
+    .emkaro-marketing th.emk, .emkaro-marketing td.emk{background:#eef4ff}
+    .emkaro-marketing td:first-child{font-weight:700;color:#27364d;width:36%}
+    .emkaro-marketing tr:last-child td{border-bottom:none}
+    .emkaro-marketing .yes{display:inline-flex;width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;background:#dff7eb;color:#0b8d53;font-weight:900}
+    .emkaro-marketing .no{color:#98a2b3;font-size:22px}
+    .emkaro-marketing .limited{font-weight:700;color:#b54708}
+    .emkaro-marketing .unified{font-weight:800;color:#2156b6}
+
+    /* Interface */
+    .emkaro-marketing .carousel-shell{position:relative;background:linear-gradient(135deg,#102f72,#1f5aba);border-radius:30px;padding:28px;box-shadow:0 34px 80px rgba(20,64,145,.25);overflow:hidden}
+    .emkaro-marketing .carousel-shell:after{content:"";position:absolute;width:350px;height:350px;border-radius:50%;right:-120px;top:-130px;background:rgba(255,255,255,.07);pointer-events:none}
+    .emkaro-marketing .browser{position:relative;z-index:2;background:#fff;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.35)}
+    .emkaro-marketing .browser-top{height:46px;display:flex;align-items:center;gap:8px;padding:0 15px;border-bottom:1px solid #e9eef7;background:#fbfcff}
+    .emkaro-marketing .browser-top i{width:10px;height:10px;border-radius:50%;background:#d0d5dd}
+    .emkaro-marketing .browser-url{margin-left:8px;height:24px;flex:1;max-width:420px;border-radius:7px;background:#eef2f7}
+    .emkaro-marketing .slides{position:relative;aspect-ratio:16/9;min-height:360px;background:#0d1729;overflow:hidden}
+    .emkaro-marketing .slide{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .35s ease;display:grid;place-items:center;background:#0d1729}
+    .emkaro-marketing .slide.active{opacity:1;pointer-events:auto}
+    .emkaro-marketing .interface-shot{width:100%;height:100%;object-fit:contain;display:block;background:#0d1729}
+    .emkaro-marketing .slide-label{position:absolute;left:20px;bottom:18px;font-size:14px;color:#fff;background:rgba(5,13,28,.76);backdrop-filter:blur(8px);padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+    .emkaro-marketing .carousel-controls{display:flex;justify-content:space-between;align-items:center;margin-top:18px;position:relative;z-index:3}
+    .emkaro-marketing .carousel-controls button{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer}
+    .emkaro-marketing .dots{display:flex;gap:8px}
+    .emkaro-marketing .dots button{width:9px;height:9px;padding:0;border:none;background:rgba(255,255,255,.35)}
+    .emkaro-marketing .dots button.active{width:28px;border-radius:20px;background:#fff}
+
+    /* Benefits */
+    .emkaro-marketing .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+    .emkaro-marketing .benefit-card{padding:28px;border:1px solid #e0e7f2;border-radius:22px;background:#fff;min-height:245px;transition:.25s ease}
+    .emkaro-marketing .benefit-card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(30,62,120,.09)}
+    .emkaro-marketing .icon{width:48px;height:48px;border-radius:14px;background:#edf4ff;color:#285cbd;display:grid;place-items:center;font-weight:800;margin-bottom:24px;font-size:18px}
+    .emkaro-marketing .benefit-card p{color:#667085;margin-bottom:0}
+
+    /* Pricing */
+    .emkaro-marketing .pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+    .emkaro-marketing .price-card{border:1px solid #dfe6f0;border-radius:24px;padding:30px;background:#fff;position:relative}
+    .emkaro-marketing .price-card.featured{border:2px solid var(--blue);box-shadow:0 22px 54px rgba(47,99,200,.15)}
+    .emkaro-marketing .badge{position:absolute;right:20px;top:20px;background:#e9f1ff;color:#2255b1;font-weight:800;font-size:12px;padding:7px 10px;border-radius:999px}
+    .emkaro-marketing .price-name{font-size:18px;font-weight:800;color:#1f4f9f}
+    .emkaro-marketing .price-value{font-size:38px;font-weight:850;letter-spacing:-.03em;margin:12px 0 2px}
+    .emkaro-marketing .price-note{color:#667085;font-size:14px;margin-bottom:22px}
+    .emkaro-marketing .feature-list{display:grid;gap:12px;margin:24px 0 30px;padding:0;list-style:none}
+    .emkaro-marketing .feature-list li{display:flex;gap:10px;color:#475467}
+    .emkaro-marketing .feature-list li:before{content:"✓";color:#0a8f54;font-weight:900}
+
+    /* Steps */
+    .emkaro-marketing .steps{display:grid;grid-template-columns:repeat(5,1fr);gap:0;position:relative}
+    .emkaro-marketing .steps:before{content:"";position:absolute;top:31px;left:6%;right:6%;height:1px;background:#cbd7eb;z-index:0}
+    .emkaro-marketing .step{position:relative;z-index:1;padding-right:26px}
+    .emkaro-marketing .step-num{width:62px;height:62px;border-radius:18px;background:#fff;border:1px solid #cfdcf0;color:#2758b4;display:grid;place-items:center;font-weight:850;box-shadow:0 7px 18px rgba(46,86,157,.08);margin-bottom:22px}
+    .emkaro-marketing .step p{color:#667085;font-size:15px}
+
+    /* Clinics */
+    .emkaro-marketing .clinic-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .emkaro-marketing .clinic-card{border:1px solid #dfe6ef;border-radius:22px;padding:26px;background:#fff;display:flex;flex-direction:column;min-height:235px}
+    .emkaro-marketing .clinic-logo{width:62px;height:62px;border-radius:16px;background:linear-gradient(135deg,#eef4ff,#dce8ff);display:grid;place-items:center;color:#2758b4;font-weight:850;font-size:22px;margin-bottom:30px}
+    .emkaro-marketing .clinic-city{font-size:14px;color:#667085;margin-top:auto}
+    .emkaro-marketing .clinic-address{font-size:14px;color:#98a2b3;margin-top:4px}
+    .emkaro-marketing .clinic-placeholder{border-style:dashed;display:grid;place-items:center;text-align:center;color:#667085}
+    .emkaro-marketing .clinic-placeholder .clinic-logo{margin:0 auto 15px}
+    .emkaro-marketing .center-action{text-align:center;margin-top:28px}
+
+    /* Review */
+    .emkaro-marketing .review-card{max-width:960px;padding:48px;border:1px solid #dfe7f3;border-radius:28px;background:linear-gradient(135deg,#fff,#f7faff);box-shadow:var(--shadow)}
+    .emkaro-marketing .quote-mark{font-size:54px;line-height:1;color:#3b6ece;margin-bottom:10px;font-family:Georgia,serif}
+    .emkaro-marketing .review-text{font-size:clamp(24px,3vw,34px);line-height:1.35;letter-spacing:-.02em;margin-bottom:30px}
+    .emkaro-marketing .review-author{font-weight:800}
+    .emkaro-marketing .review-role{color:#667085;font-size:14px;margin-top:4px}
+
+    /* Demo form */
+    .emkaro-marketing .demo-wrap{display:grid;grid-template-columns:.88fr 1.12fr;gap:50px;align-items:start;background:#0e3b88;color:#fff;border-radius:30px;padding:48px;position:relative;overflow:hidden}
+    .emkaro-marketing .demo-wrap:after{content:"";position:absolute;width:430px;height:430px;border-radius:50%;background:rgba(255,255,255,.06);right:-180px;bottom:-210px}
+    .emkaro-marketing .demo-wrap .lead{color:#d7e3fb}
+    .emkaro-marketing .demo-form{position:relative;z-index:2;background:#fff;color:#111827;border-radius:22px;padding:26px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .emkaro-marketing .field{display:flex;flex-direction:column;gap:7px}
+    .emkaro-marketing .field.full{grid-column:1/-1}
+    .emkaro-marketing .field label{font-size:13px;font-weight:700;color:#475467}
+    .emkaro-marketing .field input{height:50px;border-radius:12px;border:1px solid #d6deea;padding:0 14px;outline:none;transition:.2s}
+    .emkaro-marketing .field input:focus{border-color:#6d94df;box-shadow:0 0 0 3px rgba(47,99,200,.1)}
+    .emkaro-marketing .consent{grid-column:1/-1;font-size:12px;color:#667085;display:flex;gap:9px;align-items:flex-start}
+    .emkaro-marketing .consent input{margin-top:3px}
+    .emkaro-marketing .form-status{grid-column:1/-1;font-size:13px;color:#0b8d53;display:none}
+
+    /* FAQ */
+    .emkaro-marketing .faq{max-width:940px;margin:0 auto}
+    .emkaro-marketing .faq-item{border-bottom:1px solid #dfe6f0}
+    .emkaro-marketing .faq-q{width:100%;display:flex;justify-content:space-between;gap:20px;padding:22px 0;border:none;background:transparent;text-align:left;font-weight:750;font-size:18px;cursor:pointer;color:#1c2a3d}
+    .emkaro-marketing .faq-q span:last-child{font-size:24px;color:#4772c7;transition:transform .2s}
+    .emkaro-marketing .faq-a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease;color:#667085}
+    .emkaro-marketing .faq-a > div{overflow:hidden}
+    .emkaro-marketing .faq-a p{margin:0;padding:0 0 22px;max-width:780px}
+    .emkaro-marketing .faq-item.open .faq-a{grid-template-rows:1fr}
+    .emkaro-marketing .faq-item.open .faq-q span:last-child{transform:rotate(45deg)}
+
+    /* Security */
+    .emkaro-marketing .security{background:linear-gradient(135deg,#0c2f70,#154caa);color:#fff}
+    .emkaro-marketing .security .lead{color:#d9e5fb}
+    .emkaro-marketing .security-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:36px}
+    .emkaro-marketing .security-item{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);padding:20px;border-radius:16px;display:flex;gap:12px;align-items:center}
+    .emkaro-marketing .shield{width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.14);display:grid;place-items:center;flex:none}
+
+    /* Footer */
+    .emkaro-marketing footer{padding:54px 0 30px;background:#071f49;color:#d6e2f6}
+    .emkaro-marketing .footer-top{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:40px}
+    .emkaro-marketing .footer-brand{color:#fff;font-size:28px;font-weight:850;margin-bottom:12px}
+    .emkaro-marketing footer p, .emkaro-marketing footer a{color:#aebfda;font-size:14px}
+    .emkaro-marketing footer a:hover{color:#fff}
+    .emkaro-marketing .footer-links{display:grid;gap:10px}
+    .emkaro-marketing .footer-bottom{margin-top:36px;padding-top:22px;border-top:1px solid rgba(255,255,255,.12);display:flex;justify-content:space-between;gap:20px;color:#8fa4c4;font-size:12px}
+
+    @media (max-width:980px){
+      .emkaro-marketing .nav-links{display:none}.emkaro-marketing .menu-btn{display:inline-flex}.emkaro-marketing .nav-actions .secondary{display:none}
+      .emkaro-marketing .nav-mobile-cta{display:inline-flex}
+      .emkaro-marketing .section{padding:78px 0}.emkaro-marketing .section-head{display:block}.emkaro-marketing .section-head .lead{margin-top:14px}
+      .emkaro-marketing .grid-4{grid-template-columns:1fr 1fr}.emkaro-marketing .pricing{grid-template-columns:1fr}.emkaro-marketing .steps{grid-template-columns:1fr 1fr;gap:28px}.emkaro-marketing .steps:before{display:none}
+      .emkaro-marketing .clinic-grid{grid-template-columns:1fr 1fr}.emkaro-marketing .demo-wrap{grid-template-columns:1fr}.emkaro-marketing .security-grid{grid-template-columns:1fr 1fr}
+      .emkaro-marketing .footer-top{grid-template-columns:1fr 1fr}
+    }
+    @media (max-width:700px){
+      .emkaro-marketing .container{width:min(100% - 24px,1180px)}.emkaro-marketing .hero{padding:40px 0 48px}.emkaro-marketing .nav{height:60px;gap:12px}.emkaro-marketing .brand{font-size:24px}
+      .emkaro-marketing .nav-actions .btn{display:none}
+      .emkaro-marketing .nav-actions{display:flex;gap:10px;align-items:center}
+      .emkaro-marketing .menu-btn{margin-left:2px}
+      .emkaro-marketing h1{font-size:clamp(28px,8.2vw,38px);line-height:1.12;margin-bottom:16px}.emkaro-marketing h2{font-size:clamp(26px,6.5vw,36px)}.emkaro-marketing .lead{font-size:16px;line-height:1.55}.emkaro-marketing .section{padding:56px 0}
+      .emkaro-marketing .hero-actions{margin:24px 0 28px;gap:10px}.emkaro-marketing .hero-actions .btn{width:100%;min-height:48px}
+      .emkaro-marketing .trust-line{gap:12px 18px;font-size:13px}.emkaro-marketing .btn{min-height:48px;padding:0 18px;border-radius:12px;touch-action:manipulation}
+      .emkaro-marketing .grid-4, .emkaro-marketing .clinic-grid, .emkaro-marketing .security-grid, .emkaro-marketing .footer-top{grid-template-columns:1fr}
+      .emkaro-marketing .steps{grid-template-columns:1fr}.emkaro-marketing .step{display:grid;grid-template-columns:56px 1fr;column-gap:14px;padding-right:0}.emkaro-marketing .step-num{width:56px;height:56px;grid-row:1/3}.emkaro-marketing .step h3{margin:5px 0 6px}
+      .emkaro-marketing .table-card{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin}.emkaro-marketing table{min-width:560px}.emkaro-marketing th, .emkaro-marketing td{padding:12px 12px;font-size:14px}
+      .emkaro-marketing .carousel-shell{padding:14px;border-radius:22px}.emkaro-marketing .slides{min-height:260px}
+      .emkaro-marketing .demo-wrap{padding:24px 16px;border-radius:20px}.emkaro-marketing .demo-form{grid-template-columns:1fr}.emkaro-marketing .field{grid-column:1/-1}.emkaro-marketing .review-card{padding:24px 18px}.emkaro-marketing .review-text{font-size:20px;line-height:1.4}
+      .emkaro-marketing .footer-bottom{flex-direction:column}.emkaro-marketing .benefit-card{min-height:0;padding:22px}
+      .emkaro-marketing .hero .table-card{margin-top:36px !important}
+      .emkaro-marketing.nav-open .nav-links{top:60px;max-height:calc(100dvh - 60px)}
+    }
+
+    /* CSS-only interface carousel: works without JavaScript */
+    .emkaro-marketing .css-carousel{
+      position:relative;
+      padding:40px 42px 30px;
+      border-radius:36px;
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 10% 10%,rgba(56,132,255,.15),transparent 34%),
+        radial-gradient(circle at 92% 18%,rgba(57,201,184,.13),transparent 30%),
+        linear-gradient(145deg,#f8fbff 0%,#eef4ff 52%,#f7fbff 100%);
+      border:1px solid rgba(78,114,175,.10);
+      box-shadow:0 26px 70px rgba(36,72,133,.12);
+    }
+    .emkaro-marketing .css-carousel:before{
+      content:"";
+      position:absolute;
+      left:11%;right:11%;bottom:72px;height:90px;
+      background:rgba(39,91,190,.20);
+      filter:blur(54px);
+      border-radius:50%;
+      pointer-events:none;
+    }
+    .emkaro-marketing .css-carousel:after{
+      content:"";
+      position:absolute;
+      width:320px;height:320px;border-radius:50%;
+      right:-105px;top:-130px;
+      background:linear-gradient(145deg,rgba(46,105,205,.10),rgba(44,201,181,.07));
+      pointer-events:none;
+    }
+    .emkaro-marketing .css-carousel input[type="radio"]{position:absolute;opacity:0;pointer-events:none}
+    .emkaro-marketing .css-browser{
+      position:relative;
+      z-index:2;
+      background:transparent;
+      border:0;
+      border-radius:0;
+      overflow:visible;
+    }
+    .emkaro-marketing .css-browser-top{display:none}
+    .emkaro-marketing .css-browser-top i, .emkaro-marketing .css-browser-url{display:none}
+    .emkaro-marketing .css-slides{
+      position:relative;
+      aspect-ratio:16/9;
+      min-height:360px;
+      background:transparent;
+      overflow:visible;
+      perspective:1300px;
+    }
+    .emkaro-marketing .css-slide{
+      position:absolute;
+      inset:16px 22px 22px;
+      display:none;
+      background:#0d1729;
+      border-radius:24px;
+      overflow:hidden;
+      box-shadow:
+        0 36px 70px rgba(15,40,86,.25),
+        0 10px 24px rgba(21,52,104,.15),
+        0 0 0 1px rgba(255,255,255,.72);
+      transform:rotateX(.5deg) rotateY(-.5deg);
+      transform-origin:center;
+    }
+    .emkaro-marketing .css-slide:before{
+      content:"";
+      position:absolute;inset:0 0 auto 0;height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);
+      z-index:3;pointer-events:none;
+    }
+    .emkaro-marketing .css-slide img{
+      width:100%;height:100%;
+      object-fit:contain;
+      display:block;
+      background:#0d1729;
+    }
+    .emkaro-marketing .css-slide-label{
+      position:absolute;
+      left:22px;top:20px;bottom:auto;
+      font-size:13px;font-weight:700;letter-spacing:.01em;
+      color:#10244a;
+      background:rgba(255,255,255,.90);
+      backdrop-filter:blur(14px);
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.82);
+      box-shadow:0 10px 28px rgba(18,52,107,.14);
+      z-index:4;
+    }
+    .emkaro-marketing .css-arrow{
+      position:absolute;top:50%;transform:translateY(-50%);
+      z-index:8;width:58px;height:58px;border-radius:50%;
+      border:1px solid rgba(255,255,255,.85);
+      background:rgba(255,255,255,.92);
+      color:#2659b5;
+      display:grid;place-items:center;
+      font-size:30px;font-weight:500;
+      cursor:pointer;user-select:none;
+      box-shadow:0 14px 34px rgba(27,67,137,.19);
+      transition:.2s ease;
+    }
+    .emkaro-marketing .css-arrow:hover{
+      background:#2f63c8;color:#fff;
+      transform:translateY(-50%) scale(1.06);
+      box-shadow:0 18px 38px rgba(47,99,200,.30)
+    }
+    .emkaro-marketing .css-arrow.prev{left:-5px}.emkaro-marketing .css-arrow.next{right:-5px}
+    .emkaro-marketing .css-carousel-footer{
+      position:relative;z-index:4;
+      display:flex;align-items:center;justify-content:center;
+      gap:16px;margin-top:10px;min-height:44px
+    }
+    .emkaro-marketing .css-dots{display:flex;gap:7px;align-items:center;justify-content:center;flex-wrap:wrap}
+    .emkaro-marketing .css-dots label{
+      width:8px;height:8px;border-radius:99px;
+      background:#b9c7df;cursor:pointer;transition:.2s ease;display:block
+    }
+    .emkaro-marketing .css-counter{
+      color:#456085;font-size:13px;font-weight:700;
+      min-width:48px;text-align:center
+    }
+    .emkaro-marketing .css-counter span{display:none}
+.emkaro-marketing #emkaro-slide-1:checked ~ .css-browser .css-slides .s1, .emkaro-marketing #emkaro-slide-2:checked ~ .css-browser .css-slides .s2, .emkaro-marketing #emkaro-slide-3:checked ~ .css-browser .css-slides .s3, .emkaro-marketing #emkaro-slide-4:checked ~ .css-browser .css-slides .s4, .emkaro-marketing #emkaro-slide-5:checked ~ .css-browser .css-slides .s5, .emkaro-marketing #emkaro-slide-6:checked ~ .css-browser .css-slides .s6, .emkaro-marketing #emkaro-slide-7:checked ~ .css-browser .css-slides .s7, .emkaro-marketing #emkaro-slide-8:checked ~ .css-browser .css-slides .s8, .emkaro-marketing #emkaro-slide-9:checked ~ .css-browser .css-slides .s9, .emkaro-marketing #emkaro-slide-10:checked ~ .css-browser .css-slides .s10, .emkaro-marketing #emkaro-slide-11:checked ~ .css-browser .css-slides .s11, .emkaro-marketing #emkaro-slide-12:checked ~ .css-browser .css-slides .s12, .emkaro-marketing #emkaro-slide-13:checked ~ .css-browser .css-slides .s13, .emkaro-marketing #emkaro-slide-14:checked ~ .css-browser .css-slides .s14, .emkaro-marketing #emkaro-slide-15:checked ~ .css-browser .css-slides .s15{display:block}
+        .emkaro-marketing #emkaro-slide-1:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-1"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-1:checked ~ .css-carousel-footer .counter-1{display:inline}
+    .emkaro-marketing #emkaro-slide-2:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-2"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-2:checked ~ .css-carousel-footer .counter-2{display:inline}
+    .emkaro-marketing #emkaro-slide-3:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-3"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-3:checked ~ .css-carousel-footer .counter-3{display:inline}
+    .emkaro-marketing #emkaro-slide-4:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-4"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-4:checked ~ .css-carousel-footer .counter-4{display:inline}
+    .emkaro-marketing #emkaro-slide-5:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-5"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-5:checked ~ .css-carousel-footer .counter-5{display:inline}
+    .emkaro-marketing #emkaro-slide-6:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-6"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-6:checked ~ .css-carousel-footer .counter-6{display:inline}
+    .emkaro-marketing #emkaro-slide-7:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-7"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-7:checked ~ .css-carousel-footer .counter-7{display:inline}
+    .emkaro-marketing #emkaro-slide-8:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-8"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-8:checked ~ .css-carousel-footer .counter-8{display:inline}
+    .emkaro-marketing #emkaro-slide-9:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-9"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-9:checked ~ .css-carousel-footer .counter-9{display:inline}
+    .emkaro-marketing #emkaro-slide-10:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-10"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-10:checked ~ .css-carousel-footer .counter-10{display:inline}
+    .emkaro-marketing #emkaro-slide-11:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-11"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-11:checked ~ .css-carousel-footer .counter-11{display:inline}
+    .emkaro-marketing #emkaro-slide-12:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-12"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-12:checked ~ .css-carousel-footer .counter-12{display:inline}
+    .emkaro-marketing #emkaro-slide-13:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-13"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-13:checked ~ .css-carousel-footer .counter-13{display:inline}
+    .emkaro-marketing #emkaro-slide-14:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-14"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-14:checked ~ .css-carousel-footer .counter-14{display:inline}
+    .emkaro-marketing #emkaro-slide-15:checked ~ .css-carousel-footer .css-dots label[for="emkaro-slide-15"]{width:28px;background:#fff}
+    .emkaro-marketing #emkaro-slide-15:checked ~ .css-carousel-footer .counter-15{display:inline}
+    @media (max-width:700px){
+      .emkaro-marketing .css-carousel{padding:18px 12px 22px;border-radius:24px}
+      .emkaro-marketing .css-slides{min-height:260px}
+      .emkaro-marketing .css-slide{inset:10px 12px 18px;border-radius:17px}
+      .emkaro-marketing .css-arrow{width:44px;height:44px;font-size:24px}.emkaro-marketing .css-arrow.prev{left:8px}.emkaro-marketing .css-arrow.next{right:8px}.emkaro-marketing .css-slide-label{left:12px;bottom:12px;font-size:12px}}
+  
+/* FAQ — interactive answers */
+.emkaro-marketing #faq details{
+  border-bottom:1px solid rgba(83,110,158,.14);
+}
+.emkaro-marketing #faq details summary{
+  list-style:none;
+  cursor:pointer;
+  position:relative;
+  padding:22px 54px 22px 0;
+  font-weight:700;
+}
+.emkaro-marketing #faq details summary::-webkit-details-marker{display:none}
+.emkaro-marketing #faq details summary::after{
+  content:"+";
+  position:absolute;
+  right:4px;
+  top:50%;
+  transform:translateY(-50%);
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:rgba(47,99,200,.08);
+  color:#2f63c8;
+  font-size:24px;
+  line-height:1;
+  transition:.2s ease;
+}
+.emkaro-marketing #faq details[open] summary::after{
+  content:"–";
+  background:#2f63c8;
+  color:#fff;
+}
+.emkaro-marketing #faq .faq-answer-text{
+  margin:0;
+  padding:0 54px 22px 0;
+  color:#5f6f8a;
+  line-height:1.65;
+}
+.emkaro-marketing #faq .faq-answer{display:none}
+.emkaro-marketing #faq .faq-item.open .faq-answer, .emkaro-marketing #faq .faq-row.open .faq-answer, .emkaro-marketing #faq .faq-card.open .faq-answer, .emkaro-marketing #faq .accordion-item.open .faq-answer{display:block}
+
+/* Native FAQ accordion — works without JavaScript */
+.emkaro-marketing #faq .faq{
+  display:block;
+}
+.emkaro-marketing #faq .faq-native{
+  border-bottom:1px solid rgba(83,110,158,.14);
+  margin:0;
+}
+.emkaro-marketing #faq .faq-native:first-child{
+  border-top:1px solid rgba(83,110,158,.14);
+}
+.emkaro-marketing #faq .faq-native > summary{
+  list-style:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:22px 4px;
+  font-weight:700;
+  color:inherit;
+  user-select:none;
+}
+.emkaro-marketing #faq .faq-native > summary::-webkit-details-marker{
+  display:none;
+}
+.emkaro-marketing #faq .faq-question-text{
+  flex:1;
+}
+.emkaro-marketing #faq .faq-plus{
+  width:36px;
+  height:36px;
+  flex:0 0 36px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:rgba(47,99,200,.09);
+  color:#2f63c8;
+  font-size:24px;
+  font-weight:500;
+  line-height:1;
+  transition:transform .2s ease, background .2s ease, color .2s ease;
+}
+.emkaro-marketing #faq .faq-native[open] .faq-plus{
+  transform:rotate(45deg);
+  background:#2f63c8;
+  color:#fff;
+}
+.emkaro-marketing #faq .faq-native-answer{
+  padding:0 56px 22px 0;
+  color:#5f6f8a;
+  line-height:1.65;
+}
+.emkaro-marketing #faq .faq-native-answer p{
+  margin:0;
+}
+@media (max-width:700px){
+  .emkaro-marketing #faq .faq-native > summary{
+    padding:18px 2px;
+  }
+  .emkaro-marketing #faq .faq-native-answer{
+    padding:0 0 18px 0;
+  }
+}
+
+/* Pricing services */
+.emkaro-marketing #pricing .lead{max-width:780px}
+.emkaro-marketing .services-pricing-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:22px;
+  margin-top:34px;
+}
+.emkaro-marketing .service-price-card{
+  position:relative;
+  padding:28px;
+  border-radius:28px;
+  background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(247,250,255,.96));
+  border:1px solid rgba(65,100,165,.12);
+  box-shadow:0 18px 45px rgba(33,72,132,.08);
+  overflow:hidden;
+}
+.emkaro-marketing .service-price-card:after{
+  content:"";
+  position:absolute;
+  width:180px;height:180px;
+  right:-90px;top:-90px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(47,99,200,.10),transparent 68%);
+  pointer-events:none;
+}
+.emkaro-marketing .service-price-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:18px;
+}
+.emkaro-marketing .service-number{
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.12em;
+  color:#2f63c8;
+}
+.emkaro-marketing .service-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:30px;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(47,99,200,.08);
+  color:#2f63c8;
+  font-size:12px;
+  font-weight:700;
+}
+.emkaro-marketing .service-price-card h3{
+  margin:0 0 16px;
+  font-size:24px;
+  line-height:1.2;
+}
+.emkaro-marketing .service-price{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  margin-bottom:4px;
+}
+.emkaro-marketing .service-price strong{
+  font-size:34px;
+  line-height:1;
+  letter-spacing:-.03em;
+}
+.emkaro-marketing .service-price span{
+  padding-bottom:4px;
+  color:#73829c;
+  font-size:14px;
+}
+.emkaro-marketing .service-setup{
+  display:inline-flex;
+  margin:8px 0 4px;
+  padding:8px 11px;
+  border-radius:12px;
+  background:#eef4ff;
+  color:#234f9f;
+  font-weight:700;
+  font-size:14px;
+}
+.emkaro-marketing .service-desc{
+  margin:18px 0 16px;
+  color:#62718b;
+  line-height:1.65;
+}
+.emkaro-marketing .service-features{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  gap:10px;
+}
+.emkaro-marketing .service-features li{
+  position:relative;
+  padding-left:24px;
+  color:#263a5c;
+  line-height:1.45;
+}
+.emkaro-marketing .service-features li:before{
+  content:"✓";
+  position:absolute;
+  left:0;top:0;
+  color:#20a999;
+  font-weight:800;
+}
+.emkaro-marketing .pricing-note{
+  margin-top:24px;
+  padding:22px 24px;
+  border-radius:20px;
+  background:linear-gradient(135deg,#1f4d9f,#2f63c8);
+  color:#fff;
+}
+.emkaro-marketing .pricing-note strong{
+  display:block;
+  margin-bottom:6px;
+  font-size:18px;
+}
+.emkaro-marketing .pricing-note p{
+  margin:0;
+  color:rgba(255,255,255,.84);
+  line-height:1.55;
+}
+@media(max-width:850px){
+  .services-pricing-grid{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .service-price-card{padding:22px;border-radius:22px}
+  .service-price-card h3{font-size:21px}
+  .service-price strong{font-size:30px}
+}
+
+.emkaro-marketing .service-price-card-featured{
+  border:1px solid rgba(32,169,153,.28);
+  background:
+    radial-gradient(circle at 90% 0%,rgba(32,169,153,.10),transparent 34%),
+    linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,252,251,.98));
+}
+.emkaro-marketing .service-price-card-featured .service-badge{
+  background:rgba(32,169,153,.12);
+  color:#158a7e;
+}
+
+/* Expandable service cards — native <details>, no JavaScript */
+.emkaro-marketing .service-price-details{
+  position:relative;
+  border-radius:28px;
+  background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(247,250,255,.96));
+  border:1px solid rgba(65,100,165,.12);
+  box-shadow:0 18px 45px rgba(33,72,132,.08);
+  overflow:hidden;
+  transition:box-shadow .22s ease, transform .22s ease, border-color .22s ease;
+}
+.emkaro-marketing .service-price-details:hover{
+  transform:translateY(-2px);
+  box-shadow:0 24px 56px rgba(33,72,132,.12);
+}
+.emkaro-marketing .service-price-details[open]{
+  border-color:rgba(47,99,200,.22);
+  box-shadow:0 26px 60px rgba(33,72,132,.13);
+}
+.emkaro-marketing .service-card-summary{
+  position:relative;
+  display:block;
+  list-style:none;
+  cursor:pointer;
+  padding:28px;
+  outline:none;
+}
+.emkaro-marketing .service-card-summary::-webkit-details-marker{display:none}
+.emkaro-marketing .service-card-summary::marker{display:none}
+.emkaro-marketing .service-card-summary:after{
+  content:"";
+  position:absolute;
+  width:180px;height:180px;
+  right:-90px;top:-90px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(47,99,200,.10),transparent 68%);
+  pointer-events:none;
+}
+.emkaro-marketing .service-expand-indicator{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-top:18px;
+  padding:9px 13px;
+  border-radius:999px;
+  background:rgba(47,99,200,.08);
+  color:#2f63c8;
+  font-size:13px;
+  font-weight:800;
+  transition:.2s ease;
+}
+.emkaro-marketing .service-expand-indicator:after{
+  content:"＋";
+  font-size:16px;
+  line-height:1;
+}
+.emkaro-marketing .service-price-details[open] .service-expand-indicator{
+  background:#2f63c8;
+  color:#fff;
+}
+.emkaro-marketing .service-price-details[open] .service-expand-indicator:before{
+  content:"Скрыть";
+  font-size:13px;
+}
+.emkaro-marketing .service-price-details[open] .service-expand-indicator{
+  font-size:0;
+}
+.emkaro-marketing .service-price-details[open] .service-expand-indicator:after{
+  content:"−";
+  font-size:18px;
+}
+.emkaro-marketing .service-features-wrap{
+  padding:0 28px 26px;
+  animation:serviceReveal .22s ease;
+}
+.emkaro-marketing .service-features-wrap .service-features{
+  padding-top:18px;
+  border-top:1px solid rgba(65,100,165,.10);
+}
+@keyframes serviceReveal{
+  from{opacity:0;transform:translateY(-6px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* Keep featured base Emkaro styling */
+.emkaro-marketing .service-price-details.service-price-card-featured{
+  border:1px solid rgba(32,169,153,.28);
+  background:
+    radial-gradient(circle at 90% 0%,rgba(32,169,153,.10),transparent 34%),
+    linear-gradient(180deg,rgba(255,255,255,.98),rgba(246,252,251,.98));
+}
+.emkaro-marketing .service-price-details.service-price-card-featured .service-badge{
+  background:rgba(32,169,153,.12);
+  color:#158a7e;
+}
+
+@media(max-width:560px){
+  .service-card-summary{padding:22px}
+  .service-features-wrap{padding:0 22px 22px}
+}
+
+/* Premium product showcase for Emkaro interface */
+.emkaro-marketing #interface{
+  position:relative;
+  overflow:hidden;
+}
+.emkaro-marketing #interface:before{
+  content:"";
+  position:absolute;
+  width:560px;height:560px;
+  left:-220px;top:70px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(48,101,202,.10),transparent 70%);
+  pointer-events:none;
+}
+.emkaro-marketing #interface:after{
+  content:"";
+  position:absolute;
+  width:480px;height:480px;
+  right:-180px;bottom:60px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(33,183,164,.09),transparent 70%);
+  pointer-events:none;
+}
+.emkaro-marketing .css-carousel{
+  position:relative;
+  padding:26px 26px 22px;
+  border-radius:34px;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.96),rgba(242,247,255,.96)),
+    radial-gradient(circle at 20% 10%,rgba(47,99,200,.10),transparent 35%);
+  border:1px solid rgba(62,99,163,.12);
+  box-shadow:
+    0 34px 90px rgba(27,62,119,.14),
+    0 8px 28px rgba(27,62,119,.08);
+}
+.emkaro-marketing .css-carousel:before{
+  content:"";
+  position:absolute;
+  inset:auto 9% 48px 9%;
+  height:90px;
+  background:rgba(44,89,176,.16);
+  filter:blur(50px);
+  border-radius:50%;
+  pointer-events:none;
+}
+.emkaro-marketing .css-browser{
+  position:relative;
+  z-index:2;
+  overflow:hidden;
+  border-radius:26px;
+  background:#fff;
+  border:1px solid rgba(79,108,157,.12);
+  box-shadow:
+    0 30px 70px rgba(16,48,101,.18),
+    0 8px 22px rgba(16,48,101,.10);
+}
+.emkaro-marketing .css-browser-top{
+  height:64px;
+  display:grid !important;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  padding:0 18px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.98),rgba(248,251,255,.98));
+  border-bottom:1px solid rgba(69,99,153,.10);
+}
+.emkaro-marketing .showcase-window-dots{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.emkaro-marketing .showcase-window-dots span{
+  width:10px;height:10px;border-radius:50%;
+  display:block;
+}
+.emkaro-marketing .showcase-window-dots .red{background:#ff6b6b}
+.emkaro-marketing .showcase-window-dots .yellow{background:#f7c948}
+.emkaro-marketing .showcase-window-dots .green{background:#43c59e}
+.emkaro-marketing .showcase-window-brand{
+  justify-self:center;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.emkaro-marketing .showcase-window-logo{
+  width:34px;height:34px;
+  border-radius:10px;
+  display:grid;
+  place-items:center;
+  color:#fff;
+  font-weight:900;
+  background:linear-gradient(145deg,#2f63c8,#214d9d);
+  box-shadow:0 7px 18px rgba(47,99,200,.22);
+}
+.emkaro-marketing .showcase-window-text{
+  display:flex;
+  flex-direction:column;
+  line-height:1.05;
+}
+.emkaro-marketing .showcase-window-text strong{
+  font-size:14px;
+  color:#18325c;
+}
+.emkaro-marketing .showcase-window-text span{
+  margin-top:4px;
+  font-size:10px;
+  color:#8290a7;
+  white-space:nowrap;
+}
+.emkaro-marketing .showcase-window-status{
+  justify-self:end;
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(32,169,153,.09);
+  color:#138a7d;
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.emkaro-marketing .css-slides{
+  position:relative;
+  aspect-ratio:16/9;
+  min-height:360px;
+  background:
+    radial-gradient(circle at 50% 20%,rgba(55,109,205,.08),transparent 45%),
+    #f3f7fd;
+  overflow:hidden;
+  perspective:1400px;
+}
+.emkaro-marketing .css-slide{
+  position:absolute;
+  inset:18px 24px 46px;
+  display:none;
+  overflow:hidden;
+  border-radius:22px;
+  background:#101b2f;
+  box-shadow:
+    0 28px 55px rgba(17,48,97,.18),
+    0 0 0 1px rgba(255,255,255,.9);
+  transform:translateZ(0) rotateX(.65deg);
+  transform-origin:center bottom;
+}
+.emkaro-marketing .css-slide img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+  background:#0e1829;
+  transition:transform .45s ease, filter .45s ease;
+}
+.emkaro-marketing .css-slide:hover img{
+  transform:scale(1.012);
+  filter:saturate(1.03) contrast(1.01);
+}
+.emkaro-marketing .css-slide:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.03),transparent 16%,transparent 78%,rgba(7,21,43,.16));
+}
+.emkaro-marketing .css-slide-label{
+  position:absolute;
+  left:18px;
+  top:16px;
+  bottom:auto;
+  z-index:5;
+  padding:9px 12px;
+  border-radius:999px;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.88);
+  color:#16335f;
+  font-size:12px;
+  font-weight:800;
+  box-shadow:0 8px 22px rgba(20,54,109,.14);
+}
+.emkaro-marketing .showcase-benefit{
+  position:absolute;
+  z-index:5;
+  left:18px;
+  right:18px;
+  bottom:16px;
+  max-width:630px;
+  padding:11px 14px;
+  border-radius:14px;
+  background:rgba(10,25,48,.72);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  color:rgba(255,255,255,.94);
+  font-size:12px;
+  font-weight:600;
+  line-height:1.35;
+  box-shadow:0 10px 30px rgba(7,21,43,.20);
+}
+.emkaro-marketing .css-arrow{
+  width:58px;height:58px;
+  border-radius:50%;
+  border:1px solid rgba(255,255,255,.92);
+  background:rgba(255,255,255,.96);
+  color:#2859b1;
+  box-shadow:0 16px 34px rgba(31,68,133,.18);
+}
+.emkaro-marketing .css-arrow:hover{
+  background:#2f63c8;
+  color:#fff;
+  box-shadow:0 18px 40px rgba(47,99,200,.30);
+}
+.emkaro-marketing .showcase-chips{
+  position:relative;
+  z-index:3;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:18px 0 2px;
+}
+.emkaro-marketing .showcase-chips span{
+  padding:8px 11px;
+  border-radius:999px;
+  border:1px solid rgba(58,92,151,.10);
+  background:rgba(255,255,255,.72);
+  color:#516783;
+  font-size:11px;
+  font-weight:800;
+  box-shadow:0 6px 18px rgba(39,72,126,.05);
+}
+.emkaro-marketing .css-carousel-footer{
+  margin-top:10px;
+}
+.emkaro-marketing .css-dots label{
+  width:7px;height:7px;
+  background:#c6d1e3;
+}
+.emkaro-marketing #emkaro-slide-1:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-1"], .emkaro-marketing #emkaro-slide-2:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-2"], .emkaro-marketing #emkaro-slide-3:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-3"], .emkaro-marketing #emkaro-slide-4:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-4"], .emkaro-marketing #emkaro-slide-5:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-5"], .emkaro-marketing #emkaro-slide-6:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-6"], .emkaro-marketing #emkaro-slide-7:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-7"], .emkaro-marketing #emkaro-slide-8:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-8"], .emkaro-marketing #emkaro-slide-9:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-9"], .emkaro-marketing #emkaro-slide-10:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-10"], .emkaro-marketing #emkaro-slide-11:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-11"], .emkaro-marketing #emkaro-slide-12:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-12"], .emkaro-marketing #emkaro-slide-13:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-13"], .emkaro-marketing #emkaro-slide-14:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-14"], .emkaro-marketing #emkaro-slide-15:checked~.css-carousel-footer .css-dots label[for="emkaro-slide-15"]{
+  width:22px;
+  background:#2f63c8;
+}
+@media(max-width:760px){
+  .css-carousel{
+    padding:14px 10px 18px;
+    border-radius:24px;
+  }
+  .css-browser{
+    border-radius:18px;
+  }
+  .css-browser-top{
+    height:54px;
+    padding:0 12px;
+    grid-template-columns:1fr auto;
+  }
+  .showcase-window-dots{display:none}
+  .showcase-window-brand{
+    justify-self:start;
+  }
+  .showcase-window-status{
+    font-size:9px;
+    padding:6px 8px;
+  }
+  .css-slides{min-height:265px}
+  .css-slide{
+    inset:10px 10px 40px;
+    border-radius:15px;
+  }
+  .showcase-benefit{
+    left:10px;right:10px;bottom:10px;
+    font-size:10px;
+    padding:9px 10px;
+  }
+  .css-slide-label{
+    left:10px;top:10px;
+    font-size:10px;
+    padding:7px 9px;
+  }
+  .showcase-chips{
+    margin-top:14px;
+  }
+}
+
+/* Product-story carousel: turns raw screenshots into layered product renders */
+.emkaro-marketing .story-slide{
+  inset:18px 22px 28px !important;
+  border-radius:24px !important;
+  overflow:hidden !important;
+  background:
+    radial-gradient(circle at 80% 20%,rgba(55,111,221,.15),transparent 28%),
+    radial-gradient(circle at 15% 90%,rgba(38,187,165,.10),transparent 30%),
+    linear-gradient(135deg,#f7faff 0%,#eef4ff 55%,#f8fbff 100%) !important;
+  box-shadow:0 28px 60px rgba(17,48,97,.18),0 0 0 1px rgba(255,255,255,.9) !important;
+  transform:none !important;
+}
+.emkaro-marketing .story-slide:after{display:none!important}
+.emkaro-marketing .story-shell{
+  height:100%;
+  display:grid;
+  grid-template-columns:minmax(250px,.78fr) minmax(0,1.35fr);
+  align-items:center;
+  gap:24px;
+  padding:34px 34px 30px;
+  position:relative;
+}
+.emkaro-marketing .story-copy{
+  position:relative;
+  z-index:5;
+  align-self:center;
+}
+.emkaro-marketing .story-kicker{
+  display:inline-flex;
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(47,99,200,.09);
+  color:#2f63c8;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:14px;
+}
+.emkaro-marketing .story-copy h3{
+  margin:0;
+  max-width:380px;
+  color:#122d55;
+  font-size:clamp(26px,3vw,44px);
+  line-height:1.04;
+  letter-spacing:-.035em;
+}
+.emkaro-marketing .story-copy p{
+  margin:16px 0 0;
+  max-width:410px;
+  color:#667791;
+  font-size:15px;
+  line-height:1.58;
+}
+.emkaro-marketing .story-microchips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:20px;
+}
+.emkaro-marketing .story-microchips span{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:6px 11px;
+  border-radius:999px;
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(58,93,152,.10);
+  color:#385174;
+  font-size:11px;
+  font-weight:800;
+  box-shadow:0 7px 20px rgba(35,70,128,.06);
+}
+.emkaro-marketing .story-visual{
+  position:relative;
+  height:100%;
+  min-height:360px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  perspective:1400px;
+}
+.emkaro-marketing .story-glow{
+  position:absolute;
+  width:74%;
+  height:62%;
+  border-radius:50%;
+  background:rgba(48,101,202,.18);
+  filter:blur(60px);
+  transform:translateY(30px);
+}
+.emkaro-marketing .story-main-panel{
+  position:relative;
+  z-index:3;
+  width:86%;
+  aspect-ratio:16/9;
+  border-radius:22px;
+  overflow:hidden;
+  background:#111d31;
+  transform:rotateY(-7deg) rotateX(2deg) translateX(12px);
+  transform-origin:center;
+  box-shadow:
+    0 38px 70px rgba(18,51,102,.30),
+    0 12px 26px rgba(18,51,102,.15),
+    0 0 0 1px rgba(255,255,255,.78);
+}
+.emkaro-marketing .story-main-panel:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:2;
+  pointer-events:none;
+  background:
+    linear-gradient(115deg,rgba(255,255,255,.10),transparent 22%,transparent 75%,rgba(6,18,34,.12));
+}
+.emkaro-marketing .story-main-panel img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center;
+  display:block;
+  transform:scale(1.02);
+}
+.emkaro-marketing .story-live{
+  position:absolute;
+  left:14px;
+  top:14px;
+  z-index:4;
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(10,23,43,.68);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.04em;
+  box-shadow:0 8px 18px rgba(5,15,30,.20);
+}
+.emkaro-marketing .story-zoom{
+  position:absolute;
+  z-index:5;
+  overflow:hidden;
+  border-radius:18px;
+  background:#fff;
+  border:1px solid rgba(255,255,255,.88);
+  box-shadow:0 24px 48px rgba(23,57,112,.22);
+}
+.emkaro-marketing .story-zoom img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  transform:scale(1.8);
+  display:block;
+}
+.emkaro-marketing .story-zoom-a{
+  width:34%;
+  height:28%;
+  left:2%;
+  bottom:4%;
+  transform:rotate(-5deg);
+}
+.emkaro-marketing .story-zoom-a img{
+  object-position:22% 35%;
+}
+.emkaro-marketing .story-zoom-b{
+  width:31%;
+  height:24%;
+  right:-1%;
+  top:3%;
+  transform:rotate(5deg);
+}
+.emkaro-marketing .story-zoom-b img{
+  object-position:78% 32%;
+}
+.emkaro-marketing .story-stat-card{
+  position:absolute;
+  z-index:6;
+  right:2%;
+  bottom:4%;
+  min-width:145px;
+  padding:12px 14px;
+  border-radius:16px;
+  background:rgba(255,255,255,.88);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.86);
+  box-shadow:0 18px 40px rgba(24,58,115,.17);
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.emkaro-marketing .story-stat-card strong{
+  color:#2355af;
+  font-size:14px;
+}
+.emkaro-marketing .story-stat-card span{
+  color:#7a889e;
+  font-size:10px;
+}
+.emkaro-marketing .story-slide:hover .story-main-panel{
+  transform:rotateY(-4deg) rotateX(1deg) translateX(8px) translateY(-2px);
+  transition:.35s ease;
+}
+.emkaro-marketing .story-slide:hover .story-zoom-a{
+  transform:rotate(-3deg) translateY(-3px);
+  transition:.35s ease;
+}
+.emkaro-marketing .story-slide:hover .story-zoom-b{
+  transform:rotate(3deg) translateY(-3px);
+  transition:.35s ease;
+}
+@media(max-width:900px){
+  .story-shell{
+    grid-template-columns:1fr;
+    gap:12px;
+    padding:24px 22px;
+  }
+  .story-copy{
+    align-self:start;
+  }
+  .story-copy h3{
+    font-size:28px;
+    max-width:none;
+  }
+  .story-copy p{
+    font-size:13px;
+    margin-top:10px;
+    max-width:none;
+  }
+  .story-microchips{margin-top:12px}
+  .story-visual{min-height:260px}
+  .story-main-panel{
+    width:80%;
+    transform:rotateY(-4deg) rotateX(1deg);
+  }
+  .story-zoom-a{width:32%;height:30%;left:0;bottom:0}
+  .story-zoom-b{width:28%;height:26%;right:0;top:0}
+  .story-stat-card{right:1%;bottom:0;min-width:120px}
+}
+@media(max-width:640px){
+  .story-slide{inset:10px 8px 18px!important}
+  .story-shell{
+    padding:18px 16px;
+    grid-template-rows:auto 1fr;
+  }
+  .story-kicker{margin-bottom:8px}
+  .story-copy h3{font-size:23px}
+  .story-copy p{font-size:12px}
+  .story-microchips{display:none}
+  .story-visual{min-height:210px}
+  .story-main-panel{width:88%;border-radius:14px}
+  .story-zoom{
+    border-radius:12px;
+  }
+  .story-stat-card{
+    display:none;
+  }
+}
+
+/* Restored working carousel arrows */
+.emkaro-marketing .story-nav-arrow{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  z-index:50;
+  width:58px;
+  height:58px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  user-select:none;
+  -webkit-user-select:none;
+  background:rgba(255,255,255,.96);
+  color:#2f63c8;
+  border:1px solid rgba(255,255,255,.92);
+  box-shadow:0 16px 38px rgba(28,66,132,.24);
+  font-size:38px;
+  font-weight:400;
+  line-height:1;
+  transition:transform .2s ease, background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.emkaro-marketing .story-nav-arrow:hover{
+  background:#2f63c8;
+  color:#fff;
+  transform:translateY(-50%) scale(1.08);
+  box-shadow:0 20px 44px rgba(47,99,200,.34);
+}
+.emkaro-marketing .story-nav-prev{left:18px}
+.emkaro-marketing .story-nav-next{right:18px}
+.emkaro-marketing .story-nav-arrow:active{
+  transform:translateY(-50%) scale(.96);
+}
+@media(max-width:700px){
+  .story-nav-arrow{
+    width:46px;
+    height:46px;
+    font-size:31px;
+  }
+  .story-nav-prev{left:8px}
+  .story-nav-next{right:8px}
+}
+
+.emkaro-marketing .service-demo-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  min-height:46px;
+  margin-top:18px;
+  padding:12px 16px;
+  border-radius:14px;
+  background:linear-gradient(135deg,#2f63c8,#2454ae);
+  color:#fff !important;
+  text-decoration:none;
+  font-weight:800;
+  font-size:14px;
+  box-shadow:0 12px 26px rgba(47,99,200,.20);
+  transition:transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+.emkaro-marketing .service-demo-btn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 16px 32px rgba(47,99,200,.27);
+  filter:brightness(1.03);
+}
+.emkaro-marketing .service-price strong{
+  line-height:1.08;
+}
+
+/* Theme toggle */
+.emkaro-marketing{
+  color-scheme:light;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell{
+  color-scheme:dark;
+}
+
+.emkaro-marketing .theme-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-left:14px;
+  min-height:42px;
+  padding:8px 13px;
+  border-radius:999px;
+  border:1px solid rgba(52,83,136,.12);
+  background:rgba(255,255,255,.88);
+  color:#244468;
+  font:inherit;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+  box-shadow:0 8px 24px rgba(25,58,112,.08);
+  transition:.2s ease;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.emkaro-marketing .theme-toggle:hover{
+  transform:translateY(-1px);
+  box-shadow:0 12px 28px rgba(25,58,112,.12);
+}
+.emkaro-marketing .theme-toggle-icon{
+  width:24px;height:24px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:rgba(47,99,200,.09);
+  font-size:15px;
+}
+
+/* Dark mode palette */
+.emkaro-marketing #theme-switch:checked ~ .site-shell{
+  background:#0b1220 !important;
+  color:#edf3ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell header, .emkaro-marketing #theme-switch:checked ~ .site-shell nav{
+  background:rgba(10,18,31,.86) !important;
+  border-color:rgba(130,160,210,.12) !important;
+  box-shadow:0 8px 28px rgba(0,0,0,.24) !important;
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell a{
+  color:inherit;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell h1, .emkaro-marketing #theme-switch:checked ~ .site-shell h2, .emkaro-marketing #theme-switch:checked ~ .site-shell h3, .emkaro-marketing #theme-switch:checked ~ .site-shell h4, .emkaro-marketing #theme-switch:checked ~ .site-shell strong{
+  color:#f5f8ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell p, .emkaro-marketing #theme-switch:checked ~ .site-shell .lead, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-desc, .emkaro-marketing #theme-switch:checked ~ .site-shell .faq-native-answer, .emkaro-marketing #theme-switch:checked ~ .site-shell .faq-answer, .emkaro-marketing #theme-switch:checked ~ .site-shell .story-copy p{
+  color:#aebbd0 !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell section{
+  background:transparent !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .eyebrow{
+  color:#78a7ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .btn, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-demo-btn{
+  box-shadow:0 14px 34px rgba(36,87,190,.28) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-toggle{
+  background:rgba(22,34,53,.92);
+  border-color:rgba(133,160,204,.16);
+  color:#eaf1ff;
+  box-shadow:0 10px 28px rgba(0,0,0,.22);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-toggle-icon{
+  background:rgba(120,167,255,.12);
+  color:#9fc0ff;
+}
+
+/* Cards */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .card, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-price-details, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-price-card, .emkaro-marketing #theme-switch:checked ~ .site-shell .faq-native, .emkaro-marketing #theme-switch:checked ~ .site-shell .clinic-card, .emkaro-marketing #theme-switch:checked ~ .site-shell .review-card, .emkaro-marketing #theme-switch:checked ~ .site-shell .feature-card, .emkaro-marketing #theme-switch:checked ~ .site-shell .pricing-note, .emkaro-marketing #theme-switch:checked ~ .site-shell form, .emkaro-marketing #theme-switch:checked ~ .site-shell .security-card{
+  background:linear-gradient(180deg,rgba(20,31,49,.97),rgba(15,24,39,.97)) !important;
+  border-color:rgba(125,154,202,.14) !important;
+  box-shadow:0 22px 52px rgba(0,0,0,.20) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .service-price-details.service-price-card-featured{
+  background:
+    radial-gradient(circle at 90% 0%,rgba(32,169,153,.10),transparent 34%),
+    linear-gradient(180deg,rgba(19,34,48,.98),rgba(14,27,40,.98)) !important;
+  border-color:rgba(49,197,173,.24) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .service-badge, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-setup, .emkaro-marketing #theme-switch:checked ~ .site-shell .story-microchips span, .emkaro-marketing #theme-switch:checked ~ .site-shell .showcase-chips span{
+  background:rgba(106,147,224,.10) !important;
+  color:#9bbcff !important;
+  border-color:rgba(123,159,219,.12) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .service-features li{
+  color:#d9e3f5 !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .pricing-note{
+  background:linear-gradient(135deg,#15376f,#224d9e) !important;
+}
+
+/* Product story / carousel */
+.emkaro-marketing #theme-switch:checked ~ .site-shell #interface:before{
+  background:radial-gradient(circle,rgba(70,123,224,.16),transparent 70%) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #interface:after{
+  background:radial-gradient(circle,rgba(38,187,165,.10),transparent 70%) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .css-carousel{
+  background:
+    linear-gradient(145deg,rgba(18,29,46,.97),rgba(13,22,36,.97)),
+    radial-gradient(circle at 20% 10%,rgba(47,99,200,.16),transparent 35%) !important;
+  border-color:rgba(123,153,205,.14) !important;
+  box-shadow:0 34px 90px rgba(0,0,0,.28),0 8px 28px rgba(0,0,0,.18) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .css-browser{
+  background:#111b2c !important;
+  border-color:rgba(125,154,202,.14) !important;
+  box-shadow:0 30px 70px rgba(0,0,0,.32),0 8px 22px rgba(0,0,0,.18) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .css-browser-top{
+  background:linear-gradient(180deg,rgba(20,31,49,.98),rgba(16,26,42,.98)) !important;
+  border-color:rgba(127,154,200,.12) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .showcase-window-text strong{
+  color:#edf3ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .showcase-window-text span{
+  color:#8fa2c0 !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .showcase-window-status{
+  background:rgba(32,169,153,.11) !important;
+  color:#6ce0d0 !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-slide{
+  background:
+    radial-gradient(circle at 80% 20%,rgba(55,111,221,.16),transparent 28%),
+    radial-gradient(circle at 15% 90%,rgba(38,187,165,.09),transparent 30%),
+    linear-gradient(135deg,#101a2a 0%,#131f33 55%,#0f1928 100%) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-copy h3{
+  color:#f3f7ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-kicker{
+  background:rgba(74,128,228,.12) !important;
+  color:#8db2ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-stat-card{
+  background:rgba(19,30,48,.90) !important;
+  border-color:rgba(130,159,208,.14) !important;
+  box-shadow:0 18px 40px rgba(0,0,0,.24) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-stat-card strong{
+  color:#8fb3ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-stat-card span{
+  color:#96a7c0 !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-nav-arrow, .emkaro-marketing #theme-switch:checked ~ .site-shell .css-arrow{
+  background:rgba(20,31,49,.94) !important;
+  color:#9ab9ff !important;
+  border-color:rgba(126,155,206,.16) !important;
+  box-shadow:0 16px 38px rgba(0,0,0,.28) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .story-nav-arrow:hover, .emkaro-marketing #theme-switch:checked ~ .site-shell .css-arrow:hover{
+  background:#2f63c8 !important;
+  color:#fff !important;
+}
+
+/* Tables */
+.emkaro-marketing #theme-switch:checked ~ .site-shell table{
+  background:#121d2f !important;
+  color:#dfe8f8 !important;
+  border-color:rgba(130,157,202,.14) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell th{
+  background:#17243a !important;
+  color:#edf3ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell td, .emkaro-marketing #theme-switch:checked ~ .site-shell th{
+  border-color:rgba(129,156,199,.12) !important;
+}
+
+/* Inputs */
+.emkaro-marketing #theme-switch:checked ~ .site-shell input, .emkaro-marketing #theme-switch:checked ~ .site-shell textarea, .emkaro-marketing #theme-switch:checked ~ .site-shell select{
+  background:#101a2b !important;
+  color:#edf3ff !important;
+  border-color:rgba(126,155,205,.16) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell input::placeholder, .emkaro-marketing #theme-switch:checked ~ .site-shell textarea::placeholder{
+  color:#71839f !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell label{
+  color:#d9e3f5;
+}
+
+/* FAQ */
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native{
+  border-color:rgba(127,154,199,.12) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-plus{
+  background:rgba(88,132,216,.12) !important;
+  color:#9dbbff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native[open] .faq-plus{
+  background:#2f63c8 !important;
+  color:#fff !important;
+}
+
+/* Misc surfaces */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .showcase-window-logo{
+  box-shadow:0 7px 18px rgba(47,99,200,.30);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell footer{
+  background:#09111d !important;
+  color:#9cadc6 !important;
+  border-color:rgba(127,154,199,.10) !important;
+}
+
+@media(max-width:700px){
+  .theme-toggle-label{display:none}
+  .theme-toggle{
+    width:42px;
+    padding:8px;
+    justify-content:center;
+  }
+}
+
+/* CSS-only theme switch: works even when JavaScript is blocked */
+.emkaro-marketing .theme-switch-input{
+  position:fixed;
+  opacity:0;
+  pointer-events:none;
+  width:1px;
+  height:1px;
+}
+.emkaro-marketing .site-shell{
+  min-height:100vh;
+  background:#fff;
+  color:inherit;
+  transition:background-color .25s ease,color .25s ease;
+}
+.emkaro-marketing .theme-toggle-css{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  margin-left:14px;
+  min-height:42px;
+  padding:8px 13px;
+  border-radius:999px;
+  border:1px solid rgba(52,83,136,.12);
+  background:rgba(255,255,255,.88);
+  color:#244468;
+  font:inherit;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+  box-shadow:0 8px 24px rgba(25,58,112,.08);
+  transition:.2s ease;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  user-select:none;
+}
+.emkaro-marketing .theme-toggle-css:hover{
+  transform:translateY(-1px);
+  box-shadow:0 12px 28px rgba(25,58,112,.12);
+}
+.emkaro-marketing .theme-icon{
+  width:24px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:rgba(47,99,200,.09);
+  font-size:15px;
+}
+.emkaro-marketing .theme-icon-sun, .emkaro-marketing .theme-label-dark{
+  display:none;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-toggle-css{
+  background:rgba(22,34,53,.92);
+  border-color:rgba(133,160,204,.16);
+  color:#eaf1ff;
+  box-shadow:0 10px 28px rgba(0,0,0,.22);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-icon-moon, .emkaro-marketing #theme-switch:checked ~ .site-shell .theme-label-light{
+  display:none;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-icon-sun, .emkaro-marketing #theme-switch:checked ~ .site-shell .theme-label-dark{
+  display:grid;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-label-dark{
+  display:inline;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell{
+  background:#0b1220 !important;
+  color:#edf3ff !important;
+}
+@media(max-width:700px){
+  .theme-label{display:none!important}
+  .theme-toggle-css{
+    width:42px;
+    padding:8px;
+    justify-content:center;
+  }
+}
+
+/* Dark mode refinements requested by user */
+
+/* Secondary buttons: "Наши клиенты", "Посмотреть интерфейс" */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .btn.secondary{
+  background:linear-gradient(180deg,rgba(24,38,61,.96),rgba(17,29,48,.96)) !important;
+  color:#dce8ff !important;
+  border:1px solid rgba(119,153,216,.20) !important;
+  box-shadow:0 10px 26px rgba(0,0,0,.22) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .btn.secondary:hover{
+  background:linear-gradient(180deg,rgba(35,54,84,.98),rgba(24,39,64,.98)) !important;
+  color:#ffffff !important;
+  border-color:rgba(126,164,235,.30) !important;
+  box-shadow:0 14px 30px rgba(0,0,0,.28) !important;
+}
+
+/* "Что получаете" cards */
+.emkaro-marketing #theme-switch:checked ~ .site-shell #benefits .benefit-card{
+  background:
+    radial-gradient(circle at 90% 10%,rgba(69,116,207,.09),transparent 34%),
+    linear-gradient(180deg,rgba(18,29,47,.98),rgba(13,23,38,.98)) !important;
+  border:1px solid rgba(122,151,204,.14) !important;
+  box-shadow:0 18px 44px rgba(0,0,0,.20) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #benefits .benefit-card:hover{
+  background:
+    radial-gradient(circle at 90% 10%,rgba(79,130,226,.13),transparent 34%),
+    linear-gradient(180deg,rgba(23,36,57,.99),rgba(16,27,44,.99)) !important;
+  border-color:rgba(132,166,228,.22) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #benefits .benefit-card .icon{
+  background:linear-gradient(145deg,rgba(40,78,143,.78),rgba(27,54,101,.88)) !important;
+  color:#bcd2ff !important;
+  border:1px solid rgba(120,159,226,.18) !important;
+  box-shadow:0 10px 24px rgba(0,0,0,.18) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #benefits .benefit-card h3{
+  color:#f2f6ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #benefits .benefit-card p{
+  color:#aab8ce !important;
+}
+
+/* Comparison tables overall surface */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card{
+  background:linear-gradient(180deg,rgba(17,28,45,.98),rgba(13,22,36,.98)) !important;
+  border:1px solid rgba(121,150,201,.13) !important;
+  box-shadow:0 22px 52px rgba(0,0,0,.22) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card table{
+  background:transparent !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card th{
+  background:#17243a !important;
+  color:#eef4ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card td{
+  background:rgba(15,25,41,.82) !important;
+  color:#cbd7ea !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card tr:nth-child(even) td{
+  background:rgba(18,30,49,.90) !important;
+}
+
+/* Emkaro columns: darker branded highlight, not pale */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card th.emk{
+  background:
+    linear-gradient(180deg,rgba(34,73,143,.78),rgba(25,56,112,.88)) !important;
+  color:#eef5ff !important;
+  border-left:1px solid rgba(113,159,239,.20) !important;
+  border-right:1px solid rgba(113,159,239,.20) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card td.emk{
+  background:
+    linear-gradient(180deg,rgba(25,54,105,.55),rgba(19,42,83,.62)) !important;
+  color:#dce9ff !important;
+  border-left:1px solid rgba(112,155,229,.14) !important;
+  border-right:1px solid rgba(112,155,229,.14) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card tr:nth-child(even) td.emk{
+  background:
+    linear-gradient(180deg,rgba(29,61,117,.62),rgba(21,46,89,.69)) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card td.emk .yes, .emkaro-marketing #theme-switch:checked ~ .site-shell .table-card th.emk .yes{
+  color:#7ee3cf !important;
+  text-shadow:0 0 16px rgba(83,221,196,.16);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card td.emk.unified{
+  color:#9fc2ff !important;
+  font-weight:800;
+}
+
+/* Brighter checkmarks in comparison tables for dark mode */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card .yes{
+  color:#8fffe6 !important;
+  background:rgba(38,210,174,.16) !important;
+  border-color:rgba(110,255,222,.34) !important;
+  box-shadow:
+    0 0 0 1px rgba(111,255,224,.10),
+    0 0 16px rgba(54,226,192,.28),
+    inset 0 0 12px rgba(92,255,221,.08) !important;
+  text-shadow:0 0 8px rgba(124,255,229,.34) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .table-card td.emk .yes, .emkaro-marketing #theme-switch:checked ~ .site-shell .table-card th.emk .yes{
+  color:#a8ffec !important;
+  background:rgba(48,220,184,.20) !important;
+  border-color:rgba(131,255,229,.42) !important;
+  box-shadow:
+    0 0 0 1px rgba(131,255,229,.12),
+    0 0 18px rgba(63,229,196,.34),
+    inset 0 0 12px rgba(103,255,225,.10) !important;
+}
+
+/* Refined FAQ styling — softer, cleaner in both themes */
+.emkaro-marketing #faq .faq-native{
+  border:0 !important;
+  margin:10px 0 !important;
+  border-radius:18px;
+  overflow:hidden;
+  background:rgba(255,255,255,.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(64,96,150,.08),
+    0 8px 24px rgba(36,69,126,.05);
+  transition:background .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.emkaro-marketing #faq .faq-native:hover{
+  background:rgba(255,255,255,.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(64,96,150,.10),
+    0 12px 30px rgba(36,69,126,.08);
+  transform:translateY(-1px);
+}
+.emkaro-marketing #faq .faq-native[open]{
+  background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(248,251,255,.96));
+  box-shadow:
+    inset 0 0 0 1px rgba(66,105,172,.10),
+    0 16px 34px rgba(36,69,126,.09);
+}
+.emkaro-marketing #faq .faq-native > summary{
+  padding:20px 22px !important;
+  gap:18px;
+}
+.emkaro-marketing #faq .faq-question-text{
+  font-weight:700;
+  color:#1d3559;
+  line-height:1.4;
+}
+.emkaro-marketing #faq .faq-native-answer{
+  padding:0 22px 20px !important;
+  color:#63738f;
+}
+.emkaro-marketing #faq .faq-native-answer p{
+  padding-top:2px;
+}
+
+/* Elegant plus button */
+.emkaro-marketing #faq .faq-plus{
+  width:34px !important;
+  height:34px !important;
+  flex:0 0 34px !important;
+  border-radius:50% !important;
+  background:linear-gradient(180deg,#f4f7fc,#edf2fa) !important;
+  border:1px solid rgba(63,97,154,.10) !important;
+  color:#2d5ebc !important;
+  font-size:0 !important;
+  position:relative;
+  box-shadow:0 6px 16px rgba(41,74,129,.08) !important;
+  transition:background .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease !important;
+}
+.emkaro-marketing #faq .faq-plus:before, .emkaro-marketing #faq .faq-plus:after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:12px;
+  height:2px;
+  border-radius:2px;
+  background:currentColor;
+  transform:translate(-50%,-50%);
+  transition:transform .22s ease, opacity .22s ease;
+}
+.emkaro-marketing #faq .faq-plus:after{
+  transform:translate(-50%,-50%) rotate(90deg);
+}
+.emkaro-marketing #faq .faq-native:hover .faq-plus{
+  background:linear-gradient(180deg,#eef4ff,#e6eefb) !important;
+  border-color:rgba(62,101,170,.16) !important;
+  box-shadow:0 8px 18px rgba(41,74,129,.11) !important;
+}
+.emkaro-marketing #faq .faq-native[open] .faq-plus{
+  background:linear-gradient(135deg,#2f63c8,#2756af) !important;
+  border-color:rgba(47,99,200,.40) !important;
+  color:#fff !important;
+  transform:rotate(180deg);
+  box-shadow:0 8px 18px rgba(47,99,200,.22) !important;
+}
+.emkaro-marketing #faq .faq-native[open] .faq-plus:after{
+  opacity:0;
+}
+
+/* Dark theme FAQ */
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native{
+  background:linear-gradient(180deg,rgba(18,29,47,.84),rgba(15,25,41,.84)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(120,150,205,.08),
+    0 8px 24px rgba(0,0,0,.16) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native:hover{
+  background:linear-gradient(180deg,rgba(22,35,56,.92),rgba(18,30,48,.92)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(128,161,220,.12),
+    0 12px 30px rgba(0,0,0,.22) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native[open]{
+  background:
+    radial-gradient(circle at 92% 10%,rgba(69,116,207,.08),transparent 26%),
+    linear-gradient(180deg,rgba(22,35,56,.98),rgba(16,27,44,.98)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(129,161,219,.12),
+    0 16px 34px rgba(0,0,0,.24) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-question-text{
+  color:#eef4ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native-answer{
+  color:#a9b8cf !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-plus{
+  background:linear-gradient(180deg,rgba(31,46,70,.98),rgba(23,37,58,.98)) !important;
+  border-color:rgba(126,156,211,.12) !important;
+  color:#8fb3ff !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(134,165,218,.03),
+    0 8px 18px rgba(0,0,0,.20) !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native:hover .faq-plus{
+  background:linear-gradient(180deg,rgba(39,58,88,.98),rgba(29,45,69,.98)) !important;
+  border-color:rgba(137,172,232,.18) !important;
+  color:#a7c3ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native[open] .faq-plus{
+  background:linear-gradient(135deg,#3b72dc,#2f63c8) !important;
+  border-color:rgba(111,157,239,.32) !important;
+  color:#fff !important;
+  box-shadow:
+    0 8px 20px rgba(47,99,200,.28),
+    0 0 16px rgba(71,123,224,.16) !important;
+}
+
+@media(max-width:700px){
+  #faq .faq-native{
+    border-radius:16px;
+    margin:8px 0 !important;
+  }
+  #faq .faq-native > summary{
+    padding:18px 16px !important;
+  }
+  #faq .faq-native-answer{
+    padding:0 16px 18px !important;
+  }
+  #faq .faq-plus{
+    width:32px !important;
+    height:32px !important;
+    flex-basis:32px !important;
+  }
+}
+
+/* FAQ plus icon fix — single icon only */
+.emkaro-marketing #faq .faq-plus{
+  font-size:0 !important;
+  color:#2d5ebc !important;
+  position:relative !important;
+}
+.emkaro-marketing #faq .faq-plus::before, .emkaro-marketing #faq .faq-plus::after{
+  content:"" !important;
+  position:absolute !important;
+  left:50% !important;
+  top:50% !important;
+  width:12px !important;
+  height:2px !important;
+  border-radius:999px !important;
+  background:currentColor !important;
+  transform-origin:center !important;
+}
+.emkaro-marketing #faq .faq-plus::before{
+  transform:translate(-50%,-50%) !important;
+}
+.emkaro-marketing #faq .faq-plus::after{
+  transform:translate(-50%,-50%) rotate(90deg) !important;
+}
+.emkaro-marketing #faq .faq-native[open] .faq-plus::after{
+  opacity:0 !important;
+}
+.emkaro-marketing #faq .faq-native[open] .faq-plus::before{
+  transform:translate(-50%,-50%) !important;
+}
+
+/* Dark mode keeps same single-icon construction */
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-plus{
+  color:#8fb3ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native[open] .faq-plus{
+  color:#fff !important;
+}
+
+/* FINAL FAQ ICON FIX:
+   Earlier stylesheet still rendered a second "+" via summary::after.
+   Disable it completely. Only .faq-plus draws the icon. */
+.emkaro-marketing #faq details > summary::after, .emkaro-marketing #faq details[open] > summary::after, .emkaro-marketing #faq .faq-native > summary::after, .emkaro-marketing #faq .faq-native[open] > summary::after{
+  content:none !important;
+  display:none !important;
+  width:0 !important;
+  height:0 !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+/* Exactly one plus icon */
+.emkaro-marketing #faq .faq-plus{
+  position:relative !important;
+  display:grid !important;
+  place-items:center !important;
+  width:34px !important;
+  height:34px !important;
+  flex:0 0 34px !important;
+  font-size:0 !important;
+}
+.emkaro-marketing #faq .faq-plus::before, .emkaro-marketing #faq .faq-plus::after{
+  content:"" !important;
+  position:absolute !important;
+  left:50% !important;
+  top:50% !important;
+  width:12px !important;
+  height:2px !important;
+  border-radius:999px !important;
+  background:currentColor !important;
+  transform-origin:center !important;
+}
+.emkaro-marketing #faq .faq-plus::before{
+  transform:translate(-50%,-50%) !important;
+}
+.emkaro-marketing #faq .faq-plus::after{
+  transform:translate(-50%,-50%) rotate(90deg) !important;
+}
+.emkaro-marketing #faq .faq-native[open] .faq-plus::after{
+  opacity:0 !important;
+}
+
+/* Header theme toggle — icon only, positioned before CTA buttons */
+.emkaro-marketing .theme-toggle-css{
+  width:42px !important;
+  height:42px !important;
+  min-width:42px !important;
+  min-height:42px !important;
+  padding:0 !important;
+  margin-left:0 !important;
+  margin-right:10px !important;
+  justify-content:center !important;
+  gap:0 !important;
+  border-radius:50% !important;
+}
+.emkaro-marketing .theme-toggle-css .theme-icon{
+  width:24px !important;
+  height:24px !important;
+  margin:0 !important;
+}
+.emkaro-marketing .theme-toggle-css .theme-label{
+  display:none !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-toggle-css .theme-icon-moon{
+  display:none !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .theme-toggle-css .theme-icon-sun{
+  display:grid !important;
+}
+.emkaro-marketing #theme-switch:not(:checked) ~ .site-shell .theme-toggle-css .theme-icon-moon{
+  display:grid !important;
+}
+.emkaro-marketing #theme-switch:not(:checked) ~ .site-shell .theme-toggle-css .theme-icon-sun{
+  display:none !important;
+}
+@media(max-width:700px){
+  .theme-toggle-css{
+    width:40px !important;
+    height:40px !important;
+    min-width:40px !important;
+    min-height:40px !important;
+    margin-right:8px !important;
+  }
+}
+
+/* Dark header navigation fix:
+   do not apply header surface styling to the inner nav-links block */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .site-header{
+  background:rgba(10,18,31,.86) !important;
+  border-color:rgba(130,160,210,.12) !important;
+  box-shadow:0 8px 28px rgba(0,0,0,.24) !important;
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+
+.emkaro-marketing #theme-switch:checked ~ .site-shell .site-header .nav-links{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  outline:none !important;
+}
+
+.emkaro-marketing #theme-switch:checked ~ .site-shell .site-header .nav-links a{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  outline:none !important;
+  color:#9dabc2 !important;
+}
+
+.emkaro-marketing #theme-switch:checked ~ .site-shell .site-header .nav-links a:hover{
+  color:#d9e7ff !important;
+}
+
+/* Remove ugly rectangular focus/tap highlight on expandable service cards and FAQ */
+.emkaro-marketing .service-card-summary, .emkaro-marketing #faq .faq-native > summary, .emkaro-marketing .service-demo-btn, .emkaro-marketing .theme-toggle-css, .emkaro-marketing .story-nav-arrow, .emkaro-marketing .css-arrow, .emkaro-marketing .btn, .emkaro-marketing a, .emkaro-marketing button, .emkaro-marketing label{
+  -webkit-tap-highlight-color: transparent;
+}
+
+.emkaro-marketing .service-card-summary, .emkaro-marketing #faq .faq-native > summary{
+  outline:none !important;
+  box-shadow:none !important;
+}
+
+.emkaro-marketing .service-card-summary:focus, .emkaro-marketing .service-card-summary:focus-visible, .emkaro-marketing .service-card-summary:active, .emkaro-marketing #faq .faq-native > summary:focus, .emkaro-marketing #faq .faq-native > summary:focus-visible, .emkaro-marketing #faq .faq-native > summary:active{
+  outline:none !important;
+  box-shadow:none !important;
+  background:transparent !important;
+}
+
+/* Prevent browser/OS focus rectangle from appearing around the full expandable area */
+.emkaro-marketing .service-price-details:focus, .emkaro-marketing .service-price-details:focus-visible, .emkaro-marketing .service-price-details:active, .emkaro-marketing #faq .faq-native:focus, .emkaro-marketing #faq .faq-native:focus-visible, .emkaro-marketing #faq .faq-native:active{
+  outline:none !important;
+}
+
+/* Keep the cards themselves elegant when open */
+.emkaro-marketing .service-price-details[open]{
+  box-shadow:0 26px 60px rgba(33,72,132,.13) !important;
+}
+.emkaro-marketing #faq .faq-native[open]{
+  box-shadow:
+    inset 0 0 0 1px rgba(66,105,172,.10),
+    0 16px 34px rgba(36,69,126,.09) !important;
+}
+
+/* Dark theme: remove any active/focus rectangle there too */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .service-card-summary:focus, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-card-summary:focus-visible, .emkaro-marketing #theme-switch:checked ~ .site-shell .service-card-summary:active, .emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native > summary:focus, .emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native > summary:focus-visible, .emkaro-marketing #theme-switch:checked ~ .site-shell #faq .faq-native > summary:active{
+  outline:none !important;
+  box-shadow:none !important;
+  background:transparent !important;
+}
+
+/* Footer legal information */
+.emkaro-marketing .footer-legal-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);
+  gap:22px;
+  margin-top:28px;
+}
+.emkaro-marketing .footer-operator-card, .emkaro-marketing .footer-legal-card{
+  padding:24px;
+  border-radius:22px;
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(70,101,153,.10);
+  box-shadow:0 12px 30px rgba(31,63,117,.06);
+}
+.emkaro-marketing .footer-operator-card h3, .emkaro-marketing .footer-legal-card h3{
+  margin:0 0 16px;
+  font-size:17px;
+}
+.emkaro-marketing .footer-legal-card p{
+  margin:0 0 16px;
+  line-height:1.55;
+  color:#667791;
+}
+.emkaro-marketing .footer-operator-list{
+  display:grid;
+  grid-template-columns:180px 1fr;
+  gap:9px 16px;
+  margin:0;
+}
+.emkaro-marketing .footer-operator-list dt{
+  color:#73829a;
+  font-size:13px;
+}
+.emkaro-marketing .footer-operator-list dd{
+  margin:0;
+  color:#1c355a;
+  font-weight:650;
+  font-size:13px;
+  line-height:1.45;
+}
+.emkaro-marketing .footer-operator-list a{
+  color:#2f63c8;
+  text-decoration:none;
+}
+.emkaro-marketing .footer-legal-links{
+  display:grid;
+  gap:10px;
+}
+.emkaro-marketing .legal-link{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:#f3f7fd;
+  color:#2856a8 !important;
+  text-decoration:none;
+  font-size:13px;
+  font-weight:800;
+  border:1px solid rgba(67,102,165,.08);
+}
+.emkaro-marketing .legal-link:after{
+  content:"→";
+}
+
+/* Legal documents via :target; no JS required */
+.emkaro-marketing .legal-modal{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+.emkaro-marketing .legal-modal:target{
+  display:flex;
+}
+.emkaro-marketing .legal-modal-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(8,16,29,.62);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+}
+.emkaro-marketing .legal-modal-dialog{
+  position:relative;
+  z-index:1;
+  width:min(920px,96vw);
+  max-height:88vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  border-radius:26px;
+  background:#fff;
+  border:1px solid rgba(80,109,160,.12);
+  box-shadow:0 34px 100px rgba(8,25,57,.30);
+}
+.emkaro-marketing .legal-modal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:22px 24px;
+  border-bottom:1px solid rgba(75,106,158,.10);
+}
+.emkaro-marketing .legal-modal-head h2{
+  margin:0;
+  font-size:24px;
+  line-height:1.15;
+}
+.emkaro-marketing .legal-modal-close{
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#f1f5fb;
+  color:#335b9c !important;
+  font-size:26px;
+  line-height:1;
+  text-decoration:none;
+}
+.emkaro-marketing .legal-modal-content{
+  overflow:auto;
+  padding:24px;
+  color:#475a78;
+  line-height:1.65;
+}
+.emkaro-marketing .legal-modal-content h3{
+  margin:24px 0 10px;
+  color:#18335c;
+  font-size:17px;
+}
+.emkaro-marketing .legal-modal-content h3:first-of-type{margin-top:8px}
+.emkaro-marketing .legal-modal-content p{margin:0 0 12px}
+.emkaro-marketing .legal-modal-content ul{
+  margin:8px 0 16px;
+  padding-left:22px;
+}
+.emkaro-marketing .legal-modal-content li{margin:5px 0}
+.emkaro-marketing .legal-meta{
+  display:inline-block;
+  margin:0 0 14px !important;
+  padding:6px 10px;
+  border-radius:999px;
+  background:#eef4ff;
+  color:#2d5ebc;
+  font-size:12px;
+  font-weight:800;
+}
+
+/* Consent checkbox near demo form */
+.emkaro-marketing .form-legal-consent{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:14px 0 16px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:rgba(47,99,200,.05);
+  border:1px solid rgba(47,99,200,.08);
+}
+.emkaro-marketing .form-legal-consent input{
+  width:18px !important;
+  height:18px !important;
+  min-width:18px;
+  margin:2px 0 0;
+}
+.emkaro-marketing .form-legal-consent label{
+  font-size:12px;
+  line-height:1.5;
+  color:#60718c;
+}
+.emkaro-marketing .form-legal-consent a{
+  color:#2f63c8;
+  font-weight:700;
+}
+
+/* Dark theme */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .footer-operator-card, .emkaro-marketing #theme-switch:checked ~ .site-shell .footer-legal-card{
+  background:linear-gradient(180deg,rgba(18,29,47,.96),rgba(14,24,39,.96));
+  border-color:rgba(128,157,208,.12);
+  box-shadow:0 16px 36px rgba(0,0,0,.18);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .footer-operator-list dt, .emkaro-marketing #theme-switch:checked ~ .site-shell .footer-legal-card p{
+  color:#93a4be;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .footer-operator-list dd{
+  color:#dde7f7;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .legal-link{
+  background:rgba(93,132,205,.09);
+  color:#9dbbff !important;
+  border-color:rgba(124,157,218,.10);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .form-legal-consent{
+  background:rgba(90,130,205,.08);
+  border-color:rgba(121,156,219,.12);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .form-legal-consent label{
+  color:#a9b7cc;
+}
+
+/* Modals sit outside .site-shell, so theme is controlled by checkbox sibling */
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-dialog{
+  background:#101a2b;
+  border-color:rgba(130,160,210,.14);
+  box-shadow:0 34px 100px rgba(0,0,0,.46);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-head{
+  border-color:rgba(128,158,207,.12);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-head h2, .emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-content h3{
+  color:#f1f6ff !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-content{
+  color:#aebbd0;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-close{
+  background:#1c2a42;
+  color:#a9c2f7 !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-meta{
+  background:rgba(84,128,212,.12);
+  color:#9dbbff;
+}
+
+@media(max-width:760px){
+  .footer-legal-grid{grid-template-columns:1fr}
+  .footer-operator-list{grid-template-columns:1fr;gap:2px 0}
+  .footer-operator-list dd{margin-bottom:10px}
+  .legal-modal{padding:10px}
+  .legal-modal-dialog{max-height:92vh;border-radius:20px}
+  .legal-modal-head{padding:18px}
+  .legal-modal-head h2{font-size:20px}
+  .legal-modal-content{padding:18px}
+}
+
+/* Contacts live inside the existing "Контакты" block */
+.emkaro-marketing .contact-operator-info{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+.emkaro-marketing .contact-operator-row{
+  display:grid;
+  grid-template-columns:160px minmax(0,1fr);
+  gap:10px 14px;
+  align-items:start;
+}
+.emkaro-marketing .contact-operator-label{
+  color:#7b8aa2;
+  font-size:12px;
+}
+.emkaro-marketing .contact-operator-value{
+  color:#263d61;
+  font-size:12px;
+  font-weight:650;
+  line-height:1.45;
+}
+.emkaro-marketing .contact-operator-value a{
+  color:#2f63c8;
+  text-decoration:none;
+}
+
+/* Legal links sit inline in the footer, no cards/boxes */
+.emkaro-marketing .footer-inline-legal-links{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 18px;
+  align-items:center;
+}
+.emkaro-marketing .footer-legal-link-inline{
+  color:#5d6d86 !important;
+  text-decoration:none;
+  font-size:12px;
+  font-weight:700;
+}
+.emkaro-marketing .footer-legal-link-inline:hover{
+  color:#2f63c8 !important;
+  text-decoration:underline;
+}
+
+/* Make sure the previously-added bottom boxes can never appear */
+.emkaro-marketing .footer-legal-grid, .emkaro-marketing .footer-operator-card, .emkaro-marketing .footer-legal-card{
+  display:none !important;
+}
+
+.emkaro-marketing #theme-switch:checked ~ .site-shell .contact-operator-label{
+  color:#7f90aa;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .contact-operator-value{
+  color:#d4deee;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .contact-operator-value a{
+  color:#9dbbff;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .footer-legal-link-inline{
+  color:#8fa0ba !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .footer-legal-link-inline:hover{
+  color:#b8ccff !important;
+}
+
+@media(max-width:700px){
+  .contact-operator-row{
+    grid-template-columns:1fr;
+    gap:2px;
+  }
+}
+
+/* HARD FIX: legal document modal opening */
+.emkaro-marketing .legal-modal{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:99999 !important;
+  display:none !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:24px !important;
+}
+.emkaro-marketing .legal-modal:target{
+  display:flex !important;
+}
+.emkaro-marketing .legal-modal-backdrop{
+  position:absolute !important;
+  inset:0 !important;
+  display:block !important;
+  background:rgba(7,14,26,.64) !important;
+  backdrop-filter:blur(8px) !important;
+  -webkit-backdrop-filter:blur(8px) !important;
+}
+.emkaro-marketing .legal-modal-dialog{
+  position:relative !important;
+  z-index:2 !important;
+  width:min(920px,96vw) !important;
+  max-height:88vh !important;
+  overflow:hidden !important;
+  display:flex !important;
+  flex-direction:column !important;
+  border-radius:24px !important;
+  background:#fff !important;
+  border:1px solid rgba(80,109,160,.12) !important;
+  box-shadow:0 34px 100px rgba(8,25,57,.34) !important;
+}
+.emkaro-marketing .legal-modal-content{
+  overflow:auto !important;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal .legal-modal-dialog{
+  background:#101a2b !important;
+}
+.emkaro-marketing .footer-legal-link-inline{
+  cursor:pointer !important;
+}
+
+/* Cookie consent banner — CSS-only, reliable in previews */
+.emkaro-marketing .cookie-consent-toggle{
+  position:fixed;
+  opacity:0;
+  pointer-events:none;
+  width:1px;
+  height:1px;
+}
+.emkaro-marketing .cookie-consent{
+  position:fixed;
+  left:24px;
+  right:24px;
+  bottom:24px;
+  z-index:100000;
+  display:block;
+  animation:cookieIn .35s ease both;
+}
+.emkaro-marketing #cookie-consent-toggle:checked + .cookie-consent{
+  display:none;
+}
+.emkaro-marketing .cookie-consent-inner{
+  width:min(1120px,calc(100vw - 48px));
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:16px;
+  padding:18px 20px;
+  border-radius:22px;
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(70,101,153,.12);
+  box-shadow:
+    0 24px 60px rgba(19,50,102,.18),
+    0 8px 22px rgba(19,50,102,.08);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+.emkaro-marketing .cookie-consent-icon{
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(145deg,#eef4ff,#f8fbff);
+  border:1px solid rgba(70,101,153,.10);
+  font-size:22px;
+}
+.emkaro-marketing .cookie-consent-content strong{
+  display:block;
+  margin-bottom:4px;
+  color:#17345f;
+  font-size:15px;
+}
+.emkaro-marketing .cookie-consent-content p{
+  margin:0;
+  color:#667791;
+  font-size:13px;
+  line-height:1.5;
+}
+.emkaro-marketing .cookie-consent-content a{
+  color:#2f63c8;
+  font-weight:700;
+  text-decoration:none;
+}
+.emkaro-marketing .cookie-consent-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.emkaro-marketing .cookie-btn{
+  min-height:42px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 14px;
+  border-radius:12px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  transition:.2s ease;
+  white-space:nowrap;
+}
+.emkaro-marketing .cookie-btn-primary{
+  background:linear-gradient(135deg,#2f63c8,#2557b4);
+  color:#fff;
+  box-shadow:0 10px 24px rgba(47,99,200,.22);
+}
+.emkaro-marketing .cookie-btn-primary:hover{
+  transform:translateY(-1px);
+  box-shadow:0 14px 30px rgba(47,99,200,.28);
+}
+.emkaro-marketing .cookie-btn-secondary{
+  background:#f2f6fc;
+  color:#34527f;
+  border:1px solid rgba(77,108,160,.10);
+}
+.emkaro-marketing .cookie-btn-secondary:hover{
+  background:#eaf1fb;
+}
+@keyframes cookieIn{
+  from{opacity:0;transform:translateY(16px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* Dark theme */
+.emkaro-marketing #theme-switch:checked ~ .site-shell ~ .legal-modal ~ .cookie-consent, .emkaro-marketing #theme-switch:checked ~ .site-shell + .legal-modal + .legal-modal + .cookie-consent{
+  color:inherit;
+}
+/* direct selector based on checkbox position in body */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .cookie-consent{display:block}
+
+/* Theme-aware cookie banner through :has fallback-independent structure */
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-consent-inner{
+  background:rgba(16,26,43,.95);
+  border-color:rgba(129,160,213,.14);
+  box-shadow:
+    0 26px 70px rgba(0,0,0,.38),
+    0 10px 26px rgba(0,0,0,.20);
+}
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-consent-icon{
+  background:linear-gradient(145deg,#1d2b44,#152238);
+  border-color:rgba(130,160,210,.12);
+}
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-consent-content strong{
+  color:#f2f6ff;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-consent-content p{
+  color:#a9b7cc;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-consent-content a{
+  color:#9dbbff;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-btn-secondary{
+  background:#1b2a43;
+  color:#c7d6ec;
+  border-color:rgba(127,157,211,.14);
+}
+.emkaro-marketing body:has(#theme-switch:checked) .cookie-btn-secondary:hover{
+  background:#223552;
+}
+
+@media(max-width:760px){
+  .cookie-consent{
+    left:12px;
+    right:12px;
+    bottom:12px;
+  }
+  .cookie-consent-inner{
+    width:100%;
+    grid-template-columns:auto 1fr;
+    gap:12px;
+    padding:16px;
+    border-radius:18px;
+  }
+  .cookie-consent-actions{
+    grid-column:1 / -1;
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .cookie-btn{
+    width:100%;
+  }
+}
+
+/* Full legal sections on the site */
+.emkaro-marketing .legal-page-section{
+  padding:76px 0;
+}
+.emkaro-marketing .legal-page-section + .legal-page-section{
+  padding-top:0;
+}
+.emkaro-marketing .legal-page-card{
+  margin-top:24px;
+  padding:32px;
+  border-radius:26px;
+  background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(249,251,255,.96));
+  border:1px solid rgba(72,104,159,.10);
+  box-shadow:0 20px 52px rgba(28,63,120,.08);
+  color:#475a78;
+  line-height:1.68;
+}
+.emkaro-marketing .legal-page-card h3{
+  margin:26px 0 10px;
+  color:#18345d;
+  font-size:18px;
+}
+.emkaro-marketing .legal-page-card h3:first-of-type{margin-top:10px}
+.emkaro-marketing .legal-page-card p{margin:0 0 12px}
+.emkaro-marketing .legal-page-card ul{margin:8px 0 18px;padding-left:22px}
+.emkaro-marketing .legal-page-card li{margin:5px 0}
+.emkaro-marketing .legal-purpose-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  margin:14px 0 20px;
+  overflow:hidden;
+  border-radius:16px;
+  border:1px solid rgba(75,106,158,.10);
+}
+.emkaro-marketing .legal-purpose-table th, .emkaro-marketing .legal-purpose-table td{
+  padding:12px 14px;
+  text-align:left;
+  vertical-align:top;
+  border-bottom:1px solid rgba(75,106,158,.08);
+}
+.emkaro-marketing .legal-purpose-table th{
+  background:#eef4ff;
+  color:#244a88;
+  font-size:13px;
+}
+.emkaro-marketing .legal-purpose-table td{
+  background:#fff;
+  color:#53647f;
+  font-size:13px;
+}
+.emkaro-marketing .legal-purpose-table tr:last-child td{border-bottom:0}
+
+/* Dark theme */
+.emkaro-marketing #theme-switch:checked ~ .site-shell .legal-page-card{
+  background:
+    radial-gradient(circle at 90% 0%,rgba(65,112,205,.07),transparent 30%),
+    linear-gradient(180deg,rgba(18,29,47,.97),rgba(14,24,39,.97));
+  border-color:rgba(126,157,211,.12);
+  box-shadow:0 22px 58px rgba(0,0,0,.22);
+  color:#aebbd0;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .legal-page-card h3{
+  color:#f0f5ff;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .legal-purpose-table{
+  border-color:rgba(127,157,210,.12);
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .legal-purpose-table th{
+  background:#172640;
+  color:#afc8ff;
+}
+.emkaro-marketing #theme-switch:checked ~ .site-shell .legal-purpose-table td{
+  background:#111d30;
+  color:#aebbd0;
+  border-color:rgba(126,156,205,.10);
+}
+@media(max-width:760px){
+  .legal-page-section{padding:56px 0}
+  .legal-page-card{padding:20px;border-radius:20px}
+  .legal-purpose-table{
+    display:block;
+    overflow-x:auto;
+  }
+}
+
+/* Legal documents open only as modal windows */
+.emkaro-marketing .legal-page-section{
+  display:none !important;
+}
+
+.emkaro-marketing .legal-modal{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:100000 !important;
+  display:none !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:20px !important;
+}
+.emkaro-marketing .legal-modal:target{
+  display:flex !important;
+}
+.emkaro-marketing .legal-modal-backdrop{
+  position:absolute !important;
+  inset:0 !important;
+  background:rgba(7,14,26,.66) !important;
+  backdrop-filter:blur(9px) !important;
+  -webkit-backdrop-filter:blur(9px) !important;
+}
+.emkaro-marketing .legal-modal-dialog{
+  position:relative !important;
+  z-index:2 !important;
+  width:min(940px,96vw) !important;
+  max-height:88vh !important;
+  overflow:hidden !important;
+  display:flex !important;
+  flex-direction:column !important;
+  border-radius:26px !important;
+  background:#fff !important;
+  border:1px solid rgba(78,108,160,.12) !important;
+  box-shadow:0 36px 110px rgba(8,25,57,.38) !important;
+}
+.emkaro-marketing .legal-modal-head{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:20px !important;
+  padding:22px 24px !important;
+  border-bottom:1px solid rgba(75,106,158,.10) !important;
+}
+.emkaro-marketing .legal-modal-head h2{
+  margin:0 !important;
+  font-size:24px !important;
+  line-height:1.15 !important;
+}
+.emkaro-marketing .legal-modal-close{
+  width:38px !important;
+  height:38px !important;
+  flex:0 0 38px !important;
+  display:grid !important;
+  place-items:center !important;
+  border-radius:50% !important;
+  background:#f1f5fb !important;
+  color:#335b9c !important;
+  text-decoration:none !important;
+  font-size:26px !important;
+}
+.emkaro-marketing .legal-modal-content{
+  overflow:auto !important;
+  padding:24px !important;
+  color:#475a78 !important;
+  line-height:1.68 !important;
+}
+.emkaro-marketing .legal-modal-content h3{
+  margin:24px 0 10px !important;
+  color:#18345d !important;
+  font-size:18px !important;
+}
+.emkaro-marketing .legal-modal-content p{margin:0 0 12px !important}
+.emkaro-marketing .legal-modal-content ul{margin:8px 0 18px !important;padding-left:22px !important}
+.emkaro-marketing .legal-modal-content li{margin:5px 0 !important}
+.emkaro-marketing .legal-modal-content table{
+  width:100% !important;
+  border-collapse:separate !important;
+  border-spacing:0 !important;
+  margin:14px 0 20px !important;
+  overflow:hidden !important;
+  border-radius:16px !important;
+  border:1px solid rgba(75,106,158,.10) !important;
+}
+.emkaro-marketing .legal-modal-content th, .emkaro-marketing .legal-modal-content td{
+  padding:12px 14px !important;
+  text-align:left !important;
+  vertical-align:top !important;
+  border-bottom:1px solid rgba(75,106,158,.08) !important;
+}
+.emkaro-marketing .legal-modal-content th{
+  background:#eef4ff !important;
+  color:#244a88 !important;
+}
+.emkaro-marketing .legal-modal-content td{
+  background:#fff !important;
+  color:#53647f !important;
+}
+
+/* Dark theme for modal documents */
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-dialog{
+  background:#101a2b !important;
+  border-color:rgba(130,160,210,.14) !important;
+  box-shadow:0 36px 110px rgba(0,0,0,.50) !important;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-head{
+  border-color:rgba(128,158,207,.12) !important;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-head h2, .emkaro-marketing body:has(#theme-switch:checked) .legal-modal-content h3{
+  color:#f1f6ff !important;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-content{
+  color:#aebbd0 !important;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-close{
+  background:#1c2a42 !important;
+  color:#a9c2f7 !important;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-content th{
+  background:#172640 !important;
+  color:#afc8ff !important;
+}
+.emkaro-marketing body:has(#theme-switch:checked) .legal-modal-content td{
+  background:#111d30 !important;
+  color:#aebbd0 !important;
+  border-color:rgba(126,156,205,.10) !important;
+}
+
+@media(max-width:760px){
+  .legal-modal{padding:10px !important}
+  .legal-modal-dialog{max-height:92vh !important;border-radius:20px !important}
+  .legal-modal-head{padding:18px !important}
+  .legal-modal-head h2{font-size:20px !important}
+  .legal-modal-content{padding:18px !important}
+}
+
+/* Consent block in demo form — more rectangular */
+.emkaro-marketing .form-legal-consent{
+  border-radius:8px !important;
+  padding:12px 14px !important;
+}
+.emkaro-marketing .form-legal-consent input{
+  border-radius:4px !important;
+}
+
+/* Consent block correction: full width, original rounding restored */
+.emkaro-marketing .form-legal-consent{
+  width:100% !important;
+  box-sizing:border-box !important;
+  border-radius:14px !important;
+  padding:12px 14px !important;
+}
+.emkaro-marketing .form-legal-consent input{
+  border-radius:initial !important;
+}
+
+/* Slide 7: show the entire screenshot without cropping */
+.emkaro-marketing .story-slide-full-7 .story-screen, .emkaro-marketing .story-slide-full-7 .story-screen-main, .emkaro-marketing .story-slide-full-7 .story-screen-wrap, .emkaro-marketing .story-slide-full-7 .story-visual, .emkaro-marketing .story-slide-full-7 .story-mockup, .emkaro-marketing .story-slide-full-7 .story-shot{
+  overflow:visible !important;
+}
+
+/* Main screenshot on slide 7 — full image, no crop */
+.emkaro-marketing .story-slide-full-7 img{
+  object-fit:contain !important;
+  object-position:center center !important;
+  max-width:100% !important;
+}
+
+/* If the primary screenshot uses a fixed frame, keep it fully visible */
+.emkaro-marketing .story-slide-full-7 .story-screen img, .emkaro-marketing .story-slide-full-7 .story-screen-main img, .emkaro-marketing .story-slide-full-7 .story-shot img, .emkaro-marketing .story-slide-full-7 .story-mockup img{
+  width:100% !important;
+  height:100% !important;
+  object-fit:contain !important;
+  object-position:center center !important;
+}
+
+/* Give slide 7 a little more visual breathing room so the whole interface fits */
+.emkaro-marketing .story-slide-full-7 .story-screen, .emkaro-marketing .story-slide-full-7 .story-screen-main, .emkaro-marketing .story-slide-full-7 .story-shot, .emkaro-marketing .story-slide-full-7 .story-mockup{
+  background:rgba(255,255,255,.98) !important;
+}
+
+/* Prevent zoom/crop helper cards from obscuring the full screenshot on this slide */
+.emkaro-marketing .story-slide-full-7 .story-zoom-card, .emkaro-marketing .story-slide-full-7 .zoom-card, .emkaro-marketing .story-slide-full-7 .story-crop-card, .emkaro-marketing .story-slide-full-7 .story-detail-card{
+  display:none !important;
+}
+
+/* If the screenshot area was transformed in perspective, relax it on slide 7 */
+.emkaro-marketing .story-slide-full-7 .story-screen, .emkaro-marketing .story-slide-full-7 .story-screen-main, .emkaro-marketing .story-slide-full-7 .story-shot, .emkaro-marketing .story-slide-full-7 .story-mockup, .emkaro-marketing .story-slide-full-7 .story-visual{
+  transform:none !important;
+}
+
+/* Mobile: preserve full screenshot */
+@media(max-width:760px){
+  .story-slide-full-7 img{
+    object-fit:contain !important;
+    object-position:center !important;
+  }
+}
+
+/* FIXED — slides 4,5,6,8 show the whole screenshot like slide 7 */
+.emkaro-marketing .story-slide-full-4 .story-visual, .emkaro-marketing .story-slide-full-5 .story-visual, .emkaro-marketing .story-slide-full-6 .story-visual, .emkaro-marketing .story-slide-full-8 .story-visual{
+  overflow:visible !important;
+  transform:none !important;
+}
+
+.emkaro-marketing .story-slide-full-4 img, .emkaro-marketing .story-slide-full-5 img, .emkaro-marketing .story-slide-full-6 img, .emkaro-marketing .story-slide-full-8 img{
+  object-fit:contain !important;
+  object-position:center center !important;
+  max-width:100% !important;
+}
+
+/* Main interface screenshot: no cropping */
+.emkaro-marketing .story-slide-full-4 .story-main-panel img, .emkaro-marketing .story-slide-full-5 .story-main-panel img, .emkaro-marketing .story-slide-full-6 .story-main-panel img, .emkaro-marketing .story-slide-full-8 .story-main-panel img{
+  width:100% !important;
+  height:100% !important;
+  object-fit:contain !important;
+  object-position:center center !important;
+}
+
+/* Keep the same composition as the working 7th slide */
+.emkaro-marketing .story-slide-full-4 .story-main-panel, .emkaro-marketing .story-slide-full-5 .story-main-panel, .emkaro-marketing .story-slide-full-6 .story-main-panel, .emkaro-marketing .story-slide-full-8 .story-main-panel{
+  background:rgba(255,255,255,.98) !important;
+}
+
+/* Do NOT hide slide, copy, navigation, zoom cards or labels */
+.emkaro-marketing .story-slide-full-4, .emkaro-marketing .story-slide-full-5, .emkaro-marketing .story-slide-full-6, .emkaro-marketing .story-slide-full-8{
+  display:block !important;
+}
+
+@media(max-width:760px){
+  .story-slide-full-4 .story-main-panel img,
+  .story-slide-full-5 .story-main-panel img,
+  .story-slide-full-6 .story-main-panel img,
+  .story-slide-full-8 .story-main-panel img{
+    object-fit:contain !important;
+    object-position:center center !important;
+  }
+}
+
+/* CRITICAL CAROUSEL FIX — only the selected slide may be visible */
+.emkaro-marketing .story-slide-full-4, .emkaro-marketing .story-slide-full-5, .emkaro-marketing .story-slide-full-6, .emkaro-marketing .story-slide-full-8{
+  display:none !important;
+}
+
+.emkaro-marketing #emkaro-slide-4:checked ~ .css-browser .css-slides .story-slide-full-4, .emkaro-marketing #emkaro-slide-5:checked ~ .css-browser .css-slides .story-slide-full-5, .emkaro-marketing #emkaro-slide-6:checked ~ .css-browser .css-slides .story-slide-full-6, .emkaro-marketing #emkaro-slide-8:checked ~ .css-browser .css-slides .story-slide-full-8{
+  display:block !important;
+}
+
+/* Убираем маленькие дополнительные фотографии/зум-карточки на ВСЕХ слайдах карусели */
+.emkaro-marketing .story-slide .story-zoom-card, .emkaro-marketing .story-slide .zoom-card, .emkaro-marketing .story-slide .story-crop-card, .emkaro-marketing .story-slide .story-detail-card, .emkaro-marketing .story-slide .story-mini-shot, .emkaro-marketing .story-slide .story-mini-card, .emkaro-marketing .story-slide .story-preview-card, .emkaro-marketing .story-slide .story-preview, .emkaro-marketing .story-slide .story-detail, .emkaro-marketing .story-slide .story-crop{
+  display:none !important;
+}
+
+/* Основной скриншот остаётся главным визуальным элементом */
+.emkaro-marketing .story-slide .story-main-panel, .emkaro-marketing .story-slide .story-screen, .emkaro-marketing .story-slide .story-screen-main, .emkaro-marketing .story-slide .story-shot, .emkaro-marketing .story-slide .story-mockup{
+  z-index:2 !important;
+}
+
+/* Remove all small auxiliary screenshots from every carousel slide */
+.emkaro-marketing .story-slide .story-zoom, .emkaro-marketing .story-slide .story-zoom-a, .emkaro-marketing .story-slide .story-zoom-b{
+  display:none !important;
+}
+
+/* Разводим стрелки карусели дальше к краям, чтобы не перекрывали содержимое */
+.emkaro-marketing .story-nav-arrow, .emkaro-marketing .css-arrow{
+  top:50% !important;
+  transform:translateY(-50%) !important;
+}
+
+.emkaro-marketing .story-nav-prev, .emkaro-marketing .css-arrow-prev{
+  left:-34px !important;
+}
+
+.emkaro-marketing .story-nav-next, .emkaro-marketing .css-arrow-next{
+  right:-34px !important;
+}
+
+/* На широких экранах — ещё чуть дальше */
+@media(min-width:1100px){
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:-46px !important;
+  }
+
+  .story-nav-next,
+  .css-arrow-next{
+    right:-46px !important;
+  }
+}
+
+/* На планшетах и мобильных — ближе к краю, чтобы не уехать за экран */
+@media(max-width:900px){
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:-18px !important;
+  }
+
+  .story-nav-next,
+  .css-arrow-next{
+    right:-18px !important;
+  }
+}
+
+/* FIX: стрелки должны быть полностью видны и максимально разведены по краям */
+.emkaro-marketing .story-nav-arrow, .emkaro-marketing .css-arrow{
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:54px !important;
+  height:54px !important;
+  min-width:54px !important;
+  min-height:54px !important;
+  border-radius:50% !important;
+  z-index:50 !important;
+  overflow:visible !important;
+}
+
+/* Вместо отрицательных координат держим стрелки внутри рамки карусели */
+.emkaro-marketing .story-nav-prev, .emkaro-marketing .css-arrow-prev{
+  left:14px !important;
+}
+
+.emkaro-marketing .story-nav-next, .emkaro-marketing .css-arrow-next{
+  right:14px !important;
+}
+
+/* На больших экранах — у самых краёв, но целиком внутри */
+@media(min-width:1100px){
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:18px !important;
+  }
+
+  .story-nav-next,
+  .css-arrow-next{
+    right:18px !important;
+  }
+}
+
+/* На планшетах/iPad */
+@media(max-width:1099px){
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:10px !important;
+  }
+
+  .story-nav-next,
+  .css-arrow-next{
+    right:10px !important;
+  }
+}
+
+/* На мобильных чуть компактнее */
+@media(max-width:600px){
+  .story-nav-arrow,
+  .css-arrow{
+    width:46px !important;
+    height:46px !important;
+    min-width:46px !important;
+    min-height:46px !important;
+  }
+
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:8px !important;
+  }
+
+  .story-nav-next,
+  .css-arrow-next{
+    right:8px !important;
+  }
+}
+
+/* FIX: reserve side gutters for carousel arrows so they never cover text or screenshots */
+.emkaro-marketing .story-shell{
+  padding-left:92px !important;
+  padding-right:92px !important;
+  box-sizing:border-box !important;
+}
+
+/* arrows stay fully visible in their own side gutters */
+.emkaro-marketing .story-nav-prev, .emkaro-marketing .css-arrow-prev{
+  left:18px !important;
+}
+.emkaro-marketing .story-nav-next, .emkaro-marketing .css-arrow-next{
+  right:18px !important;
+}
+
+/* iPad / tablet */
+@media(max-width:1100px){
+  .story-shell{
+    padding-left:82px !important;
+    padding-right:82px !important;
+  }
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:14px !important;
+  }
+  .story-nav-next,
+  .css-arrow-next{
+    right:14px !important;
+  }
+}
+
+/* mobile */
+@media(max-width:700px){
+  .story-shell{
+    padding-left:62px !important;
+    padding-right:62px !important;
+  }
+  .story-nav-prev,
+  .css-arrow-prev{
+    left:8px !important;
+  }
+  .story-nav-next,
+  .css-arrow-next{
+    right:8px !important;
+  }
+}
+
+/* ALL CAROUSEL IMAGES: fully visible and completely static */
+.emkaro-marketing .story-slide .story-main-panel{
+  transform:none !important;
+  transition:none !important;
+  perspective:none !important;
+  overflow:hidden !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  background:#111d31 !important;
+}
+
+.emkaro-marketing .story-slide .story-main-panel img{
+  width:100% !important;
+  height:100% !important;
+  max-width:100% !important;
+  max-height:100% !important;
+  object-fit:contain !important;
+  object-position:center center !important;
+  transform:none !important;
+  transition:none !important;
+  animation:none !important;
+}
+
+/* Disable all hover movement */
+.emkaro-marketing .story-slide:hover .story-main-panel, .emkaro-marketing .story-slide:active .story-main-panel, .emkaro-marketing .story-slide:focus-within .story-main-panel{
+  transform:none !important;
+  transition:none !important;
+}
+
+/* Keep visual container static as well */
+.emkaro-marketing .story-slide .story-visual{
+  transform:none !important;
+  transition:none !important;
+  perspective:none !important;
+}
+
+/* Any remaining image elements inside carousel stay static */
+.emkaro-marketing .story-slide img{
+  animation:none !important;
+  transition:none !important;
+}
+
+/* Preserve removed small screenshots */
+.emkaro-marketing .story-slide .story-zoom, .emkaro-marketing .story-slide .story-zoom-a, .emkaro-marketing .story-slide .story-zoom-b{
+  display:none !important;
+}
+
+/* Tablet / mobile: same behavior */
+@media(max-width:1100px){
+  .story-slide .story-main-panel img{
+    object-fit:contain !important;
+    object-position:center center !important;
+    transform:none !important;
+  }
+}
+
+/* Carousel cleanup — remove decorative labels/chips from all slides */
+.emkaro-marketing .story-slide .story-live, .emkaro-marketing .story-slide .story-microchips, .emkaro-marketing .story-slide .story-stat-card, .emkaro-marketing .showcase-chips{
+  display:none !important;
+}
+
+/* Carousel cleanup: remove faux browser chrome and excessive empty space */
+.emkaro-marketing .css-browser-bar, .emkaro-marketing .story-browser-bar, .emkaro-marketing .browser-bar, .emkaro-marketing .story-window-bar, .emkaro-marketing .story-toolbar, .emkaro-marketing .showcase-toolbar, .emkaro-marketing .css-browser .window-controls, .emkaro-marketing .css-browser .system-status, .emkaro-marketing .css-browser .browser-brand, .emkaro-marketing .css-browser .online-badge{
+  display:none !important;
+}
+
+/* Tighten the carousel vertically */
+.emkaro-marketing .css-browser{
+  padding-top:0 !important;
+  min-height:0 !important;
+}
+
+.emkaro-marketing .css-slides{
+  min-height:0 !important;
+}
+
+.emkaro-marketing .story-slide{
+  min-height:0 !important;
+  padding-top:34px !important;
+  padding-bottom:34px !important;
+}
+
+.emkaro-marketing .story-shell{
+  min-height:0 !important;
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+}
+
+/* Pull content up and reduce bottom dead space */
+.emkaro-marketing .story-content, .emkaro-marketing .story-copy, .emkaro-marketing .story-visual{
+  margin-top:0 !important;
+  margin-bottom:0 !important;
+}
+
+.emkaro-marketing .story-slide .story-visual{
+  align-self:center !important;
+}
+
+/* Keep main screenshot comfortably large but centered */
+.emkaro-marketing .story-slide .story-main-panel{
+  margin-top:0 !important;
+  margin-bottom:0 !important;
+}
+
+/* Reduce vertical gap before carousel dots */
+.emkaro-marketing .css-dots, .emkaro-marketing .story-dots, .emkaro-marketing .carousel-dots{
+  margin-top:14px !important;
+}
+
+/* Tablet/iPad */
+@media(max-width:1100px){
+  .story-slide{
+    padding-top:26px !important;
+    padding-bottom:26px !important;
+  }
+}
+
+/* Mobile */
+@media(max-width:700px){
+  .story-slide{
+    padding-top:20px !important;
+    padding-bottom:20px !important;
+  }
+}
+
+/* REAL COMPACTION: reduce the actual carousel height, not just inner padding */
+.emkaro-marketing .css-slides{
+  aspect-ratio:auto !important;
+  height:clamp(470px,40vw,590px) !important;
+  min-height:0 !important;
+}
+
+/* slide occupies almost all of that reduced height */
+.emkaro-marketing .story-slide, .emkaro-marketing .css-slide.story-slide{
+  inset:8px 22px 14px !important;
+  min-height:0 !important;
+}
+
+/* content fills the slide without large empty bands */
+.emkaro-marketing .story-shell{
+  height:100% !important;
+  min-height:0 !important;
+  padding-top:18px !important;
+  padding-bottom:18px !important;
+  align-items:center !important;
+}
+
+/* image zone should not force extra vertical space */
+.emkaro-marketing .story-visual{
+  height:100% !important;
+  min-height:0 !important;
+  align-items:center !important;
+}
+
+/* make the main screenshot larger inside the now shorter slide */
+.emkaro-marketing .story-main-panel{
+  width:92% !important;
+  max-height:88% !important;
+  margin:0 !important;
+}
+
+/* prevent hidden decorative layers from creating perceived top/bottom air */
+.emkaro-marketing .story-glow{
+  width:68% !important;
+  height:54% !important;
+  transform:none !important;
+}
+
+/* dots sit closer to the slide */
+.emkaro-marketing .css-dots, .emkaro-marketing .story-dots, .emkaro-marketing .carousel-dots{
+  margin-top:8px !important;
+}
+
+/* iPad / tablet */
+@media(max-width:1100px){
+  .css-slides{
+    height:500px !important;
+  }
+  .story-slide,
+  .css-slide.story-slide{
+    inset:6px 14px 12px !important;
+  }
+  .story-shell{
+    padding-top:14px !important;
+    padding-bottom:14px !important;
+  }
+  .story-main-panel{
+    width:94% !important;
+    max-height:90% !important;
+  }
+}
+
+/* phone */
+@media(max-width:700px){
+  .css-slides{
+    height:430px !important;
+  }
+  .story-shell{
+    padding-top:12px !important;
+    padding-bottom:12px !important;
+  }
+}
+
+.emkaro-marketing .brand{cursor:pointer}
+.emkaro-marketing .demo-form textarea{
+  min-height:88px;
+  width:100%;
+  resize:vertical;
+}
+
+/* ===== Mobile polish (phones) — overrides conflicting carousel/nav rules ===== */
+@media (max-width:700px){
+  .emkaro-marketing{
+    overflow-x:clip;
+  }
+
+  .emkaro-marketing .demo-form input,
+  .emkaro-marketing .demo-form textarea{
+    font-size:16px; /* iOS: avoid auto-zoom on focus */
+    min-height:48px;
+    border-radius:12px;
+  }
+
+  .emkaro-marketing .demo-form .consent{
+    align-items:flex-start;
+    gap:10px;
+    font-size:13px;
+    line-height:1.45;
+  }
+
+  .emkaro-marketing .demo-form .consent input{
+    width:20px;
+    height:20px;
+    min-height:20px;
+    margin-top:2px;
+    flex-shrink:0;
+  }
+
+  .emkaro-marketing .demo-form button[type="submit"],
+  .emkaro-marketing .demo-form .btn{
+    width:100%;
+    min-height:50px;
+  }
+
+  .emkaro-marketing .css-carousel{
+    padding:12px 8px 14px !important;
+    border-radius:20px !important;
+  }
+
+  .emkaro-marketing .css-slides{
+    height:auto !important;
+    min-height:0 !important;
+  }
+
+  .emkaro-marketing .story-slide,
+  .emkaro-marketing .css-slide.story-slide{
+    position:relative !important;
+    inset:auto !important;
+    display:none !important;
+    padding:0 !important;
+    border-radius:16px !important;
+  }
+
+  .emkaro-marketing #emkaro-slide-1:checked ~ .css-browser .css-slides .s1,
+  .emkaro-marketing #emkaro-slide-2:checked ~ .css-browser .css-slides .s2,
+  .emkaro-marketing #emkaro-slide-3:checked ~ .css-browser .css-slides .s3,
+  .emkaro-marketing #emkaro-slide-4:checked ~ .css-browser .css-slides .s4,
+  .emkaro-marketing #emkaro-slide-5:checked ~ .css-browser .css-slides .s5,
+  .emkaro-marketing #emkaro-slide-6:checked ~ .css-browser .css-slides .s6,
+  .emkaro-marketing #emkaro-slide-7:checked ~ .css-browser .css-slides .s7,
+  .emkaro-marketing #emkaro-slide-8:checked ~ .css-browser .css-slides .s8,
+  .emkaro-marketing #emkaro-slide-9:checked ~ .css-browser .css-slides .s9,
+  .emkaro-marketing #emkaro-slide-10:checked ~ .css-browser .css-slides .s10,
+  .emkaro-marketing #emkaro-slide-11:checked ~ .css-browser .css-slides .s11,
+  .emkaro-marketing #emkaro-slide-12:checked ~ .css-browser .css-slides .s12,
+  .emkaro-marketing #emkaro-slide-13:checked ~ .css-browser .css-slides .s13,
+  .emkaro-marketing #emkaro-slide-14:checked ~ .css-browser .css-slides .s14,
+  .emkaro-marketing #emkaro-slide-15:checked ~ .css-browser .css-slides .s15{
+    display:block !important;
+  }
+
+  .emkaro-marketing .story-shell{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:12px !important;
+    height:auto !important;
+    min-height:0 !important;
+    padding:14px 12px 56px !important;
+    align-items:stretch !important;
+  }
+
+  .emkaro-marketing .story-copy h3{
+    font-size:clamp(20px,5.6vw,24px) !important;
+  }
+
+  .emkaro-marketing .story-copy p{
+    font-size:13px !important;
+    margin-top:8px !important;
+  }
+
+  .emkaro-marketing .story-visual{
+    min-height:0 !important;
+    height:auto !important;
+  }
+
+  .emkaro-marketing .story-main-panel{
+    width:100% !important;
+    max-height:none !important;
+    aspect-ratio:16 / 10;
+    border-radius:14px !important;
+  }
+
+  .emkaro-marketing .story-nav-arrow,
+  .emkaro-marketing .css-arrow{
+    top:auto !important;
+    bottom:10px !important;
+    transform:none !important;
+    width:44px !important;
+    height:44px !important;
+    min-width:44px !important;
+    min-height:44px !important;
+    font-size:22px !important;
+  }
+
+  .emkaro-marketing .story-nav-prev,
+  .emkaro-marketing .css-arrow-prev{
+    left:12px !important;
+  }
+
+  .emkaro-marketing .story-nav-next,
+  .emkaro-marketing .css-arrow-next{
+    right:12px !important;
+  }
+
+  .emkaro-marketing .css-carousel-footer{
+    margin-top:8px !important;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .emkaro-marketing .css-dots{
+    flex-wrap:wrap;
+    justify-content:center;
+    max-width:100%;
+    row-gap:6px;
+  }
+
+  .emkaro-marketing .css-dots label{
+    min-width:8px;
+    min-height:8px;
+  }
+
+  .emkaro-marketing .footer-inline-legal-links,
+  .emkaro-marketing .footer-links{
+    gap:8px;
+  }
+
+  .emkaro-marketing .footer-links a{
+    min-height:40px;
+    display:inline-flex;
+    align-items:center;
+  }
+
+  .emkaro-marketing .contact-operator-row{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:2px;
+  }
+
+  .emkaro-marketing .menu-btn{
+    font-size:22px;
+  }
+}
+
+@media (max-width:420px){
+  .emkaro-marketing .eyebrow{
+    font-size:12px;
+    padding:6px 10px;
+  }
+
+  .emkaro-marketing .service-price-card,
+  .emkaro-marketing .service-price-details{
+    padding:18px !important;
+    border-radius:18px !important;
+  }
+
+  .emkaro-marketing .service-price strong{
+    font-size:26px !important;
+  }
+}
+
+/* Safe area for notched phones (cookie + sticky header breathing room) */
+@supports (padding: max(0px)){
+  .emkaro-marketing .site-header{
+    padding-left:max(0px, env(safe-area-inset-left));
+    padding-right:max(0px, env(safe-area-inset-right));
+  }
+}

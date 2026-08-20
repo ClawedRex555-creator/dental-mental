@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -62,6 +62,10 @@ import { getPatientDebtAmount } from "@/lib/patient-balance";
 import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
 import { deletePatientViaCommandApi } from "@/lib/clinic-patient.client";
 import {
+  setPatientTeethViaCommandApi,
+  upsertPatientFileViaCommandApi,
+} from "@/lib/clinic-snapshot-command.client";
+import {
   markClinicSyncedAfterCommand,
   notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
@@ -120,6 +124,8 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const showPhone = canViewPatientPhone(currentUser.role);
   const patientName = getFullName(patient.firstName, patient.lastName, patient.middleName);
   const [deleting, setDeleting] = useState(false);
+  const teethSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousTeethJson = useRef<string | null>(null);
 
   const handleDeletePatient = () => {
     if (
@@ -159,6 +165,74 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
     })();
   };
 
+  const persistTeeth = () => {
+    beginClinicCommandMutation();
+    void (async () => {
+      try {
+        const latestTeeth = useClinicStore.getState().getPatientTeeth(patient.id);
+        const api = await setPatientTeethViaCommandApi(patient.id, latestTeeth);
+        if (!api.ok) {
+          if (previousTeethJson.current) {
+            try {
+              const rollback = JSON.parse(previousTeethJson.current) as typeof latestTeeth;
+              runWithoutClinicFlush(() => {
+                updateTeeth(patient.id, rollback);
+              });
+            } catch {
+              // ignore rollback parse errors
+            }
+          }
+          toast.error(api.error ?? "Не удалось сохранить зубную карту на сервере");
+          return;
+        }
+        previousTeethJson.current = null;
+        markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+        useClinicStore.getState().pauseClinicAutoSave(15_000);
+        notifyClinicDataChanged();
+      } finally {
+        endClinicCommandMutation();
+      }
+    })();
+  };
+
+  const scheduleTeethPersist = () => {
+    if (teethSaveTimer.current) clearTimeout(teethSaveTimer.current);
+    teethSaveTimer.current = setTimeout(() => {
+      teethSaveTimer.current = null;
+      persistTeeth();
+    }, 600);
+  };
+
+  const handleTeethUpdate = (nextTeeth: ReturnType<typeof getPatientTeeth>) => {
+    if (!previousTeethJson.current) {
+      previousTeethJson.current = JSON.stringify(useClinicStore.getState().getPatientTeeth(patient.id));
+    }
+    runWithoutClinicFlush(() => {
+      updateTeeth(patient.id, nextTeeth);
+    });
+    scheduleTeethPersist();
+  };
+
+  const savePatientFile = async (file: PatientFile) => {
+    beginClinicCommandMutation();
+    try {
+      const api = await upsertPatientFileViaCommandApi(file);
+      if (!api.ok) {
+        toast.error(api.error ?? "Не удалось сохранить файл на сервере");
+        return false;
+      }
+      runWithoutClinicFlush(() => {
+        addPatientFile(file);
+      });
+      markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+      useClinicStore.getState().pauseClinicAutoSave(15_000);
+      notifyClinicDataChanged();
+      return true;
+    } finally {
+      endClinicCommandMutation();
+    }
+  };
+
   useEffect(() => {
     logAuditClient({
       action: "view",
@@ -166,6 +240,16 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
       resourceId: patient.id,
     });
   }, [patient.id]);
+
+  useEffect(
+    () => () => {
+      if (teethSaveTimer.current) {
+        clearTimeout(teethSaveTimer.current);
+        teethSaveTimer.current = null;
+      }
+    },
+    []
+  );
 
   /** Старые карточки: галочка была, а записи в истории ещё нет */
   useEffect(() => {
@@ -609,7 +693,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
           )}
         </div>
       )}
-      {tab === "teeth" && <DentalChart teeth={teeth} onUpdate={(u) => updateTeeth(patient.id, u)} />}
+      {tab === "teeth" && <DentalChart teeth={teeth} onUpdate={handleTeethUpdate} />}
       {tab === "plans" && (
         <>
           <Button
@@ -774,8 +858,8 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   void readFileAsDataUrl(file)
-                    .then((dataUrl) => {
-                      addPatientFile({
+                    .then(async (dataUrl) => {
+                      await savePatientFile({
                         id: `pf_${Date.now()}`,
                         patientId: patient.id,
                         name: file.name,

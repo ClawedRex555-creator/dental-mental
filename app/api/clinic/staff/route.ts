@@ -6,10 +6,15 @@ import { assertClinicHost } from "@/lib/assert-clinic-host";
 import { findAuthUserByUserIdDb } from "@/lib/clinic-db.server";
 import { verifySameOrigin } from "@/lib/csrf-origin";
 import { isDatabaseEnabled } from "@/lib/db";
-import { removeStaffFromClinicSnapshot } from "@/lib/clinic-data-db.server";
+import {
+  getClinicDataDbWithLegacyStaff,
+  removeStaffFromClinicSnapshot,
+} from "@/lib/clinic-data-db.server";
 import { removeAuthAccountByStaffId } from "@/lib/auth-accounts-server";
-import { deleteStaffDb, listStaffDb, upsertStaffDb } from "@/lib/staff-db.server";
+import { deleteStaffDb, upsertStaffDb } from "@/lib/staff-db.server";
 import type { Doctor } from "@/lib/types";
+import { applyUpsertDoctorToPersistedState } from "@/lib/apply-clinic-snapshot-commands";
+import { saveAppointmentCommandResult } from "@/lib/clinic-appointment-command.server";
 
 async function requireStaffSession(
   request: Request
@@ -69,8 +74,16 @@ export async function GET(request: Request) {
   const revoked = await ensureFreshAccountSession(session);
   if (revoked) return revoked;
 
-  const staff = await listStaffDb(session.clinicId);
-  return NextResponse.json({ staff, database: true });
+  const snapshot = await getClinicDataDbWithLegacyStaff(session.clinicId);
+  if (!snapshot) {
+    return NextResponse.json({ staff: [], database: true, updatedAt: null, revision: null });
+  }
+  return NextResponse.json({
+    staff: snapshot.data.doctors,
+    database: true,
+    updatedAt: snapshot.updatedAt,
+    revision: snapshot.revision,
+  });
 }
 
 export async function POST(request: Request) {
@@ -103,13 +116,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Некорректные данные сотрудника" }, { status: 400 });
   }
 
+  const response = await saveAppointmentCommandResult(session.clinicId, (state) => {
+    const applied = applyUpsertDoctorToPersistedState(state, doctor);
+    if (!applied.ok) return applied;
+    return {
+      ok: true,
+      state: applied.state,
+      appointmentId: applied.entityId,
+      alreadyApplied: applied.alreadyApplied,
+    };
+  });
   try {
-    await upsertStaffDb(session.clinicId, doctor);
-    return NextResponse.json({ ok: true, id: doctor.id });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Не удалось сохранить";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const payload = (await response.clone().json()) as { ok?: boolean };
+    if (payload?.ok) {
+      await upsertStaffDb(session.clinicId, doctor).catch(() => undefined);
+    }
+  } catch {
+    // ignore parse errors, keep command API response
   }
+  return response;
 }
 
 export async function DELETE(request: Request) {
@@ -136,8 +161,9 @@ export async function DELETE(request: Request) {
   }
 
   try {
+    let snapshotResult: Awaited<ReturnType<typeof removeStaffFromClinicSnapshot>> | null = null;
     try {
-      await removeStaffFromClinicSnapshot(session.clinicId, staffId);
+      snapshotResult = await removeStaffFromClinicSnapshot(session.clinicId, staffId);
     } catch (snapErr) {
       const message =
         snapErr instanceof Error ? snapErr.message : "Ошибка обновления снимка клиники";
@@ -152,7 +178,11 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
     await deleteStaffDb(session.clinicId, staffId);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      updatedAt: snapshotResult?.updatedAt ?? null,
+      revision: snapshotResult?.revision ?? null,
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Не удалось удалить";
     return NextResponse.json({ error: message }, { status: 500 });

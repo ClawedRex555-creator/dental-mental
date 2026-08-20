@@ -65,6 +65,98 @@ describe("mergeClinicDataOnWriteConflict", () => {
     );
   });
 
+  it("keeps server payment on overlap and keeps client-only payment on write-conflict", () => {
+    const base = createFreshPersistedState();
+    const act: WorkAct = {
+      id: "wa-1",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-08-19",
+      actNumber: "0009-08/2026",
+      actType: "services",
+      items: [],
+      subtotalAmount: 1500,
+      discountType: "percent",
+      discount: 0,
+      totalAmount: 1500,
+      createdAt: "2026-08-19",
+      paymentStatus: "paid",
+    };
+    const serverPayment = {
+      id: "pay-1",
+      patientId: "p1",
+      amount: 1500,
+      method: "card" as const,
+      status: "paid" as const,
+      date: "2026-08-19",
+      workActId: "wa-1",
+    };
+    const staleClientPayment = {
+      ...serverPayment,
+      amount: 100,
+      method: "cash" as const,
+    };
+    const newClientPayment = {
+      ...serverPayment,
+      id: "pay-2",
+      amount: 700,
+    };
+    const existing = { ...base, workActs: [act], payments: [serverPayment] };
+    const incoming = {
+      ...base,
+      workActs: [act],
+      payments: [staleClientPayment, newClientPayment],
+    };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    const kept = merged.payments.find((p) => p.id === "pay-1");
+    assert.equal(kept?.amount, 1500);
+    assert.equal(kept?.method, "card");
+    assert.equal(merged.payments.some((p) => p.id === "pay-2"), true);
+  });
+
+  it("keeps server work-act financial state on overlap and keeps client-only work-act", () => {
+    const base = createFreshPersistedState();
+    const serverAct: WorkAct = {
+      id: "wa-1",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-08-19",
+      actNumber: "0010-08/2026",
+      actType: "services",
+      items: [{ id: "i1", serviceName: "Пломба", quantity: 1, price: 2000, total: 2000 }],
+      subtotalAmount: 2000,
+      discountType: "percent",
+      discount: 0,
+      totalAmount: 2000,
+      createdAt: "2026-08-19",
+      paymentStatus: "paid",
+      submittedToAdmin: true,
+    };
+    const staleClientAct: WorkAct = {
+      ...serverAct,
+      items: [],
+      paymentStatus: "pending",
+      submittedToAdmin: false,
+    };
+    const newClientAct: WorkAct = {
+      ...serverAct,
+      id: "wa-2",
+      actNumber: "0011-08/2026",
+      paymentStatus: "pending",
+      submittedToAdmin: false,
+    };
+    const existing = { ...base, workActs: [serverAct] };
+    const incoming = { ...base, workActs: [staleClientAct, newClientAct] };
+
+    const merged = mergeClinicDataOnWriteConflict(existing, incoming);
+    const kept = merged.workActs.find((act) => act.id === "wa-1");
+    assert.equal(kept?.paymentStatus, "paid");
+    assert.equal(kept?.submittedToAdmin, true);
+    assert.equal(kept?.items.length, 1);
+    assert.equal(merged.workActs.some((act) => act.id === "wa-2"), true);
+  });
+
   it("keeps client ready_for_payment when server still lags after act submit", () => {
     const base = createFreshPersistedState();
     const appointment: Appointment = {
@@ -456,6 +548,55 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(patient?.lastName, "Свежая");
   });
 
+  it("non-conflict PUT keeps server service (stale client must not wipe command write)", () => {
+    const base = createFreshPersistedState();
+    const serverService: Service = {
+      id: "srv-1",
+      name: "Новое название",
+      category: "Хирургия",
+      price: 5000,
+      active: true,
+    };
+    const clientService: Service = {
+      ...serverService,
+      name: "Старое название",
+      category: "Терапия",
+    };
+    const existing = { ...base, services: [serverService] };
+    const incoming = { ...base, services: [clientService] };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    const service = merged.services.find((s) => s.id === "srv-1");
+    assert.equal(service?.name, "Новое название");
+    assert.equal(service?.category, "Хирургия");
+  });
+
+  it("non-conflict PUT keeps server legal document title/file over stale client", () => {
+    const base = createFreshPersistedState();
+    const serverDoc = {
+      id: "legal-1",
+      title: "Новый договор",
+      category: "Договоры",
+      date: "2026-08-15",
+      fileDataUrl: "data:application/pdf;base64,AAAA",
+      fileName: "new.pdf",
+    };
+    const clientDoc = {
+      ...serverDoc,
+      title: "Старый договор",
+      fileDataUrl: "data:application/pdf;base64,BBBB",
+      fileName: "old.pdf",
+    };
+    const existing = { ...base, legalDocuments: [serverDoc] };
+    const incoming = { ...base, legalDocuments: [clientDoc] };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    const doc = merged.legalDocuments.find((d) => d.id === "legal-1");
+    assert.equal(doc?.title, "Новый договор");
+    assert.equal(doc?.fileName, "new.pdf");
+    assert.equal(doc?.fileDataUrl, "data:application/pdf;base64,AAAA");
+  });
+
   it("non-conflict PUT still accepts brand-new patient from client", () => {
     const base = createFreshPersistedState();
     const serverPatient = {
@@ -670,5 +811,94 @@ describe("mergeClinicDataOnWriteConflict", () => {
     const afterStale = mergeClinicDataForSave(saved, staleClient);
     assert.equal(afterStale.doctors.some((d) => d.id === "doc1"), false);
     assert.equal(afterStale.deletedDoctorIds?.includes("doc1"), true);
+  });
+
+  it("non-conflict PUT keeps server clinic settings over stale client payload", () => {
+    const base = createFreshPersistedState();
+    const existing = {
+      ...base,
+      clinicSettings: {
+        ...base.clinicSettings,
+        name: "Серверная клиника",
+      },
+    };
+    const incoming = {
+      ...base,
+      clinicSettings: {
+        ...base.clinicSettings,
+        name: "Старая вкладка",
+      },
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.clinicSettings.name, "Серверная клиника");
+  });
+
+  it("non-conflict PUT keeps server staff on overlap and preserves client-only new staff", () => {
+    const base = createFreshPersistedState();
+    const serverDoctor = {
+      id: "doc-1",
+      name: "Серверный врач",
+      specialization: "Терапия",
+      phone: "",
+      email: "doc1@example.com",
+      cabinet: "—",
+      commissionPercent: 20,
+      status: "active" as const,
+      role: "doctor" as const,
+    };
+    const staleDoctor = {
+      ...serverDoctor,
+      name: "Устаревшее имя",
+      commissionPercent: 10,
+    };
+    const clientOnlyDoctor = {
+      ...serverDoctor,
+      id: "doc-2",
+      name: "Новый локальный",
+      email: "doc2@example.com",
+    };
+    const existing = { ...base, doctors: [serverDoctor] };
+    const incoming = { ...base, doctors: [staleDoctor, clientOnlyDoctor] };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    const keptServer = merged.doctors.find((d) => d.id === "doc-1");
+    assert.equal(keptServer?.name, "Серверный врач");
+    assert.equal(keptServer?.commissionPercent, 20);
+    assert.equal(merged.doctors.some((d) => d.id === "doc-2"), true);
+  });
+
+  it("non-conflict PUT keeps server doctor schedule over stale client with same-day updatedAt", () => {
+    const base = createFreshPersistedState();
+    const serverSchedule = {
+      doctorId: "doc-1",
+      month: "2026-08",
+      days: {
+        "2026-08-21": { working: true, startTime: "11:00", endTime: "20:00" },
+      },
+      updatedAt: "2026-08-21T10:00:00.000Z",
+    };
+    const staleClient = {
+      doctorId: "doc-1",
+      month: "2026-08",
+      days: {
+        "2026-08-21": { working: false, startTime: "10:00", endTime: "19:00" },
+      },
+      updatedAt: "2026-08-21",
+    };
+    const existing = { ...base, doctorSchedules: [serverSchedule] };
+    const incoming = { ...base, doctorSchedules: [staleClient] };
+    const merged = mergeClinicDataForSave(existing, incoming);
+    const kept = merged.doctorSchedules.find(
+      (s) => s.doctorId === "doc-1" && s.month === "2026-08"
+    );
+    assert.equal(
+      (kept?.days["2026-08-21"] as { working: boolean }).working,
+      true
+    );
+    assert.equal(
+      (kept?.days["2026-08-21"] as { startTime: string }).startTime,
+      "11:00"
+    );
   });
 });

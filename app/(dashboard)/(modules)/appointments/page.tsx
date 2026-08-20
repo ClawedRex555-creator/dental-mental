@@ -50,6 +50,7 @@ import {
   WEEKDAY_SHORT,
 } from "@/lib/constants";
 import { cn, getFullName } from "@/lib/utils";
+import { partnerBookingBadgeLabel } from "@/lib/partner-clinic";
 import { useClinicStore } from "@/store/useClinicStore";
 import type { Appointment } from "@/lib/types";
 
@@ -432,6 +433,7 @@ export default function AppointmentsPage() {
                           linkedAct,
                           payments
                         );
+                        const partnerLabel = partnerBookingBadgeLabel(apt);
                         return (
                           <button
                             key={apt.id}
@@ -442,11 +444,15 @@ export default function AppointmentsPage() {
                               getScheduleAppointmentCellClass(apt, linkedAct, payments)
                             )}
                             title={
-                              doctor
-                                ? `${apt.startTime} · ${doctor.name} · ${statusLabel}${
-                                    linkedAct ? ` · Акт № ${linkedAct.actNumber}` : ""
-                                  }`
-                                : `${apt.startTime} · ${statusLabel}`
+                              [
+                                doctor
+                                  ? `${apt.startTime} · ${doctor.name} · ${statusLabel}`
+                                  : `${apt.startTime} · ${statusLabel}`,
+                                linkedAct ? `Акт № ${linkedAct.actNumber}` : "",
+                                partnerLabel ?? "",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")
                             }
                           >
                             {apt.startTime}{" "}
@@ -457,6 +463,7 @@ export default function AppointmentsPage() {
                                   patient.middleName
                                 )
                               : "Без пациента"}
+                            {partnerLabel ? ` · ${partnerLabel}` : ""}
                             {linkedAct ? ` · №${linkedAct.actNumber}` : ""}
                           </button>
                         );
@@ -494,7 +501,9 @@ export default function AppointmentsPage() {
               doctorSchedules={doctorSchedules}
               onSlotClick={(date, time, doctorId) => openNew(date, time, doctorId)}
               onAppointmentClick={openEdit}
-              onActClick={(actId) => setViewActId(actId)}
+              onActClick={
+                currentUser.role === "partner" ? undefined : (actId) => setViewActId(actId)
+              }
             />
           )}
         </>

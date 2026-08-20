@@ -76,6 +76,8 @@ export function parseAppointmentPayload(raw: unknown): Appointment | null {
     isOtherClinicVisit: b.isOtherClinicVisit === true ? true : undefined,
     externalClaimId: asOptionalString(b.externalClaimId),
     externalSource: asOptionalString(b.externalSource),
+    bookedByPartner: b.bookedByPartner === true ? true : undefined,
+    partnerClinicName: asOptionalString(b.partnerClinicName),
   };
 }
 

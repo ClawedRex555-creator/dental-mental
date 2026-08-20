@@ -97,29 +97,66 @@ export async function inspectLegalDocx(dataUrl: string): Promise<InspectLegalDoc
 }
 
 export type FillLegalDocxResult =
-  | { ok: true; html: string; filledCount: number; placeholderCount: number }
+  | {
+      ok: true;
+      html: string;
+      bodyHtml: string;
+      filledCount: number;
+      placeholderCount: number;
+    }
   | { ok: false; error: string; placeholders?: string[] };
 
-function wrapDocxPrintHtml(bodyHtml: string, title: string): string {
+const DOCX_PRINT_STYLES = `
+    body { font-family: "Times New Roman", Times, serif; font-size: 14px; line-height: 1.4; color: #111; margin: 16mm 14mm; }
+    p { margin: 0 0 10px; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; }
+    .doc-block { margin: 0 0 8px; }
+    .doc-block + .doc-block { break-before: page; page-break-before: always; }
+    .doc-block-title { font-size: 15px; font-weight: bold; margin: 0 0 12px; text-align: center; }
+    img { max-width: 100%; }
+    @media print { body { margin: 12mm 10mm; } }
+`;
+
+export function wrapDocxPrintHtml(
+  bodyHtml: string,
+  title: string,
+  options?: { autoPrint?: boolean }
+): string {
   const safeTitle = escapeHtml(title);
+  const autoPrint = options?.autoPrint !== false;
+  const printScript = autoPrint
+    ? `<script>window.onload = () => { try { window.focus(); window.print(); } catch (e) {} };</script>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="utf-8"/>
   <title>${safeTitle}</title>
-  <style>
-    body { font-family: "Times New Roman", Times, serif; font-size: 14px; line-height: 1.4; color: #111; margin: 16mm 14mm; }
-    p { margin: 0 0 10px; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; }
-    @media print { body { margin: 12mm 10mm; } }
-  </style>
+  <style>${DOCX_PRINT_STYLES}</style>
 </head>
 <body>
 ${bodyHtml}
-<script>window.onload = () => window.print();</script>
+${printScript}
 </body>
 </html>`;
+}
+
+/** Несколько DOCX/HTML-секций в один документ с разрывом страниц */
+export function wrapCombinedLegalPrintHtml(
+  sections: { title: string; bodyHtml: string }[],
+  documentTitle = "Документы",
+  options?: { autoPrint?: boolean }
+): string {
+  const blocks = sections
+    .map(
+      (s) =>
+        `<section class="doc-block"><h2 class="doc-block-title">${escapeHtml(s.title)}</h2>${s.bodyHtml}</section>`
+    )
+    .join("\n");
+  return wrapDocxPrintHtml(blocks, documentTitle, {
+    autoPrint: options?.autoPrint !== false,
+  });
 }
 
 /** Заполняет DOCX плейсхолдерами {patient_full_name} и конвертирует в HTML для печати */
@@ -173,9 +210,11 @@ export async function fillLegalDocxToPrintHtml(
       arrayBuffer: filledBuffer,
     });
 
+    const bodyHtml = mammothResult.value;
     return {
       ok: true,
-      html: wrapDocxPrintHtml(mammothResult.value, title),
+      bodyHtml,
+      html: wrapDocxPrintHtml(bodyHtml, title),
       filledCount,
       placeholderCount: inspection.placeholderCount,
     };

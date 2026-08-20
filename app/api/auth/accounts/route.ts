@@ -16,6 +16,7 @@ const ASSIGNABLE_ROLES: UserRole[] = [
   "doctor",
   "assistant",
   "accountant",
+  "partner",
 ];
 
 async function requireAdminSession() {
