@@ -16,7 +16,6 @@ interface FormState {
   contactName: string;
   phone: string;
   email: string;
-  desiredSlug: string;
   message: string;
   pdConsent: boolean;
   marketingConsent: boolean;
@@ -27,7 +26,6 @@ const EMPTY_FORM: FormState = {
   contactName: "",
   phone: "",
   email: "",
-  desiredSlug: "",
   message: "",
   pdConsent: false,
   marketingConsent: false,
@@ -63,7 +61,6 @@ export function ConnectionRequestForm({
           contactName: form.contactName,
           phone: form.phone,
           email: form.email,
-          desiredSlug: form.desiredSlug,
           message: form.message,
           pdConsent: form.pdConsent,
           marketingConsent: form.marketingConsent,
@@ -131,17 +128,7 @@ export function ConnectionRequestForm({
             onChange={(e) => update("email", e.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor="desiredSlug">Желаемый адрес клиники</label>
-          <input
-            id="desiredSlug"
-            name="desiredSlug"
-            placeholder="например tstom"
-            value={form.desiredSlug}
-            onChange={(e) => update("desiredSlug", e.target.value.toLowerCase())}
-          />
-        </div>
-        <div className="field">
+        <div className="field full">
           <label htmlFor="message">Комментарий</label>
           <textarea
             id="message"
@@ -217,11 +204,6 @@ export function ConnectionRequestForm({
           required
         />
       </div>
-      <Input
-        placeholder="Желаемый адрес (например ulybka)"
-        value={form.desiredSlug}
-        onChange={(e) => update("desiredSlug", e.target.value.toLowerCase())}
-      />
       <textarea
         className="min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-teal-500 transition focus:ring-2"
         placeholder="Комментарий (опционально)"

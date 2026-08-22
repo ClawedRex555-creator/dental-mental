@@ -32,7 +32,12 @@ import {
   resolveAssistantRecord,
 } from "@/lib/assistant-utils";
 import { getDoctorsInCabinet } from "@/lib/cabinet-utils";
-import { isDoctorWorkingOnDate, needsScheduleReminder, formatScheduleMonthLabel } from "@/lib/clinic-schedule";
+import {
+  isDoctorWorkingOnDate,
+  missingDoctorSchedulesForMonth,
+  needsScheduleReminder,
+  formatScheduleMonthLabel,
+} from "@/lib/clinic-schedule";
 import {
   isAppointmentActive,
   isAppointmentInDateRange,
@@ -109,12 +114,27 @@ export default function AppointmentsPage() {
     [appointments, selectedId]
   );
 
-  const scheduleDate =
-    effectiveView === "day" ? format(currentDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-
   const scheduleReminder = useMemo(
     () => needsScheduleReminder(doctorSchedules, allDoctors.map((d) => d.id)),
     [doctorSchedules, allDoctors]
+  );
+
+  const visibleMonthKey = useMemo(() => {
+    if (effectiveView === "month") return format(currentDate, "yyyy-MM");
+    if (effectiveView === "week") {
+      return format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM");
+    }
+    return format(currentDate, "yyyy-MM");
+  }, [effectiveView, currentDate]);
+
+  const missingCurrentMonthSchedules = useMemo(
+    () =>
+      missingDoctorSchedulesForMonth(
+        doctorSchedules,
+        allDoctors.map((d) => d.id),
+        visibleMonthKey
+      ),
+    [doctorSchedules, allDoctors, visibleMonthKey]
   );
 
   const filtered = useMemo(() => {
@@ -163,6 +183,11 @@ export default function AppointmentsPage() {
     );
   }, [filtered, rangeStart, rangeEnd]);
 
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [currentDate]);
+
   const gridDoctors = useMemo(() => {
     if (isAssistant) {
       return getDoctorsFromAssistantAppointments(rangeAppointments, doctors);
@@ -174,15 +199,17 @@ export default function AppointmentsPage() {
       const inCabinet = getDoctorsInCabinet(cabinetFilter, doctors, cabinets);
       list = inCabinet.length > 0 ? inCabinet : [];
     }
-    if (effectiveView !== "day") return list;
-    const dayDoctorIds = new Set(
-      rangeAppointments
-        .filter((a) => isAppointmentOnCalendarDay(a, currentDate) && a.doctorId)
-        .map((a) => a.doctorId as string)
+    if (effectiveView === "month") return list;
+    const visibleDays = effectiveView === "day" ? [currentDate] : weekDays;
+    const rangeDoctorIds = new Set(
+      rangeAppointments.filter((a) => a.doctorId).map((a) => a.doctorId as string)
     );
     return list.filter(
       (d) =>
-        isDoctorWorkingOnDate(d.id, scheduleDate, doctorSchedules) || dayDoctorIds.has(d.id)
+        rangeDoctorIds.has(d.id) ||
+        visibleDays.some((day) =>
+          isDoctorWorkingOnDate(d.id, format(day, "yyyy-MM-dd"), doctorSchedules)
+        )
     );
   }, [
     isAssistant,
@@ -193,9 +220,9 @@ export default function AppointmentsPage() {
     cabinetFilter,
     cabinets,
     doctorSchedules,
-    scheduleDate,
     effectiveView,
     currentDate,
+    weekDays,
   ]);
 
   const goToDate = (value: string) => {
@@ -214,11 +241,6 @@ export default function AppointmentsPage() {
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 });
     return Array.from({ length: 42 }, (_, i) => addDays(start, i));
-  }, [currentDate]);
-
-  const weekDays = useMemo(() => {
-    const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [currentDate]);
 
   const openNew = (date?: string, time?: string, doctorId?: string) => {
@@ -284,6 +306,20 @@ export default function AppointmentsPage() {
           </Button>
         )}
       </div>
+
+      {missingCurrentMonthSchedules && !isAssistant && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="py-3 text-sm text-amber-900">
+            Не заполнен график на{" "}
+            <strong>
+              {formatScheduleMonthLabel(missingCurrentMonthSchedules.month)}
+            </strong>
+            : укажите смены в разделе <strong>«Сотрудники»</strong> (
+            {missingCurrentMonthSchedules.missingDoctorIds.length} врач(ей) без
+            графика). Пока график не задан, действует стандартное окно 10:00–19:00.
+          </CardContent>
+        </Card>
+      )}
 
       {scheduleReminder && !isAssistant && (
         <Card className="border-amber-300 bg-amber-50">

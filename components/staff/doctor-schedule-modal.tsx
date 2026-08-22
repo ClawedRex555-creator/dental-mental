@@ -133,10 +133,26 @@ export function DoctorScheduleModal({
 
   const handleSave = async () => {
     if (!doctor) return;
+    // Если указали только время смены и не кликали дни — всё равно сохраняем
+    // полный месяц рабочими, иначе запись в расписании оказывается недоступна.
+    let daysToSave = days;
+    if (Object.keys(daysToSave).length === 0) {
+      const next: Record<string, DoctorShiftDay> = {};
+      monthDays.forEach((d) => {
+        const dateStr = format(d, "yyyy-MM-dd");
+        next[dateStr] = {
+          working: true,
+          startTime: defaultStart,
+          endTime: defaultEnd,
+        };
+      });
+      daysToSave = next;
+      setDays(next);
+    }
     const schedule = {
       doctorId: doctor.id,
       month,
-      days,
+      days: daysToSave,
       // ISO: иначе при merge «день = день» stale PUT откатывает график.
       updatedAt: new Date().toISOString(),
     };

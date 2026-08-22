@@ -152,9 +152,36 @@ export function getDoctorShiftForDate(
   const mk = dateStr.slice(0, 7);
   const entry = schedules.find((s) => s.doctorId === doctorId && s.month === mk);
   if (!entry) {
+    // График на месяц не задан — сетка 10–19 как раньше.
     return { working: true, startTime: DEFAULT_SHIFT_START, endTime: DEFAULT_SHIFT_END };
   }
+  // День явно не отмечен: считаем рабочим с дефолтными часами (как в форме графика).
+  // Явный выходной / смена — только если день есть в days.
   return normalizeShiftDay(entry.days[dateStr]);
+}
+
+export function hasDoctorMonthSchedule(
+  doctorId: string,
+  dateStrOrMonth: string,
+  schedules: DoctorMonthSchedule[]
+): boolean {
+  const mk = dateStrOrMonth.slice(0, 7);
+  return schedules.some((s) => s.doctorId === doctorId && s.month === mk);
+}
+
+/** Врачи без графика на указанный месяц (yyyy-MM или любая дата этого месяца). */
+export function missingDoctorSchedulesForMonth(
+  schedules: DoctorMonthSchedule[],
+  doctorIds: string[],
+  monthOrDate: string
+): { month: string; missingDoctorIds: string[] } | null {
+  if (doctorIds.length === 0) return null;
+  const month = monthOrDate.slice(0, 7);
+  const missing = doctorIds.filter(
+    (id) => !schedules.some((s) => s.doctorId === id && s.month === month)
+  );
+  if (missing.length === 0) return null;
+  return { month, missingDoctorIds: missing };
 }
 
 export function isDoctorWorkingOnDate(

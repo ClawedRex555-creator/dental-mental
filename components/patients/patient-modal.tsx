@@ -164,7 +164,8 @@ export function PatientModal({
   const [fields, setFields] = useState(emptyPatientFields);
   const [appointmentFields, setAppointmentFields] = useState(emptyAppointmentFields);
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
-  const [withoutDocuments, setWithoutDocuments] = useState(false);
+  const [withoutSnils, setWithoutSnils] = useState(false);
+  const [withoutPassport, setWithoutPassport] = useState(false);
   const [debtAmount, setDebtAmount] = useState("");
   const [duplicateMatch, setDuplicateMatch] = useState<PatientDuplicateMatch | null>(null);
   const [saving, setSaving] = useState(false);
@@ -208,11 +209,21 @@ export function PatientModal({
     setDocErrors({});
     setDuplicateMatch(null);
     if (patient) {
-      const hasDocs =
-        Boolean(digitsOnly(patient.snils ?? "")) ||
+      setWithoutSnils(
+        patient.withoutSnils ??
+          (patient.withoutIdentityDocuments ? true : undefined) ??
+          !digitsOnly(patient.snils ?? "")
+      );
+      const hasPassport =
         Boolean(digitsOnly(patient.passportSeries ?? "")) ||
-        Boolean(digitsOnly(patient.passportNumber ?? ""));
-      setWithoutDocuments(patient.withoutIdentityDocuments ?? !hasDocs);
+        Boolean(digitsOnly(patient.passportNumber ?? "")) ||
+        Boolean(digitsOnly(patient.birthCertificateSeries ?? "")) ||
+        Boolean(digitsOnly(patient.birthCertificateNumber ?? ""));
+      setWithoutPassport(
+        patient.withoutPassport ??
+          (patient.withoutIdentityDocuments ? true : undefined) ??
+          !hasPassport
+      );
       setFields({
         firstName: patient.firstName,
         lastName: patient.lastName,
@@ -247,7 +258,8 @@ export function PatientModal({
       const debt = getPatientDebtAmount(patient.balance);
       setDebtAmount(debt > 0 ? String(debt) : "");
     } else {
-      setWithoutDocuments(false);
+      setWithoutSnils(false);
+      setWithoutPassport(false);
       setDebtAmount("");
       setFields(emptyPatientFields());
       const schedule = initialAppointmentSchedule;
@@ -293,13 +305,15 @@ export function PatientModal({
       if (!phoneCheck.valid) errors.phone = phoneCheck.message!;
     }
 
-    if (!isPartner && !withoutDocuments) {
+    if (!isPartner && !withoutSnils) {
       const snilsDigits = digitsOnly(fields.snils);
       if (!fields.isChild || snilsDigits) {
         const snilsCheck = validateSnils(fields.snils);
         if (!snilsCheck.valid) errors.snils = snilsCheck.message!;
       }
+    }
 
+    if (!isPartner && !withoutPassport) {
       if (fields.isChild) {
         const bcSeriesCheck = validateBirthCertificateSeries(fields.birthCertificateSeries);
         if (!bcSeriesCheck.valid) errors.birthCertificateSeries = bcSeriesCheck.message!;
@@ -370,54 +384,56 @@ export function PatientModal({
       source: fields.source,
       status,
       address: isPartner ? undefined : fields.address.trim() || undefined,
-      withoutIdentityDocuments: isPartner || withoutDocuments,
+      withoutIdentityDocuments: isPartner || (withoutSnils && withoutPassport) || undefined,
+      withoutSnils: isPartner || withoutSnils || undefined,
+      withoutPassport: isPartner || withoutPassport || undefined,
       snils:
-        isPartner || withoutDocuments || !digitsOnly(fields.snils)
+        isPartner || withoutSnils || !digitsOnly(fields.snils)
           ? undefined
           : formatSnils(fields.snils),
       passportSeries:
-        isPartner || withoutDocuments || fields.isChild
+        isPartner || withoutPassport || fields.isChild
           ? undefined
           : formatPassportSeries(fields.passportSeries),
       passportNumber:
-        isPartner || withoutDocuments || fields.isChild
+        isPartner || withoutPassport || fields.isChild
           ? undefined
           : formatPassportNumber(fields.passportNumber),
       passportIssuedBy:
-        isPartner || withoutDocuments || fields.isChild
+        isPartner || withoutPassport || fields.isChild
           ? undefined
           : fields.passportIssuedBy.trim() || undefined,
       passportIssuedAt:
-        isPartner || withoutDocuments || fields.isChild || !fields.passportIssuedAt
+        isPartner || withoutPassport || fields.isChild || !fields.passportIssuedAt
           ? undefined
           : fields.passportIssuedAt,
       passportIssuerCode:
-        isPartner || withoutDocuments || fields.isChild
+        isPartner || withoutPassport || fields.isChild
           ? undefined
           : formatPassportIssuerCode(fields.passportIssuerCode) || undefined,
       isChild: fields.isChild || undefined,
       birthCertificateSeries:
-        isPartner || withoutDocuments || !fields.isChild
+        isPartner || withoutPassport || !fields.isChild
           ? undefined
           : fields.birthCertificateSeries.trim() || undefined,
       birthCertificateNumber:
-        isPartner || withoutDocuments || !fields.isChild
+        isPartner || withoutPassport || !fields.isChild
           ? undefined
           : formatBirthCertificateNumber(fields.birthCertificateNumber) || undefined,
       representativeFullName:
-        isPartner || withoutDocuments || !fields.isChild
+        isPartner || withoutPassport || !fields.isChild
           ? undefined
           : fields.representativeFullName.trim() || undefined,
       representativeBirthDate:
-        isPartner || withoutDocuments || !fields.isChild || !fields.representativeBirthDate
+        isPartner || withoutPassport || !fields.isChild || !fields.representativeBirthDate
           ? undefined
           : fields.representativeBirthDate,
       representativePassportSeries:
-        isPartner || withoutDocuments || !fields.isChild
+        isPartner || withoutPassport || !fields.isChild
           ? undefined
           : formatPassportSeries(fields.representativePassportSeries),
       representativePassportNumber:
-        isPartner || withoutDocuments || !fields.isChild
+        isPartner || withoutPassport || !fields.isChild
           ? undefined
           : formatPassportNumber(fields.representativePassportNumber),
       diagnosis: fields.diagnosis.trim() || undefined,
@@ -622,73 +638,99 @@ export function PatientModal({
           <div className="form-panel space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="form-panel-title">
-                Документы{withoutDocuments ? "" : " *"}
+                Документы{withoutSnils && withoutPassport ? "" : " *"}
               </p>
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
-                  checked={withoutDocuments}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setWithoutDocuments(checked);
-                    if (checked) {
-                      setFields((prev) => ({
-                        ...prev,
-                        snils: "",
-                        passportSeries: "",
-                        passportNumber: "",
-                        passportIssuedBy: "",
-                        passportIssuedAt: "",
-                        passportIssuerCode: "",
-                        birthCertificateSeries: "",
-                        birthCertificateNumber: "",
-                        representativeFullName: "",
-                        representativeBirthDate: "",
-                        representativePassportSeries: "",
-                        representativePassportNumber: "",
-                      }));
-                      setDocErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.snils;
-                        delete next.passportSeries;
-                        delete next.passportNumber;
-                        delete next.birthCertificateSeries;
-                        delete next.birthCertificateNumber;
-                        delete next.representativePassportSeries;
-                        delete next.representativePassportNumber;
-                        return next;
-                      });
-                    }
-                  }}
-                />
-                Без СНИЛС и паспорта
-              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                    checked={withoutSnils}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setWithoutSnils(checked);
+                      if (checked) {
+                        setFields((prev) => ({ ...prev, snils: "" }));
+                        setDocErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.snils;
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                  Нет СНИЛС
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                    checked={withoutPassport}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setWithoutPassport(checked);
+                      if (checked) {
+                        setFields((prev) => ({
+                          ...prev,
+                          passportSeries: "",
+                          passportNumber: "",
+                          passportIssuedBy: "",
+                          passportIssuedAt: "",
+                          passportIssuerCode: "",
+                          birthCertificateSeries: "",
+                          birthCertificateNumber: "",
+                          representativeFullName: "",
+                          representativeBirthDate: "",
+                          representativePassportSeries: "",
+                          representativePassportNumber: "",
+                        }));
+                        setDocErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.passportSeries;
+                          delete next.passportNumber;
+                          delete next.birthCertificateSeries;
+                          delete next.birthCertificateNumber;
+                          delete next.representativePassportSeries;
+                          delete next.representativePassportNumber;
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                  Нет паспорта
+                </label>
+              </div>
             </div>
+            <div className="space-y-3">
             <div
               className={
-                withoutDocuments ? "pointer-events-none space-y-3 opacity-70" : "space-y-3"
+                withoutSnils ? "pointer-events-none space-y-2 opacity-70" : "space-y-2"
               }
             >
-            <div className="space-y-2">
               <Label>{fields.isChild ? "СНИЛС ребёнка" : UI.snils}</Label>
               <Input
                 value={fields.snils}
                 onChange={(e) => set("snils", formatSnils(e.target.value))}
                 placeholder="123-456-789 01"
                 inputMode="numeric"
-                disabled={withoutDocuments}
+                disabled={withoutSnils}
               />
-              {fields.isChild && !withoutDocuments && (
+              {fields.isChild && !withoutSnils && (
                 <p className="text-xs text-[var(--muted)]">
                   Указывается <strong>свой СНИЛС ребёнка</strong>, если уже выдан. СНИЛС
-                  родителя сюда не вносите. Если номера ещё нет — оставьте поле пустым.
+                  родителя сюда не вносите. Если номера ещё нет — оставьте поле пустым или
+                  отметьте «Нет СНИЛС».
                 </p>
               )}
               {docErrors.snils && (
                 <p className="text-xs text-red-600">{docErrors.snils}</p>
               )}
             </div>
+            <div
+              className={
+                withoutPassport ? "pointer-events-none space-y-3 opacity-70" : "space-y-3"
+              }
+            >
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>{UI.passportSeries}</Label>
@@ -700,7 +742,7 @@ export function PatientModal({
                   placeholder="4510"
                   inputMode="numeric"
                   maxLength={4}
-                  disabled={withoutDocuments || fields.isChild}
+                  disabled={withoutPassport || fields.isChild}
                 />
                 {docErrors.passportSeries && (
                   <p className="text-xs text-red-600">{docErrors.passportSeries}</p>
@@ -716,7 +758,7 @@ export function PatientModal({
                   placeholder="123456"
                   inputMode="numeric"
                   maxLength={6}
-                  disabled={withoutDocuments || fields.isChild}
+                  disabled={withoutPassport || fields.isChild}
                 />
                 {docErrors.passportNumber && (
                   <p className="text-xs text-red-600">{docErrors.passportNumber}</p>
@@ -729,7 +771,7 @@ export function PatientModal({
                 value={fields.passportIssuedBy}
                 onChange={(e) => set("passportIssuedBy", e.target.value)}
                 placeholder="ГУ МВД России по … области"
-                disabled={withoutDocuments || fields.isChild}
+                disabled={withoutPassport || fields.isChild}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -739,7 +781,7 @@ export function PatientModal({
                   type="date"
                   value={fields.passportIssuedAt}
                   onChange={(e) => set("passportIssuedAt", e.target.value)}
-                  disabled={withoutDocuments || fields.isChild}
+                  disabled={withoutPassport || fields.isChild}
                 />
               </div>
               <div className="space-y-2">
@@ -752,21 +794,22 @@ export function PatientModal({
                   placeholder="770-001"
                   inputMode="numeric"
                   maxLength={7}
-                  disabled={withoutDocuments || fields.isChild}
+                  disabled={withoutPassport || fields.isChild}
                 />
               </div>
             </div>
-            {fields.isChild && !withoutDocuments && (
+            {fields.isChild && !withoutPassport && (
               <p className="text-xs text-[var(--muted)]">
                 Для ребёнка укажите свидетельство о рождении и паспорт законного представителя
                 (родителя) в блоке ниже.
               </p>
             )}
             </div>
-            {withoutDocuments && (
+            </div>
+            {(withoutSnils || withoutPassport) && (
               <p className="text-xs text-[var(--muted)]">
-                Пациента можно сохранить без документов. Для выгрузки в ЕГИСЗ позже понадобится
-                заполнить СНИЛС и паспорт.
+                Можно сохранить карточку без отмеченных документов. Для ЕГИСЗ позже
+                понадобятся отсутствующие данные.
               </p>
             )}
           </div>
@@ -972,7 +1015,7 @@ export function PatientModal({
                     value={fields.birthCertificateSeries}
                     onChange={(e) => set("birthCertificateSeries", e.target.value)}
                     placeholder="I-АА или IVМЮ"
-                    disabled={withoutDocuments}
+                    disabled={withoutPassport}
                   />
                   {docErrors.birthCertificateSeries && (
                     <p className="text-xs text-red-600">{docErrors.birthCertificateSeries}</p>
@@ -987,7 +1030,7 @@ export function PatientModal({
                     }
                     placeholder="123456"
                     inputMode="numeric"
-                    disabled={withoutDocuments}
+                    disabled={withoutPassport}
                   />
                   {docErrors.birthCertificateNumber && (
                     <p className="text-xs text-red-600">{docErrors.birthCertificateNumber}</p>
@@ -1000,7 +1043,7 @@ export function PatientModal({
                   value={fields.representativeFullName}
                   onChange={(e) => set("representativeFullName", e.target.value)}
                   placeholder="Фамилия Имя Отчество родителя"
-                  disabled={withoutDocuments}
+                  disabled={withoutPassport}
                 />
               </div>
               <div className="space-y-2">
@@ -1009,7 +1052,7 @@ export function PatientModal({
                   type="date"
                   value={fields.representativeBirthDate}
                   onChange={(e) => set("representativeBirthDate", e.target.value)}
-                  disabled={withoutDocuments}
+                  disabled={withoutPassport}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1023,7 +1066,7 @@ export function PatientModal({
                     placeholder="4510"
                     inputMode="numeric"
                     maxLength={4}
-                    disabled={withoutDocuments}
+                    disabled={withoutPassport}
                   />
                   {docErrors.representativePassportSeries && (
                     <p className="text-xs text-red-600">{docErrors.representativePassportSeries}</p>
@@ -1039,7 +1082,7 @@ export function PatientModal({
                     placeholder="123456"
                     inputMode="numeric"
                     maxLength={6}
-                    disabled={withoutDocuments}
+                    disabled={withoutPassport}
                   />
                   {docErrors.representativePassportNumber && (
                     <p className="text-xs text-red-600">{docErrors.representativePassportNumber}</p>

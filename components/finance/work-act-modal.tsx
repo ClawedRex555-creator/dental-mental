@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import type {
@@ -1230,23 +1230,49 @@ export function WorkActModal({
                     )}
                   </div>
                   {!effectiveReadOnly && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="col-span-2 justify-self-end"
-                      onClick={() => {
-                        setItems((prev) => prev.filter((it) => it.id !== item.id));
-                        setTechnicalSelectionByItemId((prev) => {
-                          if (!prev[item.id]) return prev;
-                          const next = { ...prev };
-                          delete next[item.id];
-                          return next;
-                        });
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    <div className="col-span-2 flex justify-end gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title="Дублировать услугу"
+                        onClick={() => {
+                          const newId = generateId("wai");
+                          setItems((prev) => {
+                            const idx = prev.findIndex((it) => it.id === item.id);
+                            if (idx < 0) return prev;
+                            const copy = { ...prev[idx], id: newId };
+                            const next = [...prev];
+                            next.splice(idx + 1, 0, copy);
+                            return next;
+                          });
+                          setTechnicalSelectionByItemId((prev) => {
+                            const src = prev[item.id];
+                            if (!src) return prev;
+                            return { ...prev, [newId]: src };
+                          });
+                        }}
+                      >
+                        <Copy className="h-4 w-4 text-slate-500" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title="Удалить"
+                        onClick={() => {
+                          setItems((prev) => prev.filter((it) => it.id !== item.id));
+                          setTechnicalSelectionByItemId((prev) => {
+                            if (!prev[item.id]) return prev;
+                            const next = { ...prev };
+                            delete next[item.id];
+                            return next;
+                          });
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
                   )}
                   {!effectiveReadOnly && (
                     <div className="col-span-12 rounded-md border border-[var(--border)] bg-[var(--muted)]/5 p-2">

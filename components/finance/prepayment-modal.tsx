@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   beginClinicCommandMutation,
@@ -390,16 +390,37 @@ export function PrepaymentModal({
                       <span className="col-span-2 text-right text-sm font-medium text-[var(--foreground)]">
                         {formatCurrency(prepaymentLineTotal(it))}
                       </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="col-span-1 h-8 w-8"
-                        onClick={() => removeItem(it.id)}
-                        title="Удалить"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      <div className="col-span-1 flex justify-end gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Дублировать услугу"
+                          onClick={() => {
+                            setItems((prev) => {
+                              const idx = prev.findIndex((row) => row.id === it.id);
+                              if (idx < 0) return prev;
+                              const copy = { ...prev[idx], id: generateId("prei") };
+                              const next = [...prev];
+                              next.splice(idx + 1, 0, copy);
+                              return next;
+                            });
+                          }}
+                        >
+                          <Copy className="h-4 w-4 text-slate-500" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => removeItem(it.id)}
+                          title="Удалить"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

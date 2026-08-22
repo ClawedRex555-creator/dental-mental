@@ -8,7 +8,7 @@ import { DENTAL_COMPLAINTS } from "@/lib/catalogs";
 import { APPOINTMENT_DURATION_OPTIONS } from "@/lib/appointment-duration-options";
 import { calcEndTime, SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/appointment-utils";
 import { resolveCabinetIdForDoctor } from "@/lib/cabinet-utils";
-import { getDoctorHoursForDate } from "@/lib/clinic-schedule";
+import { getDoctorHoursForDate, hasDoctorMonthSchedule } from "@/lib/clinic-schedule";
 import { validateAppointmentSave } from "@/lib/validate-appointment-save";
 import { workActHasFilledItems } from "@/lib/work-act-utils";
 import {
@@ -113,6 +113,9 @@ export function AppointmentModal({
   const doctorHours = doctorId
     ? getDoctorHoursForDate(doctorId, date, doctorSchedules)
     : null;
+  const hasMonthSchedule = doctorId
+    ? hasDoctorMonthSchedule(doctorId, date, doctorSchedules)
+    : true;
   const timeMin = doctorHours?.startTime ?? SCHEDULE_DAY_START;
   const timeMax = doctorHours?.endTime ?? SCHEDULE_DAY_END;
 
@@ -597,8 +600,8 @@ export function AppointmentModal({
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-3 items-end">
-                <div className="flex min-w-0 flex-col gap-2">
+              <div className="grid grid-cols-3 items-start gap-3">
+                <div className="min-w-0 space-y-2">
                   <Label className="flex min-h-10 items-end leading-snug">{UI.date}</Label>
                   <Input
                     type="date"
@@ -608,7 +611,7 @@ export function AppointmentModal({
                     onChange={(e) => setDate(e.target.value)}
                   />
                 </div>
-                <div className="flex min-w-0 flex-col gap-2">
+                <div className="min-w-0 space-y-2">
                   <Label className="flex min-h-10 items-end leading-snug">{UI.time}</Label>
                   <Input
                     type="time"
@@ -620,7 +623,11 @@ export function AppointmentModal({
                     onChange={(e) => setStartTime(e.target.value)}
                   />
                   {doctorId && doctorHours === null && (
-                    <p className="text-xs text-amber-700">Врач в этот день не работает</p>
+                    <p className="text-xs text-amber-700">
+                      {hasMonthSchedule
+                        ? "Врач в этот день не работает"
+                        : "Нет графика смен на этот месяц — сначала укажите в «Сотрудники»"}
+                    </p>
                   )}
                   {doctorHours && (
                     <p className="text-xs text-muted-foreground">
@@ -628,8 +635,8 @@ export function AppointmentModal({
                     </p>
                   )}
                 </div>
-                <div className="flex min-w-0 flex-col gap-2">
-                  <Label className="flex min-h-10 items-end text-sm leading-snug">
+                <div className="min-w-0 space-y-2">
+                  <Label className="flex min-h-10 items-end leading-snug">
                     Длительность приёма
                   </Label>
                   <select

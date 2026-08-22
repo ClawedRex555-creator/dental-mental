@@ -10,6 +10,26 @@ import "./emkaro-landing.css";
 
 type ClinicCard = { id: string; slug: string; name: string };
 
+/** Клиники на лендинге: логотип + публичный сайт (не поддомен Emkaro). */
+const SHOWCASE_CLINICS = [
+  {
+    id: "tstom",
+    name: "Тстом",
+    city: "Ростов-на-Дону",
+    websiteUrl: "https://zoon.ru/rostov/medical/stomatologicheskaya_klinika_tstom/",
+    websiteLabel: "Сайт клиники",
+    logoSrc: "/marketing/clinics/tstom.png",
+  },
+  {
+    id: "elanar",
+    name: "Эланар",
+    city: "Ростов-на-Дону",
+    websiteUrl: "https://elanar.clients.site/",
+    websiteLabel: "Сайт клиники",
+    logoSrc: "/marketing/clinics/elanar.png",
+  },
+] as const;
+
 function SlotPortal({ slotId, children }: { slotId: string; children: ReactNode }) {
   const [node, setNode] = useState<Element | null>(null);
   useLayoutEffect(() => {
@@ -19,49 +39,39 @@ function SlotPortal({ slotId, children }: { slotId: string; children: ReactNode 
   return createPortal(children, node);
 }
 
-function ClinicGrid({
-  clinics,
-  rootDomain,
-  databaseEnabled,
-}: {
-  clinics: ClinicCard[];
-  rootDomain: string;
-  databaseEnabled: boolean;
-}) {
+function ClinicGrid() {
   return (
-    <>
-      {!databaseEnabled && (
-        <p className="lead" style={{ marginBottom: 18 }}>
-          Сейчас включен режим без базы. Список клиник появится после настройки PostgreSQL.
-        </p>
-      )}
-      <div className="clinic-grid">
-        {clinics.map((clinic) => (
-          <article className="clinic-card" key={clinic.id}>
-            <div className="clinic-logo">{clinic.name.trim().charAt(0) || "•"}</div>
-            <h3>{clinic.name}</h3>
-            <div className="clinic-city">
-              {clinic.slug}.{rootDomain}
-            </div>
-          </article>
-        ))}
-        <article className="clinic-card clinic-placeholder">
-          <div>
-            <div className="clinic-logo">+</div>
-            <strong>Место для следующей клиники</strong>
-            <p style={{ margin: "8px 0 0", fontSize: 14 }}>Следующими здесь можете стать Вы</p>
+    <div className="clinic-grid">
+      {SHOWCASE_CLINICS.map((clinic) => (
+        <article className="clinic-card" key={clinic.id}>
+          <div className="clinic-logo clinic-logo-img">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={clinic.logoSrc} alt={clinic.name} width={180} height={180} />
           </div>
+          <div className="clinic-city">{clinic.city}</div>
+          <a
+            className="clinic-site-link"
+            href={clinic.websiteUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {clinic.websiteLabel}
+          </a>
         </article>
-      </div>
-    </>
+      ))}
+      <article className="clinic-card clinic-placeholder">
+        <div>
+          <div className="clinic-logo">+</div>
+          <strong>Место для следующей клиники</strong>
+          <p style={{ margin: "8px 0 0", fontSize: 14 }}>Следующими здесь можете стать Вы</p>
+        </div>
+      </article>
+    </div>
   );
 }
 
 export function EmkaroMarketingSite({
   html,
-  clinics,
-  rootDomain,
-  databaseEnabled,
 }: {
   html: string;
   clinics: ClinicCard[];
@@ -134,11 +144,7 @@ export function EmkaroMarketingSite({
     >
       <div dangerouslySetInnerHTML={{ __html: html }} />
       <SlotPortal slotId="emkaro-clinics-slot">
-        <ClinicGrid
-          clinics={clinics}
-          rootDomain={rootDomain}
-          databaseEnabled={databaseEnabled}
-        />
+        <ClinicGrid />
       </SlotPortal>
       <SlotPortal slotId="emkaro-form-slot">
         <ConnectionRequestForm variant="landing" />

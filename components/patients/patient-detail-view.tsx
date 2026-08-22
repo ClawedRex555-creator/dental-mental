@@ -284,7 +284,13 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const completedVisits = patientAppointments.filter((a) =>
     CLINIC_VISIT_STATUSES.includes(a.status)
   );
-  const records = medicalRecords.filter((r) => r.patientId === patient.id);
+  const records = useMemo(
+    () =>
+      medicalRecords
+        .filter((r) => r.patientId === patient.id)
+        .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
+    [medicalRecords, patient.id]
+  );
   const plans = treatmentPlans.filter((p) => p.patientId === patient.id);
   const patientPayments = payments.filter((p) => p.patientId === patient.id);
   const patientPrepaidSources = useMemo(
@@ -609,87 +615,86 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
       )}
       {tab === "records" && (
         <div className="space-y-4">
-          {patientActs.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Счета и оказанные услуги (акты)</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {patientActs.map((act) => (
-                  <div key={act.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                    <p className="font-medium">
-                      Акт № {act.actNumber} · {formatDate(act.actDate)} ·{" "}
-                      {formatCurrency(act.totalAmount)}
-                    </p>
-                    <ul className="mt-2 list-inside list-disc text-slate-600">
-                      {act.items.map((it) => (
-                        <li key={it.id}>
-                          {it.serviceName} — {formatCurrency(it.total)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-          {records.length === 0 && patientActs.length === 0 ? (
+          {records.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-sm text-slate-500">
-                Записей в медкарте пока нет
+                Записей в медкарте пока нет. Добавьте запись кнопкой «Медкарта» или в
+                разделе «Медкарты».
               </CardContent>
             </Card>
           ) : (
-            records.map((r) => (
-              <Card key={r.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base">{r.diagnosis}</CardTitle>
-                    {canDeleteRecords && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
-                        title="Удалить запись"
-                        onClick={() => {
-                          if (
-                            !window.confirm(
-                              `Удалить запись медкарты «${r.diagnosis}»?\n\nАкты и планы останутся, привязка к этой записи будет снята.`
-                            )
-                          ) {
-                            return;
-                          }
-                          if (deleteMedicalRecord(r.id)) {
-                            void logAuditClient({
-                              action: "delete",
-                              resourceType: "medical_record",
-                              resourceId: r.id,
-                              metadata: { diagnosis: r.diagnosis, patientId: r.patientId },
-                            });
-                            toast.success("Запись медкарты удалена");
-                          } else {
-                            toast.error("Не удалось удалить запись");
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+            records.map((r) => {
+              const doctor = doctors.find((d) => d.id === r.doctorId);
+              return (
+                <Card key={r.id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <CardTitle className="text-base">{r.diagnosis}</CardTitle>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {formatDate(r.createdAt)}
+                          {doctor?.name ? ` · ${doctor.name}` : ""}
+                          {r.serviceName ? ` · ${r.serviceName}` : ""}
+                        </p>
+                      </div>
+                      {canDeleteRecords && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          title="Удалить запись"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Удалить запись медкарты «${r.diagnosis}»?\n\nАкты и планы останутся, привязка к этой записи будет снята.`
+                              )
+                            ) {
+                              return;
+                            }
+                            if (deleteMedicalRecord(r.id)) {
+                              void logAuditClient({
+                                action: "delete",
+                                resourceType: "medical_record",
+                                resourceId: r.id,
+                                metadata: { diagnosis: r.diagnosis, patientId: r.patientId },
+                              });
+                              toast.success("Запись медкарты удалена");
+                            } else {
+                              toast.error("Не удалось удалить запись");
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm text-slate-600">
+                    {r.complaints && (
+                      <div>
+                        <p className="font-medium text-slate-700">Жалобы</p>
+                        <p>{r.complaints}</p>
+                      </div>
                     )}
-                  </div>
-                </CardHeader>
-                <CardContent className="text-sm space-y-2">
-                  <p>
-                    <span className="text-slate-500">Жалобы:</span> {r.complaints}
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Лечение:</span> {r.treatment}
-                  </p>
-                  {r.workActId && (
-                    <p className="text-teal-700 text-xs">Привязан акт оказанных услуг</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))
+                    {r.treatment && (
+                      <div>
+                        <p className="font-medium text-slate-700">Лечение</p>
+                        <p>{r.treatment}</p>
+                      </div>
+                    )}
+                    {r.recommendations && (
+                      <div>
+                        <p className="font-medium text-slate-700">Рекомендации</p>
+                        <p>{r.recommendations}</p>
+                      </div>
+                    )}
+                    {r.workActId && (
+                      <p className="text-xs text-teal-700">Привязан акт оказанных услуг</p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </div>
       )}

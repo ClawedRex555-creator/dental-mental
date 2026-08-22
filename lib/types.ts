@@ -118,8 +118,12 @@ export interface Patient {
   representativeBirthDate?: string;
   representativePassportSeries?: string;
   representativePassportNumber?: string;
-  /** Пациент заведён без СНИЛС и паспорта */
+  /** Пациент заведён без СНИЛС и паспорта (legacy: оба документа) */
   withoutIdentityDocuments?: boolean;
+  /** Пациент заведён без СНИЛС */
+  withoutSnils?: boolean;
+  /** Пациент заведён без паспорта / свидетельства / паспорта представителя */
+  withoutPassport?: boolean;
   diagnosis?: string;
   hadPreviousVisits?: boolean;
   previousVisitsNote?: string;

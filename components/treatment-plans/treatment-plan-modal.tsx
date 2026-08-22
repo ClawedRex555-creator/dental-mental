@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Trash2, Wallet } from "lucide-react";
+import { Copy, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { DiscountType, TreatmentPlan, TreatmentPlanItem, TreatmentPlanStatus } from "@/lib/types";
 import { TREATMENT_PLAN_STATUS_LABELS, UI } from "@/lib/constants";
@@ -469,15 +469,35 @@ export function TreatmentPlanModal({
                       }
                     />
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="col-span-1"
-                    onClick={() => removeItem(item.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
+                  <div className="col-span-1 flex justify-end gap-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Дублировать услугу"
+                      onClick={() => {
+                        setItems((prev) => {
+                          const idx = prev.findIndex((it) => it.id === item.id);
+                          if (idx < 0) return prev;
+                          const copy = { ...prev[idx], id: generateId("tpi") };
+                          const next = [...prev];
+                          next.splice(idx + 1, 0, copy);
+                          return next;
+                        });
+                      }}
+                    >
+                      <Copy className="h-4 w-4 text-slate-500" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Удалить"
+                      onClick={() => removeItem(item.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

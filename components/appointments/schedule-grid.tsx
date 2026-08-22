@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn, getFullName } from "@/lib/utils";
@@ -19,6 +20,8 @@ import {
 } from "@/lib/appointment-schedule-display";
 import {
   getDoctorHoursForDate,
+  hasDoctorMonthSchedule,
+  isDoctorWorkingOnDate,
   isScheduleSlotWithinDoctorHours,
 } from "@/lib/clinic-schedule";
 import { partnerBookingBadgeLabel } from "@/lib/partner-clinic";
@@ -52,8 +55,29 @@ export function ScheduleGrid({
   onActClick,
 }: ScheduleGridProps) {
   const slots = generateTimeSlots();
-  const cols = doctors.length > 0 ? doctors : [{ id: "_none", name: "Без врача" } as Doctor];
   const isDayView = days.length === 1;
+
+  /** Колонки только для работающих в этот день (или с записью в этот день). */
+  const dayColumns = useMemo(() => {
+    const cols =
+      doctors.length > 0 ? doctors : [{ id: "_none", name: "Без врача" } as Doctor];
+    return days.map((day) => {
+      const dateStr = format(day, "yyyy-MM-dd");
+      const dayDoctorIds = new Set(
+        appointments
+          .filter((a) => isAppointmentOnCalendarDay(a, day) && a.doctorId)
+          .map((a) => a.doctorId as string)
+      );
+      const docs = cols.filter((doc) => {
+        if (doc.id === "_none") return true;
+        return (
+          isDoctorWorkingOnDate(doc.id, dateStr, doctorSchedules) ||
+          dayDoctorIds.has(doc.id)
+        );
+      });
+      return { day, dateStr, docs };
+    });
+  }, [days, doctors, appointments, doctorSchedules]);
 
   const timeHeaderClass = cn(
     "sticky left-0 z-10 border-b-2 border-r-2 py-2 text-sm font-semibold",
@@ -97,13 +121,15 @@ export function ScheduleGrid({
                 {SCHEDULE_DAY_START}–{SCHEDULE_DAY_END}
               </div>
             </th>
-            {days.map((day) => {
-              const dateStr = format(day, "yyyy-MM-dd");
-              return cols.map((doc) => {
+            {dayColumns.map(({ day, dateStr, docs }) =>
+              docs.map((doc) => {
                 const hours =
                   doc.id !== "_none"
                     ? getDoctorHoursForDate(doc.id, dateStr, doctorSchedules)
                     : null;
+                const noMonthSchedule =
+                  doc.id !== "_none" &&
+                  !hasDoctorMonthSchedule(doc.id, dateStr, doctorSchedules);
                 return (
                   <th
                     key={`${day.toISOString()}-${doc.id}`}
@@ -140,7 +166,7 @@ export function ScheduleGrid({
                         className="text-xs font-medium"
                         style={{ color: "var(--schedule-muted)" }}
                       >
-                        Выходной
+                        {noMonthSchedule ? "Нет графика" : "Выходной"}
                       </div>
                     ) : null}
                     {doc.specialization && (
@@ -153,8 +179,8 @@ export function ScheduleGrid({
                     )}
                   </th>
                 );
-              });
-            })}
+              })
+            )}
           </tr>
         </thead>
         <tbody>
@@ -174,9 +200,8 @@ export function ScheduleGrid({
               >
                 {slot}
               </td>
-              {days.map((day) => {
-                const dateStr = format(day, "yyyy-MM-dd");
-                return cols.map((doc) => {
+              {dayColumns.map(({ day, dateStr, docs }) =>
+                docs.map((doc) => {
                   const docId = doc.id === "_none" ? undefined : doc.id;
                   const apt = appointments.find(
                     (a) =>
@@ -305,8 +330,8 @@ export function ScheduleGrid({
                       )}
                     </td>
                   );
-                });
-              })}
+                })
+              )}
             </tr>
           ))}
         </tbody>

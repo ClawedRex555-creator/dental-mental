@@ -230,6 +230,8 @@ export function parsePatientPayload(raw: unknown): Patient | null {
     representativePassportSeries: asOptionalString(b.representativePassportSeries),
     representativePassportNumber: asOptionalString(b.representativePassportNumber),
     withoutIdentityDocuments: b.withoutIdentityDocuments === true ? true : undefined,
+    withoutSnils: b.withoutSnils === true ? true : undefined,
+    withoutPassport: b.withoutPassport === true ? true : undefined,
     diagnosis: asOptionalString(b.diagnosis),
     hadPreviousVisits: b.hadPreviousVisits === true ? true : undefined,
     previousVisitsNote: asOptionalString(b.previousVisitsNote),

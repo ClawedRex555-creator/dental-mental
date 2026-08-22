@@ -4,6 +4,7 @@ import {
   formatScheduleMonthLabel,
   isIntervalWithinDoctorHours,
   isScheduleSlotWithinDoctorHours,
+  missingDoctorSchedulesForMonth,
   needsScheduleReminder,
   shouldPromptForNextMonthSchedule,
 } from "./clinic-schedule";
@@ -93,6 +94,24 @@ describe("isScheduleSlotWithinDoctorHours", () => {
     );
   });
 
+  it("uses default hours when month schedule is missing", () => {
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-10", "10:00", []),
+      true
+    );
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-10", "18:30", []),
+      true
+    );
+  });
+
+  it("uses default hours when the day is not listed in the month schedule", () => {
+    assert.equal(
+      isScheduleSlotWithinDoctorHours("doc-1", "2026-08-12", "12:00", schedules),
+      true
+    );
+  });
+
   it("rejects intervals that spill past shift end", () => {
     assert.equal(
       isIntervalWithinDoctorHours(
@@ -113,6 +132,30 @@ describe("isScheduleSlotWithinDoctorHours", () => {
         schedules
       ),
       true
+    );
+  });
+});
+
+describe("missingDoctorSchedulesForMonth", () => {
+  it("lists doctors without a month schedule", () => {
+    assert.deepEqual(
+      missingDoctorSchedulesForMonth(
+        [{ doctorId: "a", month: "2026-08", days: {}, updatedAt: "x" }],
+        ["a", "b"],
+        "2026-08-15"
+      ),
+      { month: "2026-08", missingDoctorIds: ["b"] }
+    );
+  });
+
+  it("returns null when everyone has a schedule", () => {
+    assert.equal(
+      missingDoctorSchedulesForMonth(
+        [{ doctorId: "a", month: "2026-08", days: {}, updatedAt: "x" }],
+        ["a"],
+        "2026-08"
+      ),
+      null
     );
   });
 });
