@@ -4,6 +4,7 @@ import type {
   PatientNote,
   PatientPrepayment,
   TreatmentPlan,
+  TreatmentPlanCase,
   WorkAct,
 } from "@/lib/types";
 
@@ -62,6 +63,16 @@ export function upsertTreatmentPlanViaCommandApi(plan: TreatmentPlan) {
 
 export function deleteTreatmentPlanViaCommandApi(planId: string) {
   return postEntityCommand("/api/clinic/treatment-plans/delete", { planId });
+}
+
+export function upsertTreatmentPlanCaseViaCommandApi(caseItem: TreatmentPlanCase) {
+  return postEntityCommand("/api/clinic/treatment-plan-cases/upsert", {
+    case: caseItem,
+  });
+}
+
+export function deleteTreatmentPlanCaseViaCommandApi(caseId: string) {
+  return postEntityCommand("/api/clinic/treatment-plan-cases/delete", { caseId });
 }
 
 export function upsertMedicalRecordViaCommandApi(record: MedicalRecord) {

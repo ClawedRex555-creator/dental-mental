@@ -166,6 +166,7 @@ export function PatientModal({
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [withoutSnils, setWithoutSnils] = useState(false);
   const [withoutPassport, setWithoutPassport] = useState(false);
+  const [passportIssuerHint, setPassportIssuerHint] = useState<string | null>(null);
   const [debtAmount, setDebtAmount] = useState("");
   const [duplicateMatch, setDuplicateMatch] = useState<PatientDuplicateMatch | null>(null);
   const [saving, setSaving] = useState(false);
@@ -186,6 +187,67 @@ export function PatientModal({
     beginClinicEditorSession();
     return () => endClinicEditorSession();
   }, [open]);
+
+  /** Код подразделения XXX-XXX → подсказка «кем выдан» (DaData), только если поле пустое. */
+  useEffect(() => {
+    if (!open || withoutPassport || fields.isChild) {
+      setPassportIssuerHint(null);
+      return;
+    }
+    const code = formatPassportIssuerCode(fields.passportIssuerCode);
+    if (digitsOnly(code).length !== 6) {
+      setPassportIssuerHint(null);
+      return;
+    }
+    if (fields.passportIssuedBy.trim()) {
+      setPassportIssuerHint(null);
+      return;
+    }
+
+    const ac = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/passport-issuer-suggest?code=${encodeURIComponent(code)}`,
+          { signal: ac.signal }
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          suggestion?: { name?: string } | null;
+          configured?: boolean;
+        };
+        if (ac.signal.aborted) return;
+        if (!data.configured) {
+          setPassportIssuerHint(null);
+          return;
+        }
+        const name = data.suggestion?.name?.trim();
+        if (!name) {
+          setPassportIssuerHint("Подразделение не найдено");
+          return;
+        }
+        setFields((prev) => {
+          if (prev.passportIssuedBy.trim()) return prev;
+          return { ...prev, passportIssuedBy: name };
+        });
+        setPassportIssuerHint(null);
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+        setPassportIssuerHint(null);
+      }
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [
+    open,
+    withoutPassport,
+    fields.isChild,
+    fields.passportIssuerCode,
+    fields.passportIssuedBy,
+  ]);
 
   useEffect(() => {
     if (!open) {
@@ -765,25 +827,7 @@ export function PatientModal({
                 )}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>{UI.passportIssuedBy}</Label>
-              <Input
-                value={fields.passportIssuedBy}
-                onChange={(e) => set("passportIssuedBy", e.target.value)}
-                placeholder="ГУ МВД России по … области"
-                disabled={withoutPassport || fields.isChild}
-              />
-            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>{UI.passportIssuedAt}</Label>
-                <Input
-                  type="date"
-                  value={fields.passportIssuedAt}
-                  onChange={(e) => set("passportIssuedAt", e.target.value)}
-                  disabled={withoutPassport || fields.isChild}
-                />
-              </div>
               <div className="space-y-2">
                 <Label>{UI.passportIssuerCode}</Label>
                 <Input
@@ -797,6 +841,27 @@ export function PatientModal({
                   disabled={withoutPassport || fields.isChild}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>{UI.passportIssuedAt}</Label>
+                <Input
+                  type="date"
+                  value={fields.passportIssuedAt}
+                  onChange={(e) => set("passportIssuedAt", e.target.value)}
+                  disabled={withoutPassport || fields.isChild}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{UI.passportIssuedBy}</Label>
+              <Input
+                value={fields.passportIssuedBy}
+                onChange={(e) => set("passportIssuedBy", e.target.value)}
+                placeholder="ГУ МВД России по … области"
+                disabled={withoutPassport || fields.isChild}
+              />
+              {passportIssuerHint && (
+                <p className="text-xs text-[var(--muted)]">{passportIssuerHint}</p>
+              )}
             </div>
             {fields.isChild && !withoutPassport && (
               <p className="text-xs text-[var(--muted)]">

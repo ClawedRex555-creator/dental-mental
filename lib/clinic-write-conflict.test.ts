@@ -834,6 +834,64 @@ describe("mergeClinicDataOnWriteConflict", () => {
     assert.equal(merged.clinicSettings.name, "Серверная клиника");
   });
 
+  it("stale PUT after commands must not revert patient FIO, clinic name, or drop work act", () => {
+    const base = createFreshPersistedState();
+    const patient = {
+      id: "p1",
+      firstName: "Евгений",
+      lastName: "Шаповалов",
+      middleName: "Дмитриевич",
+      phone: "+79990001122",
+      email: "",
+      birthDate: "1990-01-01",
+      gender: "male" as const,
+      status: "active" as const,
+      source: "Сайт" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const act: WorkAct = {
+      id: "wa-cmd",
+      patientId: "p1",
+      doctorId: "d1",
+      actDate: "2026-08-22",
+      actNumber: "0168-08/2026",
+      actType: "services",
+      items: [],
+      subtotalAmount: 5000,
+      discountType: "percent",
+      discount: 0,
+      totalAmount: 5000,
+      paidAmount: 5000,
+      paymentStatus: "paid",
+      status: "completed",
+      createdAt: "2026-08-22T10:00:00.000Z",
+    };
+    const existing = {
+      ...base,
+      clinicSettings: { ...base.clinicSettings, name: "Тстом" },
+      patients: [{ ...patient, firstName: "Евгений", lastName: "Шаповалов" }],
+      workActs: [act],
+    };
+    const incoming = {
+      ...base,
+      clinicSettings: { ...base.clinicSettings, name: "тстом" },
+      patients: [
+        {
+          ...patient,
+          firstName: "Евг",
+          lastName: "Шаповал",
+        },
+      ],
+      workActs: [],
+    };
+
+    const merged = mergeClinicDataForSave(existing, incoming);
+    assert.equal(merged.clinicSettings.name, "Тстом");
+    assert.equal(merged.patients[0]?.firstName, "Евгений");
+    assert.equal(merged.patients[0]?.lastName, "Шаповалов");
+    assert.equal(merged.workActs.some((a) => a.id === "wa-cmd"), true);
+  });
+
   it("non-conflict PUT keeps server staff on overlap and preserves client-only new staff", () => {
     const base = createFreshPersistedState();
     const serverDoctor = {

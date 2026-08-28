@@ -71,6 +71,7 @@ function enforceDeletedPatientsHard(
     appointments: filterByPatient(snapshot.appointments),
     medicalRecords: filterByPatient(snapshot.medicalRecords),
     treatmentPlans: filterByPatient(snapshot.treatmentPlans),
+    treatmentPlanCases: filterByPatient(snapshot.treatmentPlanCases ?? []),
     payments: filterByPatient(snapshot.payments),
     invoices: filterByPatient(snapshot.invoices),
     workActs: filterByPatient(snapshot.workActs),

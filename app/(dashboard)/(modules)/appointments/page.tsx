@@ -97,7 +97,7 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     repairPaidActAppointments();
-  }, [repairPaidActAppointments]);
+  }, [repairPaidActAppointments, workActs, payments]);
 
   const effectiveView: ViewMode = isMobile ? "day" : view;
 

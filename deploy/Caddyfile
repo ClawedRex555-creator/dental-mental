@@ -29,3 +29,8 @@ elanar.{$APP_ROOT_DOMAIN} {
   encode gzip
   reverse_proxy app:3000
 }
+
+liderstomcompany.{$APP_ROOT_DOMAIN} {
+  encode gzip
+  reverse_proxy app:3000
+}

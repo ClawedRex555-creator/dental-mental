@@ -38,6 +38,9 @@ export const metadata: Metadata = {
     title: APP_NAME,
     statusBarStyle: "default",
   },
+  verification: {
+    yandex: "4764f4747b629720",
+  },
 };
 
 export default function RootLayout({

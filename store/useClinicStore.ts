@@ -28,6 +28,7 @@ import type {
   Task,
   ToothRecord,
   TreatmentPlan,
+  TreatmentPlanCase,
   ThemeMode,
   UserRole,
   WarehouseItem,
@@ -36,13 +37,9 @@ import type {
 import { CLINIC_STORAGE_KEY, LEGACY_CLINIC_STORAGE_KEYS } from "@/lib/initial-clinic-data";
 import type { ClinicSaveStatus } from "@/lib/clinic-save-feedback";
 import { clearPendingClinicSnapshot } from "@/lib/clinic-pending-sync";
-import { requestClinicDataFlush } from "@/lib/clinic-data-sync.client";
 
-/** Один flush после цепочки set() в том же тике (акт + счёт + медзапись) */
-let clinicFlushMicrotask = false;
 /**
  * Пока >0:
- * - store-изменения не ставят полный PUT в очередь;
  * - фоновый pull/force-pull не применяется (иначе откатывает статус до ответа command API).
  */
 let clinicCommandOptimisticDepth = 0;
@@ -89,23 +86,6 @@ export function runWithoutClinicFlush(fn: () => void): void {
 export function isClinicCommandOptimisticUpdate(): boolean {
   return clinicCommandOptimisticDepth > 0;
 }
-
-function scheduleClinicDataFlush(): void {
-  const role = useClinicStore.getState().currentRole;
-  if (!canUseDayToDaySnapshotPut(role)) return;
-  if (clinicCommandOptimisticDepth > 0) return;
-  if (typeof queueMicrotask === "undefined") {
-    requestClinicDataFlush();
-    return;
-  }
-  if (clinicFlushMicrotask) return;
-  clinicFlushMicrotask = true;
-  queueMicrotask(() => {
-    clinicFlushMicrotask = false;
-    if (clinicCommandOptimisticDepth > 0) return;
-    requestClinicDataFlush();
-  });
-}
 import {
   createFreshPersistedState,
   mergeByIdPreferLocal,
@@ -151,6 +131,7 @@ import { applyWorkActItemsToTeeth } from "@/lib/work-act-teeth";
 import { findInvoiceForAct, patchInvoiceFromWorkAct } from "@/lib/invoice-from-act";
 import {
   syncAppointmentsAfterActPaid,
+  isWorkActAlreadyPaid,
 } from "@/lib/appointment-act-payment";
 import { applyPayWorkActToPersistedState } from "@/lib/apply-pay-work-act";
 import {
@@ -159,7 +140,6 @@ import {
 } from "@/lib/apply-appointment-commands";
 import {
   getWorkActPaidAmount,
-  isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
 import {
   detachAppointmentFromWorkAct,
@@ -172,7 +152,6 @@ import {
   readThemePreferencesFromStorage,
 } from "@/lib/user-theme-storage";
 import { canManageServices } from "@/lib/rbac";
-import { canUseDayToDaySnapshotPut } from "@/lib/clinic-data-access";
 import {
   mergeAssistantManualHours,
   normalizeAssistantManualHours,
@@ -203,6 +182,7 @@ interface ClinicState {
   appointments: Appointment[];
   medicalRecords: MedicalRecord[];
   treatmentPlans: TreatmentPlan[];
+  treatmentPlanCases: TreatmentPlanCase[];
   payments: Payment[];
   invoices: Invoice[];
   workActs: WorkAct[];
@@ -225,6 +205,7 @@ interface ClinicState {
   deletedAppointmentIds: string[];
   deletedMedicalRecordIds: string[];
   deletedTreatmentPlanIds: string[];
+  deletedTreatmentPlanCaseIds: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   /** Ручные часы ассистента по датам (yyyy-MM-dd), если смена не привязана к приёму */
@@ -302,6 +283,9 @@ interface ClinicState {
   updateTreatmentPlan: (id: string, data: Partial<TreatmentPlan>) => void;
   /** Удалить план лечения и связанную заметку; false — не найден */
   deleteTreatmentPlan: (id: string) => boolean;
+  addTreatmentPlanCase: (caseItem: TreatmentPlanCase) => void;
+  updateTreatmentPlanCase: (id: string, data: Partial<TreatmentPlanCase>) => void;
+  deleteTreatmentPlanCase: (id: string) => boolean;
   addPayment: (payment: Payment) => void;
   addInvoice: (invoice: Invoice) => void;
   addWorkAct: (act: WorkAct) => void;
@@ -352,6 +336,7 @@ export const useClinicStore = create<ClinicState>()(
       appointments: freshState.appointments,
       medicalRecords: freshState.medicalRecords,
       treatmentPlans: freshState.treatmentPlans,
+      treatmentPlanCases: freshState.treatmentPlanCases,
       payments: freshState.payments,
       invoices: freshState.invoices,
       workActs: freshState.workActs,
@@ -374,6 +359,7 @@ export const useClinicStore = create<ClinicState>()(
       deletedAppointmentIds: [],
       deletedMedicalRecordIds: [],
       deletedTreatmentPlanIds: [],
+      deletedTreatmentPlanCaseIds: [],
       doctorSchedules: freshState.doctorSchedules,
       prepayments: freshState.prepayments,
       assistantManualHours: freshState.assistantManualHours,
@@ -680,11 +666,17 @@ export const useClinicStore = create<ClinicState>()(
           const removedTreatmentPlanIds = s.treatmentPlans
             .filter((p) => p.patientId === id)
             .map((p) => p.id);
+          const removedTreatmentPlanCaseIds = (s.treatmentPlanCases ?? [])
+            .filter((c) => c.patientId === id)
+            .map((c) => c.id);
           return {
             patients: s.patients.filter((p) => p.id !== id),
             appointments: s.appointments.filter((a) => a.patientId !== id),
             medicalRecords: s.medicalRecords.filter((r) => r.patientId !== id),
             treatmentPlans: s.treatmentPlans.filter((p) => p.patientId !== id),
+            treatmentPlanCases: (s.treatmentPlanCases ?? []).filter(
+              (c) => c.patientId !== id
+            ),
             payments: s.payments.filter((p) => p.patientId !== id),
             invoices: s.invoices.filter((i) => i.patientId !== id),
             workActs: s.workActs.filter((a) => a.patientId !== id),
@@ -704,6 +696,12 @@ export const useClinicStore = create<ClinicState>()(
             ],
             deletedTreatmentPlanIds: [
               ...new Set([...(s.deletedTreatmentPlanIds ?? []), ...removedTreatmentPlanIds]),
+            ],
+            deletedTreatmentPlanCaseIds: [
+              ...new Set([
+                ...(s.deletedTreatmentPlanCaseIds ?? []),
+                ...removedTreatmentPlanCaseIds,
+              ]),
             ],
           };
         });
@@ -791,10 +789,67 @@ export const useClinicStore = create<ClinicState>()(
         const linkedNoteId = treatmentPlanNoteId(id);
         set((s) => ({
           treatmentPlans: s.treatmentPlans.filter((p) => p.id !== id),
+          treatmentPlanCases: (s.treatmentPlanCases ?? []).map((c) => ({
+            ...c,
+            planIds: c.planIds.filter((pid) => pid !== id),
+          })),
           patientNotes: s.patientNotes.filter(
             (n) => n.sourceTreatmentPlanId !== id && n.id !== linkedNoteId
           ),
           deletedTreatmentPlanIds: [...new Set([...(s.deletedTreatmentPlanIds ?? []), id])],
+        }));
+        return true;
+      },
+
+      addTreatmentPlanCase: (caseItem) => {
+        set((s) => {
+          const planIds = new Set(caseItem.planIds);
+          return {
+            treatmentPlanCases: [caseItem, ...(s.treatmentPlanCases ?? [])],
+            treatmentPlans: s.treatmentPlans.map((p) =>
+              planIds.has(p.id) ? { ...p, caseId: caseItem.id } : p
+            ),
+          };
+        });
+      },
+
+      updateTreatmentPlanCase: (id, data) => {
+        set((s) => {
+          const prev = (s.treatmentPlanCases ?? []).find((c) => c.id === id);
+          const next = prev ? { ...prev, ...data } : undefined;
+          if (!next) return {};
+          const previousIds = new Set(prev?.planIds ?? []);
+          const nextIds = new Set(next.planIds);
+          return {
+            treatmentPlanCases: (s.treatmentPlanCases ?? []).map((c) =>
+              c.id === id ? next : c
+            ),
+            treatmentPlans: s.treatmentPlans.map((p) => {
+              if (nextIds.has(p.id)) return { ...p, caseId: id };
+              if (previousIds.has(p.id) && p.caseId === id) {
+                const { caseId: _removed, ...rest } = p;
+                void _removed;
+                return rest;
+              }
+              return p;
+            }),
+          };
+        });
+      },
+
+      deleteTreatmentPlanCase: (id) => {
+        if (!(get().treatmentPlanCases ?? []).some((c) => c.id === id)) return false;
+        set((s) => ({
+          treatmentPlanCases: (s.treatmentPlanCases ?? []).filter((c) => c.id !== id),
+          treatmentPlans: s.treatmentPlans.map((p) => {
+            if (p.caseId !== id) return p;
+            const { caseId: _removed, ...rest } = p;
+            void _removed;
+            return rest;
+          }),
+          deletedTreatmentPlanCaseIds: [
+            ...new Set([...(s.deletedTreatmentPlanCaseIds ?? []), id]),
+          ],
         }));
         return true;
       },
@@ -931,7 +986,7 @@ export const useClinicStore = create<ClinicState>()(
           if (act.actType === "prepayment" || deletedActIds.has(act.id)) continue;
           appointments = syncVisitForWorkAct(appointments, act, state.payments);
           patientIds.add(act.patientId);
-          if (isWorkActFullyPaid(act, state.payments)) {
+          if (isWorkActAlreadyPaid(act, state.payments)) {
             appointments = syncAppointmentsAfterActPaid(appointments, act);
           }
         }
@@ -1067,6 +1122,7 @@ export const useClinicStore = create<ClinicState>()(
           appointments: repaired.appointments ?? [],
           medicalRecords: repaired.medicalRecords ?? [],
           treatmentPlans: repaired.treatmentPlans ?? [],
+          treatmentPlanCases: repaired.treatmentPlanCases ?? [],
           payments: repaired.payments ?? [],
           invoices: repaired.invoices ?? [],
           workActs: repaired.workActs ?? [],
@@ -1089,6 +1145,7 @@ export const useClinicStore = create<ClinicState>()(
           deletedAppointmentIds: repaired.deletedAppointmentIds ?? [],
           deletedMedicalRecordIds: repaired.deletedMedicalRecordIds ?? [],
           deletedTreatmentPlanIds: repaired.deletedTreatmentPlanIds ?? [],
+          deletedTreatmentPlanCaseIds: repaired.deletedTreatmentPlanCaseIds ?? [],
           doctorSchedules: repaired.doctorSchedules ?? [],
           prepayments: repaired.prepayments ?? [],
           assistantManualHours: normalizeAssistantManualHours(repaired.assistantManualHours),
@@ -1126,6 +1183,12 @@ export const useClinicStore = create<ClinicState>()(
             data.deletedTreatmentPlanIds,
             s.deletedTreatmentPlanIds
           );
+          const treatmentPlanCases = mergeEntityListWithTombstones(
+            data.treatmentPlanCases ?? [],
+            s.treatmentPlanCases ?? [],
+            data.deletedTreatmentPlanCaseIds,
+            s.deletedTreatmentPlanCaseIds
+          );
           const hydrated = applyAllDeletionTombstones({
             ...s,
             ...(() => {
@@ -1155,6 +1218,8 @@ export const useClinicStore = create<ClinicState>()(
             deletedMedicalRecordIds: medicalRecords.deletedIds,
             treatmentPlans: treatmentPlans.items,
             deletedTreatmentPlanIds: treatmentPlans.deletedIds,
+            treatmentPlanCases: treatmentPlanCases.items,
+            deletedTreatmentPlanCaseIds: treatmentPlanCases.deletedIds,
             payments: mergeByIdPreferLocal(data.payments ?? [], s.payments),
             invoices: mergeByIdPreferLocal(data.invoices ?? [], s.invoices),
             ...mergeWorkActsState(
@@ -1202,6 +1267,7 @@ export const useClinicStore = create<ClinicState>()(
             appointments: hydrated.appointments,
             medicalRecords: hydrated.medicalRecords,
             treatmentPlans: hydrated.treatmentPlans,
+            treatmentPlanCases: hydrated.treatmentPlanCases ?? [],
             payments: hydrated.payments,
             invoices: hydrated.invoices,
             workActs: hydrated.workActs,
@@ -1224,6 +1290,7 @@ export const useClinicStore = create<ClinicState>()(
             deletedAppointmentIds: hydrated.deletedAppointmentIds ?? [],
             deletedMedicalRecordIds: hydrated.deletedMedicalRecordIds ?? [],
             deletedTreatmentPlanIds: hydrated.deletedTreatmentPlanIds ?? [],
+            deletedTreatmentPlanCaseIds: hydrated.deletedTreatmentPlanCaseIds ?? [],
             doctorSchedules: hydrated.doctorSchedules,
             prepayments: hydrated.prepayments,
             assistantManualHours: hydrated.assistantManualHours,

@@ -223,7 +223,7 @@ export async function PUT(request: Request) {
         ok: false,
         code: "FULL_SNAPSHOT_PUT_DISABLED",
         error:
-          "Полное сохранение снимка отключено для этой роли. Используйте command API из интерфейса.",
+          "Полное сохранение снимка отключено. Изменения сохраняются через command API интерфейса.",
       },
       { status: 410, headers: NO_STORE_HEADERS }
     );

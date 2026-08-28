@@ -2,6 +2,7 @@ import type { Appointment, Payment, WorkAct } from "@/lib/types";
 import { isWorkActFullyPaid } from "@/lib/work-act-payment";
 
 export function isWorkActAlreadyPaid(act: WorkAct, payments: Payment[]): boolean {
+  if (act.paymentStatus === "paid") return true;
   return isWorkActFullyPaid(act, payments);
 }
 
@@ -20,8 +21,8 @@ export function syncAppointmentsAfterActPaid(
   let changed = false;
   const next = appointments.map((apt) => {
     if (!linkedIds.has(apt.id)) return apt;
-    if (apt.status !== "ready_for_payment" && apt.paymentStatus === "paid") {
-      return apt;
+    if (apt.status === "completed" && apt.paymentStatus === "paid") {
+      return apt.workActId ? apt : { ...apt, workActId: act.id };
     }
     changed = true;
     return {

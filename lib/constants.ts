@@ -116,7 +116,7 @@ export const APPOINTMENT_STATUS_COLORS: Record<AppointmentStatus, string> = {
   arrived: "bg-amber-50 text-amber-700 border-amber-200",
   in_progress: "bg-violet-50 text-violet-700 border-violet-200",
   completed: "bg-teal-50 text-teal-800 border-teal-200",
-  ready_for_payment: "bg-cyan-50 text-cyan-800 border-cyan-200",
+  ready_for_payment: "bg-red-600 text-white border-2 border-red-700",
   cancelled: "bg-red-50 text-red-700 border-red-200",
   no_show: "bg-orange-50 text-orange-700 border-orange-200",
 };

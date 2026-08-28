@@ -59,6 +59,7 @@ interface AppointmentModalProps {
   appointment?: Appointment | null;
   defaultDate?: string;
   defaultDoctorId?: string;
+  defaultPatientId?: string;
   defaultTime?: string;
   onOpenAct?: (actId: string) => void;
   onGoToPayment?: (actId: string) => void;
@@ -70,6 +71,7 @@ export function AppointmentModal({
   appointment,
   defaultDate,
   defaultDoctorId,
+  defaultPatientId,
   defaultTime,
   onOpenAct,
   onGoToPayment,
@@ -207,7 +209,7 @@ export function AppointmentModal({
       }
     } else {
       const initialDoctorId = defaultDoctorId ?? storeActiveDoctors[0]?.id ?? "";
-      setPatientId("");
+      setPatientId(defaultPatientId ?? "");
       setDoctorId(initialDoctorId);
       setAssistantId("");
       setCabinetId(
@@ -229,6 +231,7 @@ export function AppointmentModal({
     appointment?.id,
     defaultDate,
     defaultDoctorId,
+    defaultPatientId,
     defaultTime,
     isAdmin,
     linkedActId,

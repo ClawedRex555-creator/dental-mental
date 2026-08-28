@@ -36,9 +36,9 @@ describe("clinic data sync access", () => {
     assert.equal(canAccessFullClinicDataSync("accountant"), false);
   });
 
-  it("day-to-day snapshot PUT is limited to owner/admin", () => {
-    assert.equal(canUseDayToDaySnapshotPut("owner"), true);
-    assert.equal(canUseDayToDaySnapshotPut("admin"), true);
+  it("day-to-day snapshot PUT is disabled for all roles", () => {
+    assert.equal(canUseDayToDaySnapshotPut("owner"), false);
+    assert.equal(canUseDayToDaySnapshotPut("admin"), false);
     assert.equal(canUseDayToDaySnapshotPut("doctor"), false);
     assert.equal(canUseDayToDaySnapshotPut("assistant"), false);
     assert.equal(canUseDayToDaySnapshotPut("accountant"), false);

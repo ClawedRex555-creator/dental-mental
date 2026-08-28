@@ -67,6 +67,51 @@ describe("syncVisitForWorkAct", () => {
     assert.equal(next[0]?.workActId, "act-1");
     assert.equal(next[0]?.status, "ready_for_payment");
   });
+
+  it("completes ready_for_payment when act is paid via workActId link", () => {
+    const next = syncVisitForWorkAct(
+      [
+        {
+          id: "apt-1",
+          patientId: "pat-1",
+          date: "2026-06-27",
+          startTime: "10:00",
+          endTime: "10:30",
+          durationMinutes: 30,
+          status: "ready_for_payment",
+          price: 5000,
+          paymentStatus: "pending",
+          workActId: "act-1",
+        },
+      ],
+      { ...baseAct(), paymentStatus: "paid" },
+      []
+    );
+    assert.equal(next[0]?.status, "completed");
+    assert.equal(next[0]?.paymentStatus, "paid");
+  });
+
+  it("returns same appointments reference when already in sync", () => {
+    const appointments = [
+      {
+        id: "apt-1",
+        patientId: "pat-1",
+        date: "2026-06-27",
+        startTime: "10:00",
+        endTime: "10:30",
+        durationMinutes: 30,
+        status: "ready_for_payment" as const,
+        price: 5000,
+        paymentStatus: "pending" as const,
+        workActId: "act-1",
+      },
+    ];
+    const next = syncVisitForWorkAct(appointments, {
+      ...baseAct(),
+      appointmentId: "apt-1",
+    });
+    assert.equal(next, appointments);
+  });
 });
 
 describe("isWorkActSyntheticVisit", () => {

@@ -125,6 +125,32 @@ bash scripts/create-elanar-clinic.sh
 
 Вход: **https://elanar.emkaro.ru/login** (подставьте свой `APP_ROOT_DOMAIN`).
 
+### Клиника «ЛИДЕР СТОМ КОМПАНИ»
+
+Поддомен: **liderstomcompany.emkaro.ru** (slug `liderstomcompany`).
+
+1. В `deploy/Caddyfile` уже есть блок `liderstomcompany.{$APP_ROOT_DOMAIN}` — после деплоя: `docker compose restart caddy`.
+2. Создайте tenant в БД:
+
+```bash
+export LIDERSTOM_OWNER_PASSWORD='YourStrongPass123!'
+export LIDERSTOM_OWNER_EMAIL='admin@liderstomcompany.ru'   # по желанию
+bash scripts/create-liderstomcompany-clinic.sh
+```
+
+На сервере (`/opt/emkaro`):
+
+```bash
+export LIDERSTOM_OWNER_PASSWORD='...'
+docker compose exec -T app node scripts/create-clinic.mjs \
+  --slug liderstomcompany --name "ЛИДЕР СТОМ КОМПАНИ" \
+  --email admin@liderstomcompany.ru --password "$LIDERSTOM_OWNER_PASSWORD" \
+  --owner-name "Владелец клиники"
+docker compose restart caddy
+```
+
+Вход: **https://liderstomcompany.emkaro.ru/login**
+
 ---
 
 ## 7. Локальная разработка с поддоменами

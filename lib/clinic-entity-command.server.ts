@@ -4,8 +4,10 @@ import {
   applyAddPatientNoteToPersistedState,
   applyCreatePrepaymentToPersistedState,
   applyDeletePatientNoteToPersistedState,
+  applyDeleteTreatmentPlanCaseToPersistedState,
   applyDeleteTreatmentPlanToPersistedState,
   applyUpsertMedicalRecordToPersistedState,
+  applyUpsertTreatmentPlanCaseToPersistedState,
   applyUpsertTreatmentPlanToPersistedState,
   type CreatePrepaymentCommandInput,
 } from "@/lib/apply-entity-commands";
@@ -19,6 +21,7 @@ import type {
   MedicalRecord,
   PatientNote,
   TreatmentPlan,
+  TreatmentPlanCase,
 } from "@/lib/types";
 
 function asApplyAppointment(
@@ -61,6 +64,24 @@ export async function handleUpsertTreatmentPlan(
 export async function handleDeleteTreatmentPlan(request: Request, planId: string) {
   return runEntityCommand(request, (state) =>
     asApplyAppointment(applyDeleteTreatmentPlanToPersistedState(state, planId))
+  );
+}
+
+export async function handleUpsertTreatmentPlanCase(
+  request: Request,
+  caseItem: TreatmentPlanCase
+) {
+  return runEntityCommand(request, (state) =>
+    asApplyAppointment(applyUpsertTreatmentPlanCaseToPersistedState(state, caseItem))
+  );
+}
+
+export async function handleDeleteTreatmentPlanCase(
+  request: Request,
+  caseId: string
+) {
+  return runEntityCommand(request, (state) =>
+    asApplyAppointment(applyDeleteTreatmentPlanCaseToPersistedState(state, caseId))
   );
 }
 

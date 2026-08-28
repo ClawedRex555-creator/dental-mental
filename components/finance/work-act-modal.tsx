@@ -95,6 +95,42 @@ const selectClass =
 const compactNumberInputClass =
   "min-w-[4rem] text-center px-2 text-sm text-[var(--foreground)] tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
+function buildWorkActFormSnapshot(input: {
+  patientId: string;
+  doctorId: string;
+  actDate: string;
+  items: WorkActItem[];
+  discountType: DiscountType;
+  discount: string;
+  discountBearer: DiscountBearer;
+  notes: string;
+  linkedPrepaymentId: string | null;
+  prepayPath: "pending" | "new" | "settle";
+}): string {
+  return JSON.stringify({
+    patientId: input.patientId,
+    doctorId: input.doctorId,
+    actDate: input.actDate,
+    discountType: input.discountType,
+    discount: Number(input.discount) || 0,
+    discountBearer: input.discountBearer,
+    notes: input.notes.trim(),
+    linkedPrepaymentId: input.linkedPrepaymentId,
+    prepayPath: input.prepayPath,
+    items: input.items.filter(isWorkActLineFilled).map((i) => ({
+      id: i.id,
+      serviceId: i.serviceId,
+      serviceName: i.serviceName.trim(),
+      toothNumber: i.toothNumber,
+      quantity: Math.max(1, i.quantity || 1),
+      price: i.price || 0,
+      discountPercent: i.discountPercent,
+      serviceCategory: i.serviceCategory,
+      technicalUnitPrice: i.technicalUnitPrice,
+    })),
+  });
+}
+
 export function WorkActModal({
   open,
   onOpenChange,
@@ -210,6 +246,7 @@ export function WorkActModal({
   >({});
   const savedActIdRef = useRef<string | null>(null);
   const initialized = useRef(false);
+  const baselineRef = useRef("");
 
   const rememberSavedActId = (actId: string) => {
     savedActIdRef.current = actId;
@@ -217,6 +254,26 @@ export function WorkActModal({
   };
 
   const visibleItems = useMemo(() => items.filter(isWorkActLineFilled), [items]);
+
+  const captureWorkActFormSnapshot = () =>
+    buildWorkActFormSnapshot({
+      patientId,
+      doctorId,
+      actDate,
+      items,
+      discountType,
+      discount,
+      discountBearer,
+      notes,
+      linkedPrepaymentId,
+      prepayPath,
+    });
+
+  const isFormDirty = () => baselineRef.current !== captureWorkActFormSnapshot();
+
+  const refreshBaseline = () => {
+    baselineRef.current = captureWorkActFormSnapshot();
+  };
 
   const { subtotalAmount, afterRowDiscounts, totalAmount, discountValue } = useMemo(
     () => calcWorkActAmounts(items, discountType, Number(discount) || 0),
@@ -289,22 +346,37 @@ export function WorkActModal({
       loadFromAct(existingAct);
       setPrepayPath("new");
       setLinkedPrepaymentId(existingAct.prepaymentId ?? null);
+      baselineRef.current = buildWorkActFormSnapshot({
+        patientId: existingAct.patientId,
+        doctorId: existingAct.doctorId ?? "",
+        actDate: existingAct.actDate,
+        items: existingAct.items,
+        discountType: existingAct.discountType ?? "percent",
+        discount: String(existingAct.discount ?? 0),
+        discountBearer: existingAct.discountBearer ?? "shared",
+        notes: existingAct.notes ?? "",
+        linkedPrepaymentId: existingAct.prepaymentId ?? null,
+        prepayPath: "new",
+      });
       return;
     }
 
-    setPatientId(defaultPatientId ?? "");
+    const nextPatientId = defaultPatientId ?? "";
     const aptForDefaults =
       appointments.find((a) => a.id === defaultAppointmentId) ??
       (existingActId
         ? appointments.find((a) => a.workActId === existingActId)
         : undefined);
-    setDoctorId(
+    const nextDoctorId =
       defaultDoctorId ??
-        aptForDefaults?.doctorId ??
-        activeDoctors[0]?.id ??
-        ""
-    );
-    setActDate(aptForDefaults?.date ?? format(new Date(), "yyyy-MM-dd"));
+      aptForDefaults?.doctorId ??
+      activeDoctors[0]?.id ??
+      "";
+    const nextActDate = aptForDefaults?.date ?? format(new Date(), "yyyy-MM-dd");
+
+    setPatientId(nextPatientId);
+    setDoctorId(nextDoctorId);
+    setActDate(nextActDate);
     setNotes("");
     setDiscountType("percent");
     setDiscount("0");
@@ -318,9 +390,10 @@ export function WorkActModal({
       prepayments,
       workActs,
       payments,
-      defaultPatientId ?? ""
+      nextPatientId
     );
-    setPrepayPath(openPrepays.length > 0 ? "pending" : "new");
+    const nextPrepayPath = openPrepays.length > 0 ? "pending" : "new";
+    setPrepayPath(nextPrepayPath);
 
     const mapDefault = (it: {
       serviceName: string;
@@ -337,31 +410,41 @@ export function WorkActModal({
       total: it.price,
     });
 
+    let nextItems: WorkActItem[] = [];
     if (defaultItems?.length) {
-      setItems(defaultItems.map(mapDefault));
+      nextItems = defaultItems.map(mapDefault);
     } else if (aptForDefaults) {
       const svc = aptForDefaults.serviceId
         ? clinicServices.find((s) => s.id === aptForDefaults.serviceId)
         : undefined;
       if (svc) {
         const normalized = normalizeServiceFields(svc);
-        setItems([
+        nextItems = [
           {
             id: generateId("wai"),
             serviceId: svc.id,
             serviceName: svc.name,
             serviceCategory: normalized.category,
             quantity: 1,
-            price: aptForDefaults!.price > 0 ? aptForDefaults!.price : svc.price,
-            total: aptForDefaults!.price > 0 ? aptForDefaults!.price : svc.price,
+            price: aptForDefaults.price > 0 ? aptForDefaults.price : svc.price,
+            total: aptForDefaults.price > 0 ? aptForDefaults.price : svc.price,
           },
-        ]);
-      } else {
-        setItems([]);
+        ];
       }
-    } else {
-      setItems([]);
     }
+    setItems(nextItems);
+    baselineRef.current = buildWorkActFormSnapshot({
+      patientId: nextPatientId,
+      doctorId: nextDoctorId,
+      actDate: nextActDate,
+      items: nextItems,
+      discountType: "percent",
+      discount: "0",
+      discountBearer: "shared",
+      notes: "",
+      linkedPrepaymentId: null,
+      prepayPath: nextPrepayPath,
+    });
   }, [
     open,
     defaultPatientId,
@@ -382,6 +465,18 @@ export function WorkActModal({
   useEffect(() => {
     if (!open || !existingAct) return;
     loadFromAct(existingAct);
+    baselineRef.current = buildWorkActFormSnapshot({
+      patientId: existingAct.patientId,
+      doctorId: existingAct.doctorId ?? "",
+      actDate: existingAct.actDate,
+      items: existingAct.items,
+      discountType: existingAct.discountType ?? "percent",
+      discount: String(existingAct.discount ?? 0),
+      discountBearer: existingAct.discountBearer ?? "shared",
+      notes: existingAct.notes ?? "",
+      linkedPrepaymentId: existingAct.prepaymentId ?? null,
+      prepayPath: "new",
+    });
   }, [open, existingAct]);
 
   const openPrepaysForPatient = useMemo(
@@ -597,7 +692,11 @@ export function WorkActModal({
       notifyClinicDataChanged();
 
       toast.success(options.successMessage(act));
-      if (options.closeOnSuccess) onOpenChange(false);
+      if (options.closeOnSuccess) {
+        onOpenChange(false);
+      } else {
+        refreshBaseline();
+      }
       return true;
     } finally {
       endClinicCommandMutation();
@@ -808,6 +907,28 @@ export function WorkActModal({
     })();
   };
 
+  const attemptClose = () => {
+    if (effectiveReadOnly || !isFormDirty()) {
+      onOpenChange(false);
+      return;
+    }
+    if (
+      window.confirm(
+        "Есть несохранённые изменения.\n\nЗакрыть без сохранения? Все правки будут потеряны."
+      )
+    ) {
+      onOpenChange(false);
+    }
+  };
+
+  const handleDialogOpenChange = (next: boolean) => {
+    if (next) {
+      onOpenChange(true);
+      return;
+    }
+    attemptClose();
+  };
+
   const title =
     mode === "doctor"
       ? "Акт оказанных услуг — заполнение врачом"
@@ -826,8 +947,18 @@ export function WorkActModal({
         : "Акт оказанных услуг (РФ)";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent
+        className="max-h-[90vh] max-w-2xl overflow-y-auto"
+        onInteractOutside={(e) => {
+          e.preventDefault();
+          attemptClose();
+        }}
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          attemptClose();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -1461,7 +1592,7 @@ export function WorkActModal({
           </div>
 
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={attemptClose}>
               {effectiveReadOnly ? "Закрыть" : "Отмена"}
             </Button>
             {effectiveReadOnly && existingAct && (

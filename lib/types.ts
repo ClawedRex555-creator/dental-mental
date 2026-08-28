@@ -370,7 +370,13 @@ export interface TreatmentPlanItem {
   /** Количество услуг (по умолчанию 1) */
   quantity?: number;
   status: ToothTreatmentStatus;
+  /** Тема / категория (терапия, хирургия…) — для группировки в большом плане */
   stage?: string;
+  /** Врач по этой позиции / теме (если не указан — врач плана) */
+  doctorId?: string;
+  /** Акт, в котором услуга была выполнена */
+  completedWorkActId?: string;
+  completedAt?: string;
 }
 
 export type DiscountType = "percent" | "rubles";
@@ -389,6 +395,20 @@ export interface TreatmentPlan {
   discountType: DiscountType;
   discount: number;
   finalAmount: number;
+  status: TreatmentPlanStatus;
+  createdAt: string;
+  comment?: string;
+  /** Родительский кейс, если план входит в группу */
+  caseId?: string;
+}
+
+/** Группа уже созданных планов одного пациента (комплексное лечение). */
+export interface TreatmentPlanCase {
+  id: string;
+  patientId: string;
+  doctorId?: string;
+  title: string;
+  planIds: string[];
   status: TreatmentPlanStatus;
   createdAt: string;
   comment?: string;

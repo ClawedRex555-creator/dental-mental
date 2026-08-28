@@ -35,6 +35,7 @@ import type {
   ThemeMode,
   ToothRecord,
   TreatmentPlan,
+  TreatmentPlanCase,
   WarehouseItem,
   WorkAct,
 } from "@/lib/types";
@@ -52,6 +53,7 @@ export interface ClinicPersistedState {
   appointments: Appointment[];
   medicalRecords: MedicalRecord[];
   treatmentPlans: TreatmentPlan[];
+  treatmentPlanCases: TreatmentPlanCase[];
   payments: Payment[];
   invoices: Invoice[];
   workActs: WorkAct[];
@@ -78,6 +80,7 @@ export interface ClinicPersistedState {
   deletedAppointmentIds?: string[];
   deletedMedicalRecordIds?: string[];
   deletedTreatmentPlanIds?: string[];
+  deletedTreatmentPlanCaseIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -96,6 +99,7 @@ export function createFreshPersistedState(): ClinicPersistedState {
     appointments: [],
     medicalRecords: [],
     treatmentPlans: [],
+    treatmentPlanCases: [],
     payments: [],
     invoices: [],
     workActs: [],
@@ -120,6 +124,7 @@ export function createFreshPersistedState(): ClinicPersistedState {
     deletedAppointmentIds: [],
     deletedMedicalRecordIds: [],
     deletedTreatmentPlanIds: [],
+    deletedTreatmentPlanCaseIds: [],
     doctorSchedules: [],
     prepayments: [],
     userThemePreferences: {},
@@ -135,6 +140,7 @@ type PersistPickSource = {
   appointments: Appointment[];
   medicalRecords: MedicalRecord[];
   treatmentPlans: TreatmentPlan[];
+  treatmentPlanCases?: TreatmentPlanCase[];
   payments: Payment[];
   invoices: Invoice[];
   workActs: WorkAct[];
@@ -157,6 +163,7 @@ type PersistPickSource = {
   deletedAppointmentIds?: string[];
   deletedMedicalRecordIds?: string[];
   deletedTreatmentPlanIds?: string[];
+  deletedTreatmentPlanCaseIds?: string[];
   doctorSchedules: DoctorMonthSchedule[];
   prepayments: PatientPrepayment[];
   userThemePreferences: Record<string, ThemeMode>;
@@ -225,6 +232,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     appointments: state.appointments ?? [],
     medicalRecords: state.medicalRecords ?? [],
     treatmentPlans: state.treatmentPlans ?? [],
+    treatmentPlanCases: state.treatmentPlanCases ?? [],
     payments: state.payments ?? [],
     invoices: state.invoices ?? [],
     workActs: state.workActs ?? [],
@@ -247,6 +255,7 @@ export function pickPersistedState(state: PersistPickSource): ClinicPersistedSta
     deletedAppointmentIds: state.deletedAppointmentIds ?? [],
     deletedMedicalRecordIds: state.deletedMedicalRecordIds ?? [],
     deletedTreatmentPlanIds: state.deletedTreatmentPlanIds ?? [],
+    deletedTreatmentPlanCaseIds: state.deletedTreatmentPlanCaseIds ?? [],
     doctorSchedules: state.doctorSchedules ?? [],
     prepayments: state.prepayments ?? [],
     userThemePreferences: state.userThemePreferences ?? {},
@@ -306,6 +315,7 @@ export function hasClinicData(state: ClinicPersistedState): boolean {
     state.workActs.length > 0 ||
     state.payments.length > 0 ||
     state.treatmentPlans.length > 0 ||
+    (state.treatmentPlanCases?.length ?? 0) > 0 ||
     state.medicalRecords.length > 0 ||
     state.clinicExpenses.length > 0
   );
@@ -338,6 +348,7 @@ const RECOVERY_ENTITY_LIST_KEYS = [
   "invoices",
   "medicalRecords",
   "treatmentPlans",
+  "treatmentPlanCases",
   "prepayments",
   "patientNotes",
   "patientFiles",
@@ -751,6 +762,9 @@ export function applyAllDeletionTombstones(
   const deletedAppointmentIds = unionTombstoneIds(snapshot.deletedAppointmentIds);
   const deletedMedicalRecordIds = unionTombstoneIds(snapshot.deletedMedicalRecordIds);
   const deletedTreatmentPlanIds = unionTombstoneIds(snapshot.deletedTreatmentPlanIds);
+  const deletedTreatmentPlanCaseIds = unionTombstoneIds(
+    snapshot.deletedTreatmentPlanCaseIds
+  );
   const deletedWorkActIds = unionTombstoneIds(snapshot.deletedWorkActIds);
   const deletedServiceIds = unionTombstoneIds(snapshot.deletedServiceIds);
   const deletedLegalDocumentIds = unionTombstoneIds(snapshot.deletedLegalDocumentIds);
@@ -765,6 +779,7 @@ export function applyAllDeletionTombstones(
           deletedAppointmentIds,
           deletedMedicalRecordIds,
           deletedTreatmentPlanIds,
+          deletedTreatmentPlanCaseIds,
           deletedWorkActIds,
           deletedServiceIds,
           deletedLegalDocumentIds,
@@ -781,6 +796,7 @@ export function applyAllDeletionTombstones(
   const appointmentSet = new Set(deletedAppointmentIds);
   const medicalSet = new Set(deletedMedicalRecordIds);
   const planSet = new Set(deletedTreatmentPlanIds);
+  const caseSet = new Set(deletedTreatmentPlanCaseIds);
 
   const filterByPatient = <T extends { patientId?: string }>(rows: T[]) =>
     rows.filter((row) => !row.patientId || !patientSet.has(row.patientId));
@@ -819,6 +835,12 @@ export function applyAllDeletionTombstones(
     treatmentPlans: next.treatmentPlans.filter(
       (p) => !planSet.has(p.id) && !patientSet.has(p.patientId)
     ),
+    treatmentPlanCases: (next.treatmentPlanCases ?? [])
+      .filter((c) => !caseSet.has(c.id) && !patientSet.has(c.patientId))
+      .map((c) => ({
+        ...c,
+        planIds: c.planIds.filter((pid) => !planSet.has(pid)),
+      })),
     payments: filterByPatient(next.payments),
     invoices: filterByPatient(next.invoices),
     workActs: filterByPatient(next.workActs).map((act) =>
@@ -871,6 +893,11 @@ function withMergedTombstoneIds(
       existing.deletedTreatmentPlanIds,
       incoming.deletedTreatmentPlanIds,
       merged.deletedTreatmentPlanIds
+    ),
+    deletedTreatmentPlanCaseIds: unionTombstoneIds(
+      existing.deletedTreatmentPlanCaseIds,
+      incoming.deletedTreatmentPlanCaseIds,
+      merged.deletedTreatmentPlanCaseIds
     ),
     deletedWorkActIds: unionTombstoneIds(
       existing.deletedWorkActIds,
@@ -1043,6 +1070,7 @@ export function hasSnapshotRecoveryFromMerge(
     | "appointments"
     | "medicalRecords"
     | "treatmentPlans"
+    | "treatmentPlanCases"
     | "payments"
     | "workActs"
     | "patientNotes"
@@ -1053,6 +1081,7 @@ export function hasSnapshotRecoveryFromMerge(
     "appointments",
     "medicalRecords",
     "treatmentPlans",
+    "treatmentPlanCases",
     "payments",
     "workActs",
     "patientNotes",
@@ -1083,6 +1112,7 @@ export function clinicSnapshotsDifferQuickly(
     "appointments",
     "medicalRecords",
     "treatmentPlans",
+    "treatmentPlanCases",
     "payments",
     "workActs",
     "doctors",
@@ -1234,6 +1264,15 @@ export function mergeClinicSnapshotWithLocal(
     remote.deletedTreatmentPlanIds,
     local.deletedTreatmentPlanIds
   );
+  const treatmentPlanCases = mergeEntityListWithTombstones(
+    mergeByIdPreferLocalRespectingDeletions(
+      remote.treatmentPlanCases ?? [],
+      local.treatmentPlanCases ?? []
+    ),
+    [],
+    remote.deletedTreatmentPlanCaseIds,
+    local.deletedTreatmentPlanCaseIds
+  );
 
   const merged: ClinicPersistedState = {
     ...remote,
@@ -1260,6 +1299,8 @@ export function mergeClinicSnapshotWithLocal(
     deletedMedicalRecordIds: medicalRecords.deletedIds,
     treatmentPlans: treatmentPlans.items,
     deletedTreatmentPlanIds: treatmentPlans.deletedIds,
+    treatmentPlanCases: treatmentPlanCases.items,
+    deletedTreatmentPlanCaseIds: treatmentPlanCases.deletedIds,
     payments: mergeFinancialEntityList(remote.payments, local.payments),
     invoices: mergeFinancialEntityList(remote.invoices, local.invoices),
     ...(() => {
@@ -1428,6 +1469,21 @@ export function mergeClinicDataForSave(
         deletedTreatmentPlanIds,
       };
     })(),
+    ...(() => {
+      const deletedTreatmentPlanCaseIds = unionTombstoneIds(
+        existing.deletedTreatmentPlanCaseIds,
+        incoming.deletedTreatmentPlanCaseIds
+      );
+      const caseTombstones = new Set(deletedTreatmentPlanCaseIds);
+      const cases = mergeByIdPreferLocal(
+        incoming.treatmentPlanCases ?? [],
+        existing.treatmentPlanCases ?? []
+      ).filter((c) => !caseTombstones.has(c.id));
+      return {
+        treatmentPlanCases: cases,
+        deletedTreatmentPlanCaseIds,
+      };
+    })(),
     // Пересекающиеся id: server wins (оплата/акт с command API);
     // новые id клиента принимаем; пустой incoming не обнуляет финансы.
     payments:
@@ -1541,6 +1597,7 @@ export function mergeClinicDataForSave(
           appointments: filterByPatient(merged.appointments),
           medicalRecords: filterByPatient(merged.medicalRecords),
           treatmentPlans: filterByPatient(merged.treatmentPlans),
+          treatmentPlanCases: filterByPatient(merged.treatmentPlanCases ?? []),
           payments: filterByPatient(merged.payments),
           invoices: filterByPatient(merged.invoices),
           workActs: filterByPatient(merged.workActs),
@@ -1612,6 +1669,10 @@ export function mergeClinicDataOnWriteConflict(
         : mergeAppointmentsOnWriteConflict(existing.appointments, incoming.appointments),
     medicalRecords: preferServer(existing.medicalRecords, incoming.medicalRecords),
     treatmentPlans: preferServer(existing.treatmentPlans, incoming.treatmentPlans),
+    treatmentPlanCases: preferServer(
+      existing.treatmentPlanCases ?? [],
+      incoming.treatmentPlanCases ?? []
+    ),
     // write-conflict: overlapping ids always from server; client-only rows are kept.
     // Не трактуем "пропало из incoming" как delete: иначе stale вкладка стирает финансы.
     payments: preferServerNoImplicitDelete(existing.payments, incoming.payments),
@@ -1703,6 +1764,7 @@ export function mergeClinicDataOnWriteConflict(
         appointments: filterByPatient(merged.appointments),
         medicalRecords: filterByPatient(merged.medicalRecords),
         treatmentPlans: filterByPatient(merged.treatmentPlans),
+        treatmentPlanCases: filterByPatient(merged.treatmentPlanCases ?? []),
         payments: filterByPatient(merged.payments),
         invoices: filterByPatient(merged.invoices),
         workActs: filterByPatient(merged.workActs),
@@ -1771,6 +1833,11 @@ export function isSuspiciousClinicDataDowngrade(
       incoming: incoming.treatmentPlans,
       protectMassLoss: !hasPatientDeletion && !hasTreatmentPlanDeletion,
     },
+    {
+      existing: existing.treatmentPlanCases ?? [],
+      incoming: incoming.treatmentPlanCases ?? [],
+      protectMassLoss: !hasPatientDeletion,
+    },
     { existing: existing.payments, incoming: incoming.payments, protectMassLoss: !hasPatientDeletion },
     { existing: existing.workActs, incoming: incoming.workActs, protectMassLoss: !hasPatientDeletion },
     {
@@ -1805,6 +1872,7 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
     appointments: (d.appointments as Appointment[]) ?? [],
     medicalRecords: (d.medicalRecords as MedicalRecord[]) ?? [],
     treatmentPlans: (d.treatmentPlans as TreatmentPlan[]) ?? [],
+    treatmentPlanCases: (d.treatmentPlanCases as TreatmentPlanCase[]) ?? [],
     payments: (d.payments as Payment[]) ?? [],
     invoices: (d.invoices as Invoice[]) ?? [],
     workActs: (d.workActs as WorkAct[]) ?? [],
@@ -1842,6 +1910,9 @@ export function parseClinicPersistedState(raw: unknown): ClinicPersistedState | 
       : [],
     deletedTreatmentPlanIds: Array.isArray(d.deletedTreatmentPlanIds)
       ? (d.deletedTreatmentPlanIds as string[])
+      : [],
+    deletedTreatmentPlanCaseIds: Array.isArray(d.deletedTreatmentPlanCaseIds)
+      ? (d.deletedTreatmentPlanCaseIds as string[])
       : [],
     doctorSchedules: (d.doctorSchedules as DoctorMonthSchedule[]) ?? [],
     prepayments: (d.prepayments as PatientPrepayment[]) ?? [],

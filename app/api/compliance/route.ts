@@ -94,6 +94,9 @@ export async function POST(request: Request) {
       appointments: snapshot.appointments.filter((a) => a.patientId === body.patientId),
       medicalRecords: snapshot.medicalRecords.filter((r) => r.patientId === body.patientId),
       treatmentPlans: snapshot.treatmentPlans.filter((p) => p.patientId === body.patientId),
+      treatmentPlanCases: (snapshot.treatmentPlanCases ?? []).filter(
+        (c) => c.patientId === body.patientId
+      ),
       payments: snapshot.payments.filter((p) => p.patientId === body.patientId),
       workActs: snapshot.workActs.filter((a) => a.patientId === body.patientId),
     };

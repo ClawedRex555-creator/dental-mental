@@ -98,6 +98,9 @@ export function applyDeletePatientToPersistedState(
   const removedTreatmentPlanIds = state.treatmentPlans
     .filter((p) => p.patientId === id)
     .map((p) => p.id);
+  const removedTreatmentPlanCaseIds = (state.treatmentPlanCases ?? [])
+    .filter((c) => c.patientId === id)
+    .map((c) => c.id);
 
   return {
     ok: true,
@@ -107,6 +110,9 @@ export function applyDeletePatientToPersistedState(
       appointments: state.appointments.filter((a) => a.patientId !== id),
       medicalRecords: state.medicalRecords.filter((r) => r.patientId !== id),
       treatmentPlans: state.treatmentPlans.filter((p) => p.patientId !== id),
+      treatmentPlanCases: (state.treatmentPlanCases ?? []).filter(
+        (c) => c.patientId !== id
+      ),
       payments: state.payments.filter((p) => p.patientId !== id),
       invoices: state.invoices.filter((i) => i.patientId !== id),
       workActs: state.workActs.filter((a) => a.patientId !== id),
@@ -126,6 +132,12 @@ export function applyDeletePatientToPersistedState(
       ],
       deletedTreatmentPlanIds: [
         ...new Set([...(state.deletedTreatmentPlanIds ?? []), ...removedTreatmentPlanIds]),
+      ],
+      deletedTreatmentPlanCaseIds: [
+        ...new Set([
+          ...(state.deletedTreatmentPlanCaseIds ?? []),
+          ...removedTreatmentPlanCaseIds,
+        ]),
       ],
     },
     patientId: id,

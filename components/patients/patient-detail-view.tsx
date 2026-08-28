@@ -19,6 +19,7 @@ import {
   FILE_TYPE_LABELS,
   OTHER_CLINIC_VISIT_BADGE,
   PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
 } from "@/lib/constants";
 import {
   beginClinicCommandMutation,
@@ -60,6 +61,10 @@ import { isWorkActSyntheticVisit } from "@/lib/work-act-visit";
 import { printWorkAct } from "@/lib/work-act-print";
 import { getPatientDebtAmount } from "@/lib/patient-balance";
 import { getOpenPrepaidSources } from "@/lib/prepayment-utils";
+import {
+  getWorkActPaidAmount,
+  getWorkActRemainingAmount,
+} from "@/lib/work-act-payment";
 import { deletePatientViaCommandApi } from "@/lib/clinic-patient.client";
 import {
   setPatientTeethViaCommandApi,
@@ -266,7 +271,13 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
     syncOtherClinicVisitForPatient,
   ]);
 
-  const patientActs = workActs.filter((a) => a.patientId === patient.id);
+  const patientActs = useMemo(
+    () =>
+      workActs
+        .filter((a) => a.patientId === patient.id)
+        .sort((a, b) => b.actDate.localeCompare(a.actDate) || b.createdAt.localeCompare(a.createdAt)),
+    [workActs, patient.id]
+  );
   const patientAppointments = useMemo(
     () =>
       appointments
@@ -310,6 +321,19 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
   const teeth = getPatientTeeth(patient.id);
   const activePlan = plans.find((p) => ["accepted", "in_progress", "proposed"].includes(p.status));
   const debtAmount = getPatientDebtAmount(patient.balance);
+  const advanceAmount = patient.balance > 0 ? patient.balance : 0;
+  const prepaidRemainingTotal = useMemo(
+    () => patientPrepaidSources.reduce((sum, s) => sum + s.remaining, 0),
+    [patientPrepaidSources]
+  );
+  const openActsRemainingTotal = useMemo(
+    () =>
+      patientActs.reduce(
+        (sum, act) => sum + getWorkActRemainingAmount(act, payments),
+        0
+      ),
+    [patientActs, payments]
+  );
 
   const selectedVisitWorkAct = useMemo(() => {
     if (!selectedVisit) return undefined;
@@ -351,12 +375,25 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               <span>
                 Баланс:{" "}
                 <strong
-                  className={patient.balance < 0 ? "text-red-600" : "text-slate-900"}
+                  className={
+                    patient.balance < 0
+                      ? "text-red-600"
+                      : patient.balance > 0
+                        ? "text-teal-700"
+                        : "text-slate-900"
+                  }
                 >
                   {formatCurrency(patient.balance)}
                 </strong>
                 {debtAmount > 0 && (
-                  <span className="ml-1 text-red-600">(долг {formatCurrency(debtAmount)})</span>
+                  <span className="ml-1 text-red-600">
+                    (долг {formatCurrency(debtAmount)})
+                  </span>
+                )}
+                {advanceAmount > 0 && (
+                  <span className="ml-1 text-teal-700">
+                    (аванс {formatCurrency(advanceAmount)})
+                  </span>
                 )}
               </span>
               <span>Последний визит: {formatDate(patient.lastVisitDate)}</span>
@@ -736,7 +773,8 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                         {formatCurrency(plan.finalAmount)}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {plan.items.length} услуг · нажмите, чтобы редактировать
+                        {plan.items.length} услуг
+                        {plan.caseId ? " · в группе" : ""} · нажмите, чтобы редактировать
                       </p>
                     </div>
                     {canDeletePlans && (
@@ -779,6 +817,31 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
       )}
       {tab === "finance" && (
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Сводка</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-slate-500">Аванс / предоплаты</p>
+                <p className="font-semibold text-teal-700">
+                  {formatCurrency(Math.max(advanceAmount, prepaidRemainingTotal))}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-500">К оплате по актам</p>
+                <p className="font-semibold text-amber-700">
+                  {formatCurrency(openActsRemainingTotal)}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-500">Долг</p>
+                <p className={cn("font-semibold", debtAmount > 0 ? "text-red-600" : "text-slate-900")}>
+                  {formatCurrency(debtAmount)}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
           <PatientDebtPanel patient={patient} />
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setPrepayOpen(true)}>
@@ -786,13 +849,66 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               Внести предоплату
             </Button>
           </div>
-          {patientPrepaidSources.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Предоплаты</CardTitle>
-              </CardHeader>
-              <CardContent className="divide-y p-0">
-                {patientPrepaidSources.map((source) => (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base">Акты</CardTitle>
+              <span className="text-xs text-slate-500">{patientActs.length}</span>
+            </CardHeader>
+            <CardContent className="divide-y p-0">
+              {patientActs.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-slate-500">Актов нет</p>
+              ) : (
+                patientActs.map((act) => {
+                  const paid = getWorkActPaidAmount(payments, act.id);
+                  const remaining = getWorkActRemainingAmount(act, payments);
+                  return (
+                    <button
+                      key={act.id}
+                      type="button"
+                      className="flex w-full flex-col gap-1 px-4 py-3 text-left text-sm hover:bg-slate-50"
+                      onClick={() => setVisitActId(act.id)}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-teal-800">
+                          Акт № {act.actNumber}
+                          {act.actType === "prepayment" ? " · предоплата" : ""}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {formatDate(act.actDate)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                        <span>Сумма: {formatCurrency(act.totalAmount)}</span>
+                        <span className="text-emerald-700">Оплачено: {formatCurrency(paid)}</span>
+                        <span className="text-amber-700">
+                          Остаток: {formatCurrency(remaining)}
+                        </span>
+                        <span>
+                          {PAYMENT_STATUS_LABELS[act.paymentStatus] ?? act.paymentStatus}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base">Предоплаты</CardTitle>
+              {prepaidRemainingTotal > 0 && (
+                <span className="text-xs font-medium text-teal-700">
+                  Свободный аванс: {formatCurrency(prepaidRemainingTotal)}
+                </span>
+              )}
+            </CardHeader>
+            <CardContent className="divide-y p-0">
+              {patientPrepaidSources.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-slate-500">
+                  Открытых предоплат нет
+                </p>
+              ) : (
+                patientPrepaidSources.map((source) => (
                   <div key={source.id} className="space-y-2 px-4 py-3 text-sm">
                     <div className="flex justify-between gap-2">
                       <span className="font-medium">{formatDate(source.date)}</span>
@@ -819,10 +935,10 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                       </span>
                     </div>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                ))
+              )}
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Платежи</CardTitle>

@@ -26,10 +26,11 @@ export function canWriteClinicDataSync(role: UserRole): boolean {
 
 /**
  * Day-to-day полный PUT снимка.
- * После миграции на command API оставляем только owner/admin как fallback.
+ * Выключен для всех ролей: запись только через command API.
+ * PUT /api/clinic/data остаётся 410; GET snapshot — для входа и «Обновить с сервера».
  */
-export function canUseDayToDaySnapshotPut(role: UserRole): boolean {
-  return role === "owner" || role === "admin";
+export function canUseDayToDaySnapshotPut(_role: UserRole): boolean {
+  return false;
 }
 
 /** @deprecated используйте canReadClinicDataSync / canWriteClinicDataSync */
@@ -159,6 +160,7 @@ export function filterClinicSnapshotForAccountant(
     ),
     medicalRecords: [],
     treatmentPlans: [],
+    treatmentPlanCases: [],
     payments: state.payments,
     invoices: state.invoices,
     workActs: state.workActs,

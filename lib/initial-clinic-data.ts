@@ -56,6 +56,7 @@ export function createEmptyClinicData() {
     appointments: [...initialAppointments] as Appointment[],
     medicalRecords: [...initialMedicalRecords] as MedicalRecord[],
     treatmentPlans: [...initialTreatmentPlans] as TreatmentPlan[],
+    treatmentPlanCases: [],
     payments: [...initialPayments] as Payment[],
     invoices: [...initialInvoices] as Invoice[],
     workActs: [] as WorkAct[],

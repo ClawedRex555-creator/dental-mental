@@ -135,6 +135,10 @@ function preferRemoteKeepLocalOnlyEntities(
     appointments: appendLocalOnly(remote.appointments, local.appointments),
     medicalRecords: appendLocalOnly(remote.medicalRecords, local.medicalRecords),
     treatmentPlans: appendLocalOnly(remote.treatmentPlans, local.treatmentPlans),
+    treatmentPlanCases: appendLocalOnly(
+      remote.treatmentPlanCases ?? [],
+      local.treatmentPlanCases ?? []
+    ),
     payments: appendLocalOnly(remote.payments, local.payments),
     invoices: appendLocalOnly(remote.invoices, local.invoices),
     workActs: appendLocalOnly(remote.workActs, local.workActs),
@@ -288,6 +292,14 @@ export function serverSnapshotHasIncomingUpdates(
   if (serverEntityListChanged(remote.invoices, baseline.invoices)) return true;
   if (serverEntityListChanged(remote.medicalRecords, baseline.medicalRecords)) return true;
   if (serverEntityListChanged(remote.treatmentPlans, baseline.treatmentPlans)) return true;
+  if (
+    serverEntityListChanged(
+      remote.treatmentPlanCases ?? [],
+      baseline.treatmentPlanCases ?? []
+    )
+  ) {
+    return true;
+  }
   if (serverEntityListChanged(remote.onlineBookings, baseline.onlineBookings)) return true;
   if (serverEntityListChanged(remote.prepayments, baseline.prepayments)) return true;
   if (serverEntityListChanged(remote.patientNotes, baseline.patientNotes)) return true;

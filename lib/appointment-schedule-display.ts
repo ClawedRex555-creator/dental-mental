@@ -50,5 +50,8 @@ export function getScheduleAppointmentCellClass(
   if (isAppointmentPaidOnSchedule(apt, act, payments)) {
     return "bg-emerald-50 text-emerald-900 border border-emerald-200";
   }
+  if (apt.status === "ready_for_payment") {
+    return "bg-red-600 text-white border-2 border-red-700 font-semibold";
+  }
   return APPOINTMENT_STATUS_COLORS[apt.status];
 }

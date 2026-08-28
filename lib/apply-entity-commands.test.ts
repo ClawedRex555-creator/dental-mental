@@ -4,12 +4,20 @@ import {
   applyAddPatientNoteToPersistedState,
   applyCreatePrepaymentToPersistedState,
   applyDeletePatientNoteToPersistedState,
+  applyDeleteTreatmentPlanCaseToPersistedState,
   applyDeleteTreatmentPlanToPersistedState,
   applyUpsertMedicalRecordToPersistedState,
+  applyUpsertTreatmentPlanCaseToPersistedState,
   applyUpsertTreatmentPlanToPersistedState,
 } from "./apply-entity-commands";
 import { createFreshPersistedState } from "./clinic-persisted-state";
-import type { MedicalRecord, PatientNote, TreatmentPlan, WorkAct } from "./types";
+import type {
+  MedicalRecord,
+  PatientNote,
+  TreatmentPlan,
+  TreatmentPlanCase,
+  WorkAct,
+} from "./types";
 
 function plan(partial?: Partial<TreatmentPlan>): TreatmentPlan {
   return {
@@ -71,6 +79,36 @@ describe("apply-entity-commands", () => {
     assert.equal(deleted.state.treatmentPlans.length, 0);
     assert.equal(deleted.state.patientNotes.length, 0);
     assert.equal(deleted.state.deletedTreatmentPlanIds?.includes("tp1"), true);
+  });
+
+  it("groups plans into a case without merging items", () => {
+    const state = createFreshPersistedState();
+    state.treatmentPlans = [
+      plan({ id: "tp1" }),
+      plan({ id: "tp2", title: "План 2" }),
+    ];
+    const caseItem: TreatmentPlanCase = {
+      id: "tpc1",
+      patientId: "p1",
+      title: "Комплекс",
+      planIds: ["tp1", "tp2"],
+      status: "in_progress",
+      createdAt: "2026-08-12",
+    };
+    const created = applyUpsertTreatmentPlanCaseToPersistedState(state, caseItem);
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    assert.equal(created.state.treatmentPlanCases.length, 1);
+    assert.equal(created.state.treatmentPlans[0]?.caseId, "tpc1");
+    assert.equal(created.state.treatmentPlans[1]?.caseId, "tpc1");
+    assert.equal(created.state.treatmentPlans[0]?.items.length, 1);
+
+    const removed = applyDeleteTreatmentPlanCaseToPersistedState(created.state, "tpc1");
+    assert.equal(removed.ok, true);
+    if (!removed.ok) return;
+    assert.equal(removed.state.treatmentPlanCases.length, 0);
+    assert.equal(removed.state.treatmentPlans.length, 2);
+    assert.equal(removed.state.treatmentPlans[0]?.caseId, undefined);
   });
 
   it("upserts medical record", () => {
