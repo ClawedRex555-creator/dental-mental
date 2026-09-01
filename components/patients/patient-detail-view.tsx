@@ -33,7 +33,7 @@ import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { MedicalRecordModal } from "@/components/medical-records/medical-record-modal";
 import { TreatmentPlanModal } from "@/components/treatment-plans/treatment-plan-modal";
 import { DentalChart } from "@/components/medical-records/dental-chart";
-import { PatientStatusBadge, AppointmentStatusBadge } from "@/components/shared/status-badge";
+import { PatientStatusBadge, AppointmentStatusBadge, TreatmentPlanStatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -441,14 +441,14 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1 border-b border-slate-200">
+      <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-px">
         {TABS.map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-t-lg px-4 py-2.5 text-sm font-medium",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-t-lg px-4 py-2.5 text-sm font-medium",
               tab === t
                 ? "border-b-2 border-teal-600 bg-teal-50/50 text-teal-800"
                 : "text-slate-600 hover:bg-slate-50"
@@ -557,11 +557,36 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
             <Card className="md:col-span-2">
               <CardHeader><CardTitle className="text-base">Активный план</CardTitle></CardHeader>
               <CardContent>
-                <p className="font-medium">{activePlan.title}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{activePlan.title}</p>
+                  <TreatmentPlanStatusBadge status={activePlan.status} />
+                </div>
                 <p className="text-sm text-slate-500">{formatCurrency(activePlan.finalAmount)}</p>
               </CardContent>
             </Card>
           )}
+          <Card className="md:col-span-2 lg:hidden">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-base">Финансы</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setTab("finance")}>
+                Подробнее
+              </Button>
+            </CardHeader>
+            <CardContent className="grid gap-2 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-slate-500">Баланс</p>
+                <p className="font-semibold">{formatCurrency(patient.balance)}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Потрачено</p>
+                <p className="font-semibold">{formatCurrency(patient.totalSpent ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Открытые акты</p>
+                <p className="font-semibold">{formatCurrency(openActsRemainingTotal)}</p>
+              </div>
+            </CardContent>
+          </Card>
           {(patient.notes?.trim() || notes.length > 0) && (
             <Card className="md:col-span-2 border-amber-200/60">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -769,9 +794,12 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <CardTitle>{plan.title}</CardTitle>
-                      <p className="text-sm font-medium text-teal-700">
-                        {formatCurrency(plan.finalAmount)}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <TreatmentPlanStatusBadge status={plan.status} />
+                        <p className="text-sm font-medium text-teal-700">
+                          {formatCurrency(plan.finalAmount)}
+                        </p>
+                      </div>
                       <p className="text-xs text-slate-500">
                         {plan.items.length} услуг
                         {plan.caseId ? " · в группе" : ""} · нажмите, чтобы редактировать

@@ -124,6 +124,102 @@ async function maybeNotifyAfterAppointmentCommand(
   }).catch(() => undefined);
 }
 
+export type AppointmentCommandSaveResult =
+  | {
+      ok: true;
+      appointmentId: string;
+      alreadyApplied: boolean;
+      updatedAt: string;
+      revision: number;
+    }
+  | {
+      ok: false;
+      error: string;
+      status: number;
+      code?: string;
+      serverUpdatedAt?: string | null;
+    };
+
+/** CAS save для command API и mobile staff (без cookie/CSRF). */
+export async function executeAppointmentCommandSave(
+  clinicId: string,
+  apply: (state: ClinicPersistedState) => ApplyAppointmentResult,
+  options?: { notify?: boolean }
+): Promise<AppointmentCommandSaveResult> {
+  const notify = options?.notify !== false;
+  let lastConflictUpdatedAt: string | null = null;
+
+  for (let attempt = 0; attempt < COMMAND_SAVE_ATTEMPTS; attempt++) {
+    const existing = await getClinicDataDbWithLegacyStaff(clinicId);
+    if (!existing?.data) {
+      return { ok: false, error: "Нет данных клиники", status: 404 };
+    }
+
+    const applied = apply(existing.data);
+    if (!applied.ok) {
+      return { ok: false, error: applied.error, status: 400 };
+    }
+
+    if (applied.alreadyApplied) {
+      return {
+        ok: true,
+        appointmentId: applied.appointmentId,
+        alreadyApplied: true,
+        updatedAt: existing.updatedAt,
+        revision: existing.revision,
+      };
+    }
+
+    try {
+      const saved = await saveClinicDataDb(clinicId, applied.state, {
+        expectedUpdatedAt: existing.updatedAt,
+        expectedRevision: existing.revision,
+        autoMergeOnVersionConflict: false,
+        replaceAppliedSnapshot: true,
+      });
+      if (notify) {
+        await maybeNotifyAfterAppointmentCommand(
+          clinicId,
+          existing.data,
+          saved.data
+        ).catch(() => undefined);
+      }
+      return {
+        ok: true,
+        appointmentId: applied.appointmentId,
+        alreadyApplied: false,
+        updatedAt: saved.updatedAt,
+        revision: saved.revision,
+      };
+    } catch (e) {
+      if (e instanceof ClinicRevisionConflictError) {
+        lastConflictUpdatedAt = e.serverUpdatedAt;
+        if (attempt < COMMAND_SAVE_ATTEMPTS - 1) continue;
+        return {
+          ok: false,
+          error: "Конфликт версии — обновите данные и повторите",
+          status: 409,
+          code: e.code,
+          serverUpdatedAt: e.serverUpdatedAt,
+        };
+      }
+      if (e instanceof PatientMassLossGuardError || e instanceof ScheduleMassLossGuardError) {
+        return { ok: false, error: e.message, status: 409, code: e.code };
+      }
+      const msg = e instanceof Error ? e.message : "Не удалось сохранить запись";
+      return { ok: false, error: msg, status: 500 };
+    }
+  }
+
+  return {
+    ok: false,
+    error: "Конфликт версии — обновите данные и повторите",
+    status: 409,
+    code: "REVISION_CONFLICT",
+    serverUpdatedAt: lastConflictUpdatedAt,
+  };
+}
+
 /**
  * Сохранить результат command API.
  *
@@ -136,96 +232,29 @@ export async function saveAppointmentCommandResult(
   clinicId: string,
   apply: (state: ClinicPersistedState) => ApplyAppointmentResult
 ): Promise<NextResponse> {
-  let lastConflictUpdatedAt: string | null = null;
-
-  for (let attempt = 0; attempt < COMMAND_SAVE_ATTEMPTS; attempt++) {
-    const existing = await getClinicDataDbWithLegacyStaff(clinicId);
-    if (!existing?.data) {
-      return NextResponse.json(
-        { ok: false, error: "Нет данных клиники" },
-        { status: 404, headers: APPOINTMENT_CMD_HEADERS }
-      );
-    }
-
-    const applied = apply(existing.data);
-    if (!applied.ok) {
-      return NextResponse.json(
-        { ok: false, error: applied.error },
-        { status: 400, headers: APPOINTMENT_CMD_HEADERS }
-      );
-    }
-
-    if (applied.alreadyApplied) {
-      return NextResponse.json(
-        {
-          ok: true,
-          appointmentId: applied.appointmentId,
-          alreadyApplied: true,
-          updatedAt: existing.updatedAt,
-          revision: existing.revision,
-        },
-        { headers: APPOINTMENT_CMD_HEADERS }
-      );
-    }
-
-    try {
-      const saved = await saveClinicDataDb(clinicId, applied.state, {
-        expectedUpdatedAt: existing.updatedAt,
-        expectedRevision: existing.revision,
-        autoMergeOnVersionConflict: false,
-        replaceAppliedSnapshot: true,
-      });
-      await maybeNotifyAfterAppointmentCommand(
-        clinicId,
-        existing.data,
-        saved.data
-      ).catch(() => undefined);
-      return NextResponse.json(
-        {
-          ok: true,
-          appointmentId: applied.appointmentId,
-          alreadyApplied: false,
-          updatedAt: saved.updatedAt,
-          revision: saved.revision,
-        },
-        { headers: APPOINTMENT_CMD_HEADERS }
-      );
-    } catch (e) {
-      if (e instanceof ClinicRevisionConflictError) {
-        lastConflictUpdatedAt = e.serverUpdatedAt;
-        if (attempt < COMMAND_SAVE_ATTEMPTS - 1) continue;
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Конфликт версии — обновите данные и повторите",
-            code: e.code,
-            serverUpdatedAt: e.serverUpdatedAt,
-          },
-          { status: 409, headers: APPOINTMENT_CMD_HEADERS }
-        );
-      }
-      if (e instanceof PatientMassLossGuardError || e instanceof ScheduleMassLossGuardError) {
-        return NextResponse.json(
-          { ok: false, error: e.message, code: e.code },
-          { status: 409, headers: APPOINTMENT_CMD_HEADERS }
-        );
-      }
-      const msg = e instanceof Error ? e.message : "Не удалось сохранить запись";
-      return NextResponse.json(
-        { ok: false, error: msg },
-        { status: 500, headers: APPOINTMENT_CMD_HEADERS }
-      );
-    }
+  const result = await executeAppointmentCommandSave(clinicId, apply);
+  if (!result.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: result.error,
+        ...(result.code ? { code: result.code } : {}),
+        ...(result.serverUpdatedAt != null
+          ? { serverUpdatedAt: result.serverUpdatedAt }
+          : {}),
+      },
+      { status: result.status, headers: APPOINTMENT_CMD_HEADERS }
+    );
   }
-
   return NextResponse.json(
     {
-      ok: false,
-      error: "Конфликт версии — обновите данные и повторите",
-      code: "REVISION_CONFLICT",
-      serverUpdatedAt: lastConflictUpdatedAt,
+      ok: true,
+      appointmentId: result.appointmentId,
+      alreadyApplied: result.alreadyApplied,
+      updatedAt: result.updatedAt,
+      revision: result.revision,
     },
-    { status: 409, headers: APPOINTMENT_CMD_HEADERS }
+    { headers: APPOINTMENT_CMD_HEADERS }
   );
 }
 

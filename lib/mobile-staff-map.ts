@@ -18,7 +18,7 @@ export interface MobileStaffAppointment {
   clinicName: string;
   scheduledAt: string;
   reason: string;
-  status: "scheduled" | "completed" | "cancelled" | "rescheduled" | "noShow";
+  status: AppointmentStatus;
   notes?: string;
   price?: number;
 }
@@ -35,20 +35,11 @@ function appointmentScheduledIso(date: string, startTime: string): string {
   return `${date}T${time}`;
 }
 
+/** MIS appointment status 1:1 — без сворачивания in_progress → scheduled. */
 export function mapAppointmentStatusForMobile(
   status: AppointmentStatus
-): MobileStaffAppointment["status"] {
-  switch (status) {
-    case "completed":
-    case "ready_for_payment":
-      return "completed";
-    case "cancelled":
-      return "cancelled";
-    case "no_show":
-      return "noShow";
-    default:
-      return "scheduled";
-  }
+): AppointmentStatus {
+  return status;
 }
 
 export function mapAppointmentToMobile(
@@ -74,7 +65,7 @@ export function mapAppointmentToMobile(
     clinicName,
     scheduledAt: appointmentScheduledIso(appointment.date, appointment.startTime),
     reason: appointment.reason ?? appointment.complaints ?? appointment.comment ?? "",
-    status: mapAppointmentStatusForMobile(appointment.status),
+    status: appointment.status,
     notes: appointment.comment,
     price: appointment.price > 0 ? appointment.price : undefined,
   };

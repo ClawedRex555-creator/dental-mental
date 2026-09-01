@@ -31,7 +31,7 @@ function isPendingOnlineBooking(
   return state.onlineBookings.some((b) => {
     if (b.date !== date) return false;
     if (b.time !== time) return false;
-    if (b.status === "cancelled") return false;
+    if (b.status === "cancelled" || b.status === "booked") return false;
     if (doctorId && b.doctorId && b.doctorId !== doctorId) return false;
     return true;
   });

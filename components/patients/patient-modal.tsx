@@ -40,7 +40,7 @@ import {
   validateSnils,
 } from "@/lib/document-validation";
 import { normalizePhoneInput } from "@/lib/phone-utils";
-import { canViewPatientPhone } from "@/lib/rbac";
+import { canManagePatientStatus, canViewPatientPhone } from "@/lib/rbac";
 import { partnerBookingStamp } from "@/lib/partner-clinic";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { AddressInput } from "@/components/shared/address-input";
@@ -157,6 +157,7 @@ export function PatientModal({
     currentUser,
   } = useClinicStore();
   const showPhone = canViewPatientPhone(currentUser.role);
+  const canEditPatientStatus = canManagePatientStatus(currentUser.role);
   const isPartner = currentUser.role === "partner";
   const canEnterPhoneOnCreate =
     currentUser.role === "doctor" || currentUser.role === "partner";
@@ -430,7 +431,12 @@ export function PatientModal({
     const { balance, status } =
       fields.status === "debtor"
         ? resolveBalanceFromDebt("debtor", parsedDebt, previousBalance)
-        : { balance: previousBalance, status: fields.status };
+        : {
+            balance: previousBalance,
+            status: canEditPatientStatus
+              ? fields.status
+              : (patient?.status ?? fields.status),
+          };
 
     const payload: Patient = {
       id: patient?.id ?? generateId("pat"),
@@ -1231,6 +1237,7 @@ export function PatientModal({
               <select
                 className={selectClass}
                 value={fields.status}
+                disabled={!canEditPatientStatus}
                 onChange={(e) => {
                   const next = e.target.value as PatientStatus;
                   set("status", next);
@@ -1246,6 +1253,11 @@ export function PatientModal({
                   </option>
                 ))}
               </select>
+              {!canEditPatientStatus && (
+                <p className="text-xs text-[var(--muted)]">
+                  Статус пациента меняет только администратор клиники.
+                </p>
+              )}
             </div>
           </div>
 

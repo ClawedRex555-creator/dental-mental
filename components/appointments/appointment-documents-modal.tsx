@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Plus, Search, Upload } from "lucide-react";
+import { MessageSquare, Plus, Search, Upload } from "lucide-react";
 import {
   LEGAL_CATEGORY_CONSENTS,
   LEGAL_CATEGORY_CONTRACTS,
@@ -211,6 +211,126 @@ function AppointmentDocumentsModalBody({
     null
   );
   const [docSearch, setDocSearch] = useState("");
+  const [signSending, setSignSending] = useState(false);
+  const [signButtonLabel, setSignButtonLabel] = useState("Подписать по SMS");
+
+  useEffect(() => {
+    void fetch("/api/document-sign/config", { credentials: "same-origin" })
+      .then((r) => r.json())
+      .then((data: { label?: string; activeProvider?: string }) => {
+        if (data.activeProvider === "fdoc") {
+          setSignButtonLabel("Отправить на подпись (F.Doc)");
+        } else if (data.label) {
+          setSignButtonLabel(`Подписать (${data.label})`);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const collectSelectedDocuments = useCallback((): ArrivalPrintDocument[] => {
+    const toPrint: ArrivalPrintDocument[] = [];
+    contracts.forEach((d) => {
+      if (selectedContracts.includes(d.id)) toPrint.push(d);
+    });
+    consents.forEach((d) => {
+      if (selectedConsents.includes(d.id)) toPrint.push(d);
+    });
+    healthCards.forEach((d) => {
+      if (selectedHealthCards.includes(d.id)) toPrint.push(d);
+    });
+    if (sendToEgisz === "no") {
+      const selectedRefusals = egiszRefusals.filter((d) =>
+        selectedEgiszRefusals.includes(d.id)
+      );
+      if (selectedRefusals.length > 0) {
+        selectedRefusals.forEach((d) => toPrint.push(d));
+      } else {
+        toPrint.push({
+          id: "builtin-egisz-refusal",
+          name: "Отказ от передачи данных в ЕГИСЗ",
+          kind: "egisz_refusal",
+          notes:
+            "Пациент уведомлён о праве на отказ от передачи персональных данных в ЕГИСЗ (140-ФЗ).",
+        });
+      }
+    }
+    return toPrint;
+  }, [
+    contracts,
+    consents,
+    healthCards,
+    egiszRefusals,
+    selectedContracts,
+    selectedConsents,
+    selectedHealthCards,
+    selectedEgiszRefusals,
+    sendToEgisz,
+  ]);
+
+  const handleSignBySms = () => {
+    if (!patient) {
+      toast.error("Пациент не найден — обновите страницу");
+      return;
+    }
+    if (!patient.phone?.trim()) {
+      toast.error("У пациента не указан телефон");
+      return;
+    }
+
+    const toSign = collectSelectedDocuments();
+    if (toSign.length === 0) {
+      toast.error("Выберите документы для подписи");
+      return;
+    }
+
+    setSignSending(true);
+    void (async () => {
+      try {
+        await persistEgiszConsent();
+        const res = await fetch("/api/document-sign/send", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patientId: patient.id,
+            documents: toSign.map((d) => ({
+              id: d.id,
+              name: d.name,
+              kind: d.kind,
+            })),
+          }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          error?: string;
+          debugOtp?: string;
+          debugSignUrl?: string;
+          provider?: string;
+        };
+        if (!res.ok) {
+          toast.error(data.error ?? "Не удалось отправить SMS");
+          return;
+        }
+        if (data.debugOtp && data.debugSignUrl) {
+          toast.success(
+            `Тест: код ${data.debugOtp}. Ссылка в консоли (SMS не настроен).`,
+            { duration: 15_000 }
+          );
+          console.info("[document-sign]", data.debugSignUrl);
+        } else if (data.provider === "fdoc") {
+          toast.success("Пакет отправлен в F.Doc — пациенту уйдёт SMS от F.Doc");
+        } else {
+          toast.success("SMS со ссылкой и кодом отправлено пациенту");
+        }
+        onDone();
+        onOpenChange(false);
+      } catch {
+        toast.error("Ошибка сети");
+      } finally {
+        setSignSending(false);
+      }
+    })();
+  };
 
   const filteredContracts = useMemo(
     () => filterArrivalDocuments(contracts, docSearch),
@@ -344,33 +464,7 @@ function AppointmentDocumentsModalBody({
       return;
     }
 
-    const toPrint: ArrivalPrintDocument[] = [];
-
-    contracts.forEach((d) => {
-      if (selectedContracts.includes(d.id)) toPrint.push(d);
-    });
-    consents.forEach((d) => {
-      if (selectedConsents.includes(d.id)) toPrint.push(d);
-    });
-    healthCards.forEach((d) => {
-      if (selectedHealthCards.includes(d.id)) toPrint.push(d);
-    });
-    if (sendToEgisz === "no") {
-      const selectedRefusals = egiszRefusals.filter((d) =>
-        selectedEgiszRefusals.includes(d.id)
-      );
-      if (selectedRefusals.length > 0) {
-        selectedRefusals.forEach((d) => toPrint.push(d));
-      } else {
-        toPrint.push({
-          id: "builtin-egisz-refusal",
-          name: "Отказ от передачи данных в ЕГИСЗ",
-          kind: "egisz_refusal",
-          notes:
-            "Пациент уведомлён о праве на отказ от передачи персональных данных в ЕГИСЗ (140-ФЗ).",
-        });
-      }
-    }
+    const toPrint: ArrivalPrintDocument[] = collectSelectedDocuments();
 
     if (toPrint.length === 0) {
       toast.error("Выберите документы для печати");
@@ -765,7 +859,16 @@ function AppointmentDocumentsModalBody({
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={signSending}
+          onClick={handleSignBySms}
+        >
+          <MessageSquare className="h-4 w-4" />
+          {signSending ? "Отправка…" : signButtonLabel}
+        </Button>
         <Button onClick={handlePrint}>Печать выбранных</Button>
       </div>
     </>

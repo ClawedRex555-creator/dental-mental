@@ -4,6 +4,7 @@ import type { Doctor, Service } from "@/lib/types";
 import { loadClinicSnapshot } from "@/lib/mobile-clinic-context.server";
 import { getClinicBillableServices } from "@/lib/service-categories";
 import { sanitizeHttpImageUrl } from "@/lib/safe-url";
+import { isPatientCatalogDoctor } from "@/lib/mobile-catalog-doctors";
 
 export interface MobileCatalogDoctor {
   id: string;
@@ -79,9 +80,7 @@ export async function getMobileCatalog(
         }
       : undefined;
 
-  const doctors = data.doctors
-    .filter((d) => d.status === "active")
-    .map(mapDoctor);
+  const doctors = data.doctors.filter(isPatientCatalogDoctor).map(mapDoctor);
 
   const services = getClinicBillableServices(data.services)
     .filter((s) => s.active !== false)

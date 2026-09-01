@@ -8,6 +8,7 @@ import {
 } from "@/lib/clinic-data-db.server";
 import { createFreshPersistedState } from "@/lib/clinic-persisted-state";
 import { assertMobileSlotAvailable } from "@/lib/mobile-availability.server";
+import { applyMobileOnlineBookingToPersistedState } from "@/lib/apply-online-booking-commands";
 import type { MobilePatientAccount } from "@/lib/mobile-patient-db.server";
 
 export interface MobileBookingInput {
@@ -49,21 +50,26 @@ export async function createMobileOnlineBooking(
     doctorId: input.doctorId,
     date,
     time,
-    comment: input.comment?.trim() || `Заявка из Tstom (patientId: ${patient.patientId})`,
+    comment: input.comment?.trim() || `Заявка из приложения (patientId: ${patient.patientId})`,
     status: "new",
     createdAt: new Date().toISOString(),
   };
 
-  await saveClinicDataDb(
-    clinicId,
-    {
-      ...base,
-      onlineBookings: [booking, ...base.onlineBookings.filter((b) => b.id !== booking.id)],
-    },
-    { allowEmptyResult: true }
-  );
+  const applied = applyMobileOnlineBookingToPersistedState(base, booking);
+  if (!applied.ok) {
+    throw new Error(applied.error);
+  }
 
-  return booking;
+  await saveClinicDataDb(clinicId, applied.state, { allowEmptyResult: true });
+
+  const saved =
+    applied.state.onlineBookings.find((b) => b.id === booking.id) ?? {
+      ...booking,
+      status: "booked" as const,
+      appointmentId: applied.appointmentId,
+    };
+
+  return saved;
 }
 
 /** Заявки пациента из onlineBookings (по телефону). */

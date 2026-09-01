@@ -25,6 +25,7 @@ import {
   isScheduleSlotWithinDoctorHours,
 } from "@/lib/clinic-schedule";
 import { partnerBookingBadgeLabel } from "@/lib/partner-clinic";
+import { onlineBookingBadgeLabel, ONLINE_BOOKING_SCHEDULE_BADGE_CLASS } from "@/lib/online-booking";
 import type { Appointment, Doctor, DoctorMonthSchedule, Patient, Payment, WorkAct } from "@/lib/types";
 
 interface ScheduleGridProps {
@@ -238,6 +239,7 @@ export function ScheduleGrid({
                       linkedAct,
                       payments
                     );
+                    const appBadgeLabel = onlineBookingBadgeLabel(apt, { short: true });
                     const cellTitle = [
                       `${apt.startTime}–${apt.endTime}`,
                       apt.complaints ?? apt.reason,
@@ -275,6 +277,11 @@ export function ScheduleGrid({
                             {partnerBookingBadgeLabel(apt) && (
                               <span className="mt-0.5 inline-block max-w-full truncate rounded bg-violet-100 px-1 py-px text-[10px] font-semibold text-violet-900">
                                 {partnerBookingBadgeLabel(apt)}
+                              </span>
+                            )}
+                            {appBadgeLabel && (
+                              <span className={ONLINE_BOOKING_SCHEDULE_BADGE_CLASS}>
+                                {appBadgeLabel}
                               </span>
                             )}
                           </button>

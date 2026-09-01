@@ -48,16 +48,16 @@ const baseAppointment: Appointment = {
 };
 
 describe("mobile staff mapping", () => {
-  it("maps active appointment statuses to scheduled", () => {
-    assert.equal(mapAppointmentStatusForMobile("confirmed"), "scheduled");
-    assert.equal(mapAppointmentStatusForMobile("in_progress"), "scheduled");
+  it("passes MIS appointment statuses through unchanged", () => {
+    assert.equal(mapAppointmentStatusForMobile("confirmed"), "confirmed");
+    assert.equal(mapAppointmentStatusForMobile("in_progress"), "in_progress");
+    assert.equal(mapAppointmentStatusForMobile("ready_for_payment"), "ready_for_payment");
   });
 
   it("maps terminal statuses", () => {
     assert.equal(mapAppointmentStatusForMobile("completed"), "completed");
-    assert.equal(mapAppointmentStatusForMobile("ready_for_payment"), "completed");
     assert.equal(mapAppointmentStatusForMobile("cancelled"), "cancelled");
-    assert.equal(mapAppointmentStatusForMobile("no_show"), "noShow");
+    assert.equal(mapAppointmentStatusForMobile("no_show"), "no_show");
   });
 
   it("maps appointment with patient and doctor names", () => {
@@ -72,7 +72,7 @@ describe("mobile staff mapping", () => {
     assert.equal(mapped.doctorName, "Петров");
     assert.equal(mapped.clinicName, "Тстом");
     assert.equal(mapped.scheduledAt, "2026-06-22T10:30:00");
-    assert.equal(mapped.status, "scheduled");
+    assert.equal(mapped.status, "confirmed");
     assert.equal(mapped.price, 2500);
     assert.equal(mapped.patientPhone, patient.phone);
   });

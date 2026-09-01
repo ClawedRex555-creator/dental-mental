@@ -549,6 +549,8 @@ export interface OnlineBookingRequest {
   comment?: string;
   status: OnlineBookingStatus;
   createdAt: string;
+  /** Приём в расписании, созданный из заявки */
+  appointmentId?: string;
 }
 
 export interface PatientFile {

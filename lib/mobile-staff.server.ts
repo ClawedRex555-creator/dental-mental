@@ -12,6 +12,8 @@ import {
   type MobileStaffAppointment,
 } from "@/lib/mobile-staff-map";
 import { canViewAllStaffAppointments } from "@/lib/mobile-staff-auth.server";
+import { getDoctorShiftForDate } from "@/lib/clinic-schedule";
+import { isPatientCatalogDoctor } from "@/lib/mobile-catalog-doctors";
 import type {
   Appointment,
   Doctor,
@@ -264,4 +266,53 @@ export async function getMobileStaffEarnings(
   }
 
   return result;
+}
+
+export interface MobileStaffTeamDoctorToday {
+  id: string;
+  workingToday: boolean;
+  shiftStart?: string;
+  shiftEnd?: string;
+  appointmentsToday: number;
+  inProgress: boolean;
+}
+
+export async function getMobileStaffTeamToday(
+  clinicId: string,
+  clinicName: string,
+  session: MobileTokenPayload
+): Promise<MobileStaffTeamDoctorToday[] | null> {
+  if (!canViewAllStaffAppointments(session.role)) return null;
+
+  const record = await loadClinicSnapshot(clinicId);
+  const data = record?.data;
+  if (!data) return [];
+
+  const today = new Date().toISOString().slice(0, 10);
+  const schedules = data.doctorSchedules ?? [];
+  const doctors = data.doctors.filter(
+    (d) => d.status !== "inactive" && isPatientCatalogDoctor(d)
+  );
+
+  const appointments = await getMobileStaffAppointments(
+    clinicId,
+    clinicName,
+    session,
+    { from: today, to: today }
+  );
+
+  return doctors.map((doctor) => {
+    const shift = getDoctorShiftForDate(doctor.id, today, schedules);
+    const doctorAppointments = appointments.filter((a) => a.doctorId === doctor.id);
+    const inProgress = doctorAppointments.some((a) => a.status === "in_progress");
+
+    return {
+      id: doctor.id,
+      workingToday: shift.working,
+      shiftStart: shift.working ? shift.startTime : undefined,
+      shiftEnd: shift.working ? shift.endTime : undefined,
+      appointmentsToday: doctorAppointments.length,
+      inProgress,
+    };
+  });
 }

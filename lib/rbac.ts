@@ -133,6 +133,21 @@ export function canViewTechnicalServices(role: UserRole): boolean {
   return role !== "partner";
 }
 
+/** Статус пациента (active/vip/debtor/archived) — только управление клиникой */
+export function canManagePatientStatus(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Статус приёма (scheduled → cancelled и т.д.) — только admin/owner; врач — отдельно через complete/act */
+export function canManageAppointmentStatus(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Врач может завершить приём без смены прочих статусов */
+export function canDoctorCompleteAppointment(role: UserRole): boolean {
+  return role === "doctor";
+}
+
 /** Справочник услуг (прайс): создание и редактирование */
 export function canManageServices(role: UserRole): boolean {
   return role === "owner" || role === "admin";

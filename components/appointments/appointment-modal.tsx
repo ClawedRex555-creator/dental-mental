@@ -17,8 +17,8 @@ import {
 } from "@/components/finance/work-act-modal";
 import { PatientModal } from "@/components/patients/patient-modal";
 import { AppointmentDocumentsModal } from "@/components/appointments/appointment-documents-modal";
-import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { SearchAutocomplete } from "@/components/shared/search-autocomplete";
+import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { APPOINTMENT_STATUS_LABELS, UI } from "@/lib/constants";
 import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import {
@@ -27,7 +27,7 @@ import {
   useClinicStore,
 } from "@/store/useClinicStore";
 import { generateId, getFullName, formatDate, formatPhone } from "@/lib/utils";
-import { canViewPatientPhone } from "@/lib/rbac";
+import { canManageAppointmentStatus, canViewPatientPhone } from "@/lib/rbac";
 import { partnerBookingBadgeLabel, partnerBookingStamp } from "@/lib/partner-clinic";
 import { closeDialogThenNavigate } from "@/lib/dialog-navigation";
 import {
@@ -160,20 +160,25 @@ export function AppointmentModal({
 
   const doctorCanEdit = isDoctor && (appointment?.status === "in_progress" || status === "in_progress");
   const adminCanEdit = isAdmin || !appointment;
+  const canChangeAppointmentStatus = canManageAppointmentStatus(userRole);
   const formLocked = !!appointment && !adminCanEdit && !doctorCanEdit;
 
   const statusOptions = useMemo(() => {
-    if (isDoctor && appointment?.status === "in_progress") {
+    if (isDoctor && appointment?.status === "in_progress" && !canChangeAppointmentStatus) {
       return (["in_progress", "completed"] as AppointmentStatus[]).map((key) => ({
         key,
         label: APPOINTMENT_STATUS_LABELS[key],
       }));
     }
+    if (!canChangeAppointmentStatus && appointment) {
+      const current = appointment.status;
+      return [{ key: current, label: APPOINTMENT_STATUS_LABELS[current] }];
+    }
     return Object.entries(APPOINTMENT_STATUS_LABELS).map(([key, label]) => ({
       key: key as AppointmentStatus,
       label,
     }));
-  }, [isDoctor, appointment?.status]);
+  }, [isDoctor, appointment, canChangeAppointmentStatus]);
 
   useEffect(() => {
     if (!open) {
@@ -663,7 +668,11 @@ export function AppointmentModal({
                   <select
                     className={selectClass}
                     value={status}
-                    disabled={(formLocked && !doctorCanEdit) || isPartner}
+                    disabled={
+                      isPartner ||
+                      (formLocked && !doctorCanEdit) ||
+                      (!canChangeAppointmentStatus && !doctorCanEdit)
+                    }
                     onChange={(e) => handleStatusChange(e.target.value as AppointmentStatus)}
                   >
                     {statusOptions.map(({ key, label }) => (

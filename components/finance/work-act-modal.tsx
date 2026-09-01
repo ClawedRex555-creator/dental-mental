@@ -392,7 +392,8 @@ export function WorkActModal({
       payments,
       nextPatientId
     );
-    const nextPrepayPath = openPrepays.length > 0 ? "pending" : "new";
+    const nextPrepayPath =
+      mode === "doctor" ? "new" : openPrepays.length > 0 ? "pending" : "new";
     setPrepayPath(nextPrepayPath);
 
     const mapDefault = (it: {
@@ -460,6 +461,7 @@ export function WorkActModal({
     payments,
     defaultDoctorId,
     activeDoctors,
+    mode,
   ]);
 
   useEffect(() => {
@@ -1013,7 +1015,10 @@ export function WorkActModal({
               </Button>
             </div>
           )}
-          {prepayPath === "pending" && openPrepaysForPatient.length > 0 && !existingActId ? null : (
+          {prepayPath === "pending" &&
+          openPrepaysForPatient.length > 0 &&
+          !existingActId &&
+          mode !== "doctor" ? null : (
           <>
           {prepayPath === "settle" && linkedPrepaymentId && (
             <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900">

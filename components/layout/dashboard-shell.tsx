@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { AppLogo } from "@/components/brand/app-logo";
 import { APP_NAME, NAV_ITEMS, ROLE_LABELS } from "@/lib/constants";
+import { countPendingOnlineBookings } from "@/lib/online-booking";
 import { navItemsForRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { clearPersistedClinicData } from "@/lib/clinic-storage-client";
@@ -57,7 +58,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     setSidebarOpen,
     clearSession,
     enabledModules,
+    onlineBookings,
   } = useClinicStore();
+  const pendingOnlineBookingCount = countPendingOnlineBookings(onlineBookings);
   const currentRole = currentUser.role;
   const [sidebarHover, setSidebarHover] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -162,11 +165,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           {navWithSettings.map((item) => {
             const Icon = ICON_MAP[item.icon as keyof typeof ICON_MAP];
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const showOnlineBookingAlert =
+              item.href === "/online-booking" && pendingOnlineBookingCount > 0;
             return (
               <a
                 key={item.href}
                 href={item.href}
-                title={!sidebarExpanded ? item.label : undefined}
+                title={
+                  !sidebarExpanded
+                    ? showOnlineBookingAlert
+                      ? `${item.label} · ${pendingOnlineBookingCount} заявок`
+                      : item.label
+                    : undefined
+                }
                 onClick={() => {
                   if (isMobile) setSidebarOpen(false);
                 }}
@@ -175,14 +186,24 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   active ? "nav-sidebar-link-active" : undefined
                 )}
               >
-                <Icon className="h-5 w-5 shrink-0" />
+                <span className="relative shrink-0">
+                  <Icon className="h-5 w-5" />
+                  {showOnlineBookingAlert && !sidebarExpanded && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-[var(--card)]" />
+                  )}
+                </span>
                 <span
                   className={cn(
-                    "whitespace-nowrap transition-all duration-300 ease-in-out",
+                    "flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap transition-all duration-300 ease-in-out",
                     sidebarExpanded ? "max-w-[12rem] opacity-100" : "max-w-0 opacity-0"
                   )}
                 >
-                  {item.label}
+                  <span className="truncate">{item.label}</span>
+                  {showOnlineBookingAlert && sidebarExpanded && (
+                    <span className="ml-auto shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                      {pendingOnlineBookingCount > 99 ? "99+" : pendingOnlineBookingCount}
+                    </span>
+                  )}
                 </span>
               </a>
             );

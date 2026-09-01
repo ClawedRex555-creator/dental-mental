@@ -6,6 +6,7 @@ import {
   saveAppointmentCommandResult,
 } from "@/lib/clinic-appointment-command.server";
 import { parsePatientPayload } from "@/lib/parse-appointment-command-body";
+import { canManagePatientStatus } from "@/lib/rbac";
 
 /**
  * Command API: сохранить карточку пациента без полного PUT snapshot.
@@ -34,6 +35,17 @@ export async function POST(request: Request) {
   }
 
   return saveAppointmentCommandResult(auth.clinicId, (state) => {
+    const existing = state.patients.find((p) => p.id === patient.id);
+    if (
+      existing &&
+      patient.status !== existing.status &&
+      !canManagePatientStatus(auth.role)
+    ) {
+      return {
+        ok: false,
+        error: "Статус пациента может менять только администратор",
+      };
+    }
     const applied = applyUpsertPatientToPersistedState(state, patient);
     if (!applied.ok) return applied;
     return {
