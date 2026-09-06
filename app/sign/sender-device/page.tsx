@@ -157,8 +157,9 @@ export default function SignSenderDevicePage() {
     <main className="mx-auto min-h-dvh max-w-md bg-slate-50 px-4 py-8 text-slate-900">
       <h1 className="text-xl font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Сотрудник сам нажимает «Отправить» в стандартном приложении SMS. Emkaro не шлёт SMS
-        автоматически.
+        {paired
+          ? "Сотрудник сам нажимает «Отправить» в стандартном приложении SMS. Emkaro не шлёт SMS автоматически."
+          : "Вход в МИС не нужен. Введите 6-значный код с компьютера клиники и нажмите «Привязать»."}
       </p>
 
       {!paired ? (

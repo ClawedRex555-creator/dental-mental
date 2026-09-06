@@ -57,6 +57,8 @@ export function canAccessPath(
 ): boolean {
   const path = pathname.split("?")[0];
   if (path === "/" || path === "/login") return true;
+  // Публичные страницы подписи / привязки телефона (не пункты NAV)
+  if (path === "/sign" || path.startsWith("/sign/")) return true;
 
   if (isAccountSettingsPath(path)) {
     const settingsNav = NAV_ITEMS.find((nav) => nav.href === "/settings");

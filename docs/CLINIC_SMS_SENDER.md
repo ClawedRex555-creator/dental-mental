@@ -20,6 +20,8 @@
 
 - Настройки → Emkaro Sign — телефон клиники (`SignSenderSettingsPanel`).
 - Телефон: `/sign/sender-device` (responsive / PWA-friendly).
+  Публичный URL без входа в МИС, например `https://{slug}.emkaro.ru/sign/sender-device?code=123456`.
+  Относительный путь `/sign/...` на телефоне не открывается — нужна полная ссылка.
 - Карточка пациента: статус пакета + SMS-задачи + «Отменить пакет».
 
 ## Desktop формулировки

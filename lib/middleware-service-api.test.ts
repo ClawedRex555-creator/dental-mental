@@ -11,7 +11,8 @@ function isPublicApi(pathname: string): boolean {
     pathname.startsWith("/api/clinic/context") ||
     pathname.startsWith("/api/platform/auth/login") ||
     pathname.startsWith("/api/health") ||
-    pathname.startsWith("/api/internal/tls-ask")
+    pathname.startsWith("/api/internal/tls-ask") ||
+    pathname.startsWith("/api/sign/sender-device/")
   );
 }
 
@@ -55,6 +56,11 @@ describe("middleware service API bypass", () => {
 
   it("allows Emkaro Sign staff SSO without session", () => {
     assert.equal(isPublicApi("/api/auth/emkaro-sign/sso"), true);
+  });
+
+  it("allows clinic SMS sender-device pairing without session", () => {
+    assert.equal(isPublicApi("/api/sign/sender-device/pair"), true);
+    assert.equal(isPublicApi("/api/sign/sender-device/tasks"), true);
   });
 
   it("allows mobile API without session cookie", () => {

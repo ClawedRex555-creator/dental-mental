@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 interface DeviceRow {
   id: string;
   displayName: string;
@@ -60,12 +61,25 @@ export function SignSenderSettingsPanel() {
       toast.error(data.error ?? "Не удалось создать код");
       return;
     }
+    const absolute =
+      data.pairUrl && /^https?:\/\//i.test(data.pairUrl)
+        ? data.pairUrl
+        : `${window.location.origin}/sign/sender-device?code=${encodeURIComponent(data.shortCode)}`;
     setPairing({
       shortCode: data.shortCode,
       expiresAt: data.expiresAt ?? "",
-      pairUrl: data.pairUrl ?? "/sign/sender-device",
+      pairUrl: absolute,
     });
     toast.success("Код создан — откройте ссылку на телефоне клиники");
+  };
+
+  const copyText = async (value: string, okMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(okMsg);
+    } catch {
+      toast.error("Не удалось скопировать — выделите вручную");
+    }
   };
 
   const revoke = async (deviceId: string) => {
@@ -109,16 +123,66 @@ export function SignSenderSettingsPanel() {
         </Button>
 
         {pairing && (
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--callout-neutral-bg)] p-3 text-sm">
-            <p>
-              Код: <span className="font-mono text-lg font-semibold">{pairing.shortCode}</span>
-            </p>
-            <p className="mt-1 text-[var(--muted)]">
-              На телефоне откройте{" "}
-              <a className="text-teal-700 underline" href={pairing.pairUrl}>
-                {pairing.pairUrl}
-              </a>{" "}
-              и введите код (действует до {new Date(pairing.expiresAt).toLocaleTimeString("ru-RU")}).
+          <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--callout-neutral-bg)] p-4 text-sm">
+            <p className="font-medium">На телефоне клиники (Safari / Chrome):</p>
+            <ol className="list-decimal space-y-1 pl-5 text-[var(--muted)]">
+              <li>Скопируйте полную ссылку ниже и вставьте в адресную строку браузера</li>
+              <li>Или откройте ссылку и введите код, если поле пустое</li>
+              <li>Нажмите «Привязать устройство» — вход в МИС на телефоне не нужен</li>
+            </ol>
+
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted)]">Код</p>
+              <p className="mt-1 font-mono text-3xl font-semibold tracking-widest">
+                {pairing.shortCode}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2"
+                onClick={() => void copyText(pairing.shortCode, "Код скопирован")}
+              >
+                Скопировать код
+              </Button>
+            </div>
+
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+                Полная ссылка (не относительный путь)
+              </p>
+              <p className="mt-1 break-all font-mono text-xs text-teal-800">{pairing.pairUrl}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void copyText(pairing.pairUrl, "Ссылка скопирована")}
+                >
+                  Скопировать ссылку
+                </Button>
+                <Button type="button" variant="outline" asChild>
+                  <a href={pairing.pairUrl} target="_blank" rel="noopener noreferrer">
+                    Открыть на этом устройстве
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {pairing.expiresAt && (
+              <p className="text-xs text-[var(--muted)]">
+                Код действует до {new Date(pairing.expiresAt).toLocaleTimeString("ru-RU")}
+              </p>
+            )}
+
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt="QR для привязки"
+              className="mx-auto rounded-md border border-[var(--border)] bg-white p-2"
+              width={180}
+              height={180}
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pairing.pairUrl)}`}
+            />
+            <p className="text-center text-xs text-[var(--muted)]">
+              Можно отсканировать QR камерой телефона
             </p>
           </div>
         )}

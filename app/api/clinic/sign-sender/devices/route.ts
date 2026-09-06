@@ -90,12 +90,23 @@ export async function POST(request: Request) {
     clinicId: session.clinicId,
     createdByUserId: session.userId,
   });
+
+  const host =
+    request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
+    request.headers.get("host")?.trim() ||
+    "";
+  const proto =
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+    (host.includes("localhost") ? "http" : "https");
+  const pairPath = `/sign/sender-device?code=${encodeURIComponent(pairing.shortCode)}`;
+  const pairUrl = host ? `${proto}://${host}${pairPath}` : pairPath;
+
   return NextResponse.json({
     pairingId: pairing.pairingId,
     token: pairing.token,
     shortCode: pairing.shortCode,
     expiresAt: pairing.expiresAt,
     qrPayload: pairing.qrPayload,
-    pairUrl: `/sign/sender-device?code=${pairing.shortCode}`,
+    pairUrl,
   });
 }

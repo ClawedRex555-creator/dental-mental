@@ -12,7 +12,7 @@ import {
 } from "@/lib/clinic-host";
 import { canAccessPath, defaultPathForRole, isAccountSettingsPath } from "@/lib/rbac";
 
-const PUBLIC_CLINIC_PATHS = ["/login"];
+const PUBLIC_CLINIC_PATHS = ["/login", "/sign"];
 const PLATFORM_PUBLIC_PATHS = [
   "/",
   "/platform/login",
@@ -50,7 +50,9 @@ function isPublicApi(pathname: string): boolean {
     pathname.startsWith("/api/platform/auth/login") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/internal/tls-ask") ||
-    pathname.startsWith("/api/notifications/action")
+    pathname.startsWith("/api/notifications/action") ||
+    // Привязка телефона клиники: device token / short code, без staff-cookie
+    pathname.startsWith("/api/sign/sender-device/")
   );
 }
 
@@ -165,6 +167,11 @@ export async function proxy(request: NextRequest) {
 
     if (pathname === "/") {
       return NextResponse.redirect(new URL(defaultPathForRole(session.role), request.url));
+    }
+
+    // /sign/* — публичные страницы (пациент / телефон клиники), даже при staff-сессии
+    if (isPublicClinicPath(pathname) && pathname !== "/login" && !pathname.startsWith("/login/")) {
+      return NextResponse.next();
     }
 
     const pathOnly = pathname.split("?")[0];
