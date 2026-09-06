@@ -65,7 +65,11 @@ function isServiceApi(pathname: string): boolean {
     pathname.startsWith("/api/medflex/booking") ||
     pathname.startsWith("/api/medflex/health") ||
     pathname.startsWith("/api/medflex/process") ||
-    pathname.startsWith("/api/mobile/")
+    pathname.startsWith("/api/mobile/") ||
+    // Sign → МИС (HMAC), без cookie-сессии
+    pathname.startsWith("/api/webhooks/emkaro-sign") ||
+    pathname.startsWith("/api/integration/sign/webhook") ||
+    pathname.startsWith("/api/internal/patients/delivery-destination")
   );
 }
 

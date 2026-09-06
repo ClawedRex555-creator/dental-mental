@@ -24,7 +24,10 @@ function isServiceApi(pathname: string): boolean {
     pathname.startsWith("/api/medflex/booking") ||
     pathname.startsWith("/api/medflex/health") ||
     pathname.startsWith("/api/medflex/process") ||
-    pathname.startsWith("/api/mobile/")
+    pathname.startsWith("/api/mobile/") ||
+    pathname.startsWith("/api/webhooks/emkaro-sign") ||
+    pathname.startsWith("/api/integration/sign/webhook") ||
+    pathname.startsWith("/api/internal/patients/delivery-destination")
   );
 }
 
@@ -61,6 +64,12 @@ describe("middleware service API bypass", () => {
   it("allows clinic SMS sender-device pairing without session", () => {
     assert.equal(isPublicApi("/api/sign/sender-device/pair"), true);
     assert.equal(isPublicApi("/api/sign/sender-device/tasks"), true);
+  });
+
+  it("allows Emkaro Sign webhooks without session", () => {
+    assert.equal(isServiceApi("/api/webhooks/emkaro-sign"), true);
+    assert.equal(isServiceApi("/api/integration/sign/webhook"), true);
+    assert.equal(isServiceApi("/api/internal/patients/delivery-destination"), true);
   });
 
   it("allows mobile API without session cookie", () => {
