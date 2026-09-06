@@ -14,7 +14,8 @@ export type SystemModuleId =
   | "my_salary"
   | "settings"
   | "egisz"
-  | "notifications";
+  | "notifications"
+  | "document_sign";
 
 export type ClinicModules = Record<SystemModuleId, boolean>;
 
@@ -34,6 +35,7 @@ export const SYSTEM_MODULE_IDS: SystemModuleId[] = [
   "settings",
   "egisz",
   "notifications",
+  "document_sign",
 ];
 
 /** Модули, которые супер-админ может отключать. «Настройки» всегда доступны (профиль, клиника, тема). */
@@ -57,6 +59,7 @@ export const MODULE_LABELS: Record<SystemModuleId, string> = {
   settings: "Настройки",
   egisz: "ЕГИСЗ",
   notifications: "Уведомления",
+  document_sign: "Подпись документов (SMS)",
 };
 
 /** Маршрут → модуль */
@@ -109,6 +112,7 @@ export function defaultClinicModules(): ClinicModules {
     settings: true,
     egisz: false,
     notifications: false,
+    document_sign: false,
   };
 }
 
@@ -129,6 +133,7 @@ export function parseClinicModules(raw: unknown): ClinicModules {
  * — печать договоров при «Пациент пришёл» → `legal`
  * — блок ЕГИСЗ в настройках, API `/api/egisz/*` → `egisz`
  * — вкладка «Зарплаты» и сводка зарплат в финансах, /my-salary → `my_salary`
+ * — «Подписать по SMS» в «Пациент пришёл — документы» → `document_sign`
  */
 
 export function resolvePathModule(pathname: string): SystemModuleId | null {

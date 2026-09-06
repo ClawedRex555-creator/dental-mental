@@ -62,7 +62,7 @@ export function MyDoctorSalary() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--foreground)]">Моя зарплата</h1>
         <p className="text-sm text-[var(--muted)]">
-          Начисление по полностью оплаченным актам (дата полной оплаты, после вычета технички) · комиссия{" "}
+          Начисление по полностью оплаченным актам (дата закрытия акта, после вычета технички) · комиссия{" "}
           {doctor.commissionPercent}%
           {doctor.implantFee != null && doctor.implantFee > 0
             ? doctor.implantFeeType === "rubles"

@@ -3,13 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  endOfDay,
-  endOfMonth,
-  endOfWeek,
   format,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
+  isValid,
 } from "date-fns";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -30,6 +25,7 @@ import { useIsModuleEnabled } from "@/components/clinic/module-guard";
 import { calcAssistantHoursInRange, normalizeAssistantManualHours } from "@/lib/assistant-hours";
 import { printPrepaymentAct } from "@/lib/prepayment-act-print";
 import { printWorkAct } from "@/lib/work-act-print";
+import { getSalaryPeriodRange } from "@/lib/salary-period";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +43,7 @@ import {
 } from "@/lib/clinic-data-sync.client";
 import { updateAppointmentViaCommandApi } from "@/lib/clinic-appointment.client";
 import { deleteWorkActViaCommandApi } from "@/lib/clinic-work-act.client";
+import { deletePrepaymentViaCommandApi } from "@/lib/clinic-entity.client";
 import { payWorkActViaCommandApi } from "@/lib/clinic-work-act-pay.client";
 import {
   deleteClinicExpenseViaCommandApi,
@@ -96,6 +93,7 @@ export default function FinancePage() {
   const removeClinicExpense = useClinicStore((s) => s.removeClinicExpense);
   const prepayments = useClinicStore((s) => s.prepayments);
   const deleteWorkAct = useClinicStore((s) => s.deleteWorkAct);
+  const removePrepayment = useClinicStore((s) => s.removePrepayment);
   const currentUser = useClinicStore((s) => s.currentUser);
   const services = useClinicStore((s) => s.services);
   const assistantManualHours = useClinicStore((s) => s.assistantManualHours);
@@ -381,50 +379,25 @@ export default function FinancePage() {
     [invoices]
   );
 
-  const { from, to } = useMemo(() => {
-    const now = new Date();
-    if (period === "day") {
-      return { from: startOfDay(now), to: endOfDay(now) };
-    }
-    if (period === "week") {
-      return {
-        from: startOfWeek(now, { weekStartsOn: 1 }),
-        to: endOfWeek(now, { weekStartsOn: 1 }),
-      };
-    }
-    if (period === "custom") {
-      return { from: new Date(customFrom), to: endOfDay(new Date(customTo)) };
-    }
-    return { from: startOfMonth(now), to: endOfMonth(now) };
-  }, [period, customFrom, customTo]);
+  const { from, to } = useMemo(
+    () => getSalaryPeriodRange(period, customFrom, customTo),
+    [period, customFrom, customTo]
+  );
 
   const inPeriod = (dateStr: string) => {
     const d = new Date(dateStr);
+    if (!isValid(d) || !isValid(from) || !isValid(to)) return false;
     return d >= from && d <= to;
   };
 
   const { salaryRangeFrom, salaryRangeTo } = useMemo(() => {
-    const now = new Date();
-    if (salaryPeriod === "day") {
-      return { salaryRangeFrom: startOfDay(now), salaryRangeTo: endOfDay(now) };
-    }
-    if (salaryPeriod === "week") {
-      return {
-        salaryRangeFrom: startOfWeek(now, { weekStartsOn: 1 }),
-        salaryRangeTo: endOfWeek(now, { weekStartsOn: 1 }),
-      };
-    }
-    if (salaryPeriod === "custom") {
-      return {
-        salaryRangeFrom: new Date(salaryFrom),
-        salaryRangeTo: endOfDay(new Date(salaryTo)),
-      };
-    }
-    return { salaryRangeFrom: startOfMonth(now), salaryRangeTo: endOfMonth(now) };
+    const range = getSalaryPeriodRange(salaryPeriod, salaryFrom, salaryTo);
+    return { salaryRangeFrom: range.from, salaryRangeTo: range.to };
   }, [salaryPeriod, salaryFrom, salaryTo]);
 
   const inSalaryPeriod = (dateStr: string) => {
     const d = new Date(dateStr);
+    if (!isValid(d) || !isValid(salaryRangeFrom) || !isValid(salaryRangeTo)) return false;
     return d >= salaryRangeFrom && d <= salaryRangeTo;
   };
 
@@ -928,7 +901,9 @@ export default function FinancePage() {
                   )}
                 </div>
                 <p className="text-xs text-[var(--muted)]">
-                  {format(salaryRangeFrom, "d.MM.yyyy")} — {format(salaryRangeTo, "d.MM.yyyy")}
+                  {isValid(salaryRangeFrom) && isValid(salaryRangeTo)
+                    ? `${format(salaryRangeFrom, "d.MM.yyyy")} — ${format(salaryRangeTo, "d.MM.yyyy")}`
+                    : "Укажите корректные даты периода"}
                 </p>
                 <FinanceSummaryStrip
                   revenue={salaryPeriodRevenue}
@@ -1540,13 +1515,56 @@ export default function FinancePage() {
                           </strong>
                         </span>
                       </div>
-                      {act && source.remaining > 0 && (
-                        <Button size="sm" onClick={() => setPayAct(act)}>
-                          {source.kind === "partial_act"
-                            ? "Доплатить по акту"
-                            : "Оплатить аванс"}
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {act && source.remaining > 0 && (
+                          <Button size="sm" onClick={() => setPayAct(act)}>
+                            {source.kind === "partial_act"
+                              ? "Доплатить по акту"
+                              : "Оплатить аванс"}
+                          </Button>
+                        )}
+                        {canDeleteActs && source.kind === "document" && source.prepayment && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-200 text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              const prep = source.prepayment!;
+                              if (
+                                !window.confirm(
+                                  `Удалить предоплату${prep.actNumber ? ` № ${prep.actNumber}` : ""} на ${formatCurrency(prep.paidAmount)}?\n\nЕсли есть связанный неоплаченный акт-аванс — он тоже удалится. Отменить нельзя.`
+                                )
+                              ) {
+                                return;
+                              }
+                              beginClinicCommandMutation();
+                              void (async () => {
+                                try {
+                                  const api = await deletePrepaymentViaCommandApi(prep.id);
+                                  if (!api.ok) {
+                                    toast.error(api.error ?? "Не удалось удалить предоплату");
+                                    return;
+                                  }
+                                  runWithoutClinicFlush(() => {
+                                    if (prep.workActId) {
+                                      deleteWorkAct(prep.workActId);
+                                    }
+                                    removePrepayment(prep.id);
+                                  });
+                                  markClinicSyncedAfterCommand(api.updatedAt, api.revision);
+                                  useClinicStore.getState().pauseClinicAutoSave(15_000);
+                                  notifyClinicDataChanged();
+                                  toast.success("Предоплата удалена");
+                                } finally {
+                                  endClinicCommandMutation();
+                                }
+                              })();
+                            }}
+                          >
+                            Удалить
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   );
                 })

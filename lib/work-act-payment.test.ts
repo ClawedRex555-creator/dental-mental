@@ -70,6 +70,22 @@ describe("work-act-payment", () => {
     assert.equal(getWorkActSalaryAccrualDate(act, payments), "2026-07-05");
   });
 
+  it("prefers closedAt over payment dates for salary accrual", () => {
+    const closed: WorkAct = { ...act, closedAt: "2026-09-04", paymentStatus: "paid" };
+    const payments: Payment[] = [
+      {
+        id: "p1",
+        patientId: "pat-1",
+        workActId: "act-1",
+        amount: 10000,
+        method: "cash",
+        status: "paid",
+        date: "2026-08-28",
+      },
+    ];
+    assert.equal(getWorkActSalaryAccrualDate(closed, payments), "2026-09-04");
+  });
+
   it("allows closing zero act and accrues on act date", () => {
     const zeroAct: WorkAct = {
       ...act,
@@ -81,6 +97,11 @@ describe("work-act-payment", () => {
     const closed: WorkAct = { ...zeroAct, paymentStatus: "paid" };
     assert.equal(canCloseZeroWorkAct(closed, []), false);
     assert.equal(getWorkActSalaryAccrualDate(closed, []), "2026-06-27");
+    const closedWithStamp: WorkAct = {
+      ...closed,
+      closedAt: "2026-09-04",
+    };
+    assert.equal(getWorkActSalaryAccrualDate(closedWithStamp, []), "2026-09-04");
   });
 
   it("balance after partial then full payment", () => {

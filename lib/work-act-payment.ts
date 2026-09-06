@@ -28,8 +28,8 @@ export function canCloseZeroWorkAct(act: WorkAct, payments: Payment[]): boolean 
 }
 
 /**
- * Дата начисления ЗП: день полной оплаты (последний платёж).
- * Для нулевого акта — дата акта (закрытие без платежа).
+ * Дата начисления ЗП: день закрытия акта (полная оплата).
+ * Приоритет: closedAt → дата последнего платежа → actDate (legacy/нулевые).
  */
 export function getWorkActSalaryAccrualDate(
   act: WorkAct,
@@ -37,6 +37,7 @@ export function getWorkActSalaryAccrualDate(
 ): string | null {
   if (act.actType === "prepayment") return null;
   if (!isWorkActFullyPaid(act, payments)) return null;
+  if (act.closedAt) return act.closedAt;
   if (act.totalAmount <= 0) return act.actDate;
   const dates = payments
     .filter((p) => p.workActId === act.id && p.status === "paid")

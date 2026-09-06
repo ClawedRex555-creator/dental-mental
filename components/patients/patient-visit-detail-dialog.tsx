@@ -4,7 +4,7 @@ import type { Appointment, Doctor, MedicalRecord, Patient, WorkAct } from "@/lib
 import { PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { AppointmentStatusBadge } from "@/components/shared/status-badge";
 import { formatCurrency, formatDate, getFullName } from "@/lib/utils";
-import { getWorkActCustomerName } from "@/lib/work-act-utils";
+import { formatWorkActItemWithTooth, getWorkActCustomerName } from "@/lib/work-act-utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -110,10 +110,7 @@ export function PatientVisitDetailDialog({
                 <ul className="mt-2 space-y-1.5">
                   {workAct.items.map((item) => (
                     <li key={item.id} className="flex justify-between gap-3">
-                      <span>
-                        {item.serviceName}
-                        {item.quantity > 1 ? ` × ${item.quantity}` : ""}
-                      </span>
+                      <span>{formatWorkActItemWithTooth(item)}</span>
                       <span className="shrink-0 tabular-nums text-slate-700">
                         {formatCurrency(item.total)}
                       </span>

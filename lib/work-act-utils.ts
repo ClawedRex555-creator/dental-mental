@@ -232,3 +232,36 @@ export function resolveWorkActTotals(act: WorkAct) {
     act.discount ?? 0
   );
 }
+
+/** Строка услуги акта с номером зуба FDI, если указан. */
+export function formatWorkActItemWithTooth(item: WorkActItem): string {
+  const qty = item.quantity > 1 ? ` × ${item.quantity}` : "";
+  const tooth = item.toothNumber != null ? `зуб ${item.toothNumber} · ` : "";
+  return `${tooth}${item.serviceName}${qty}`;
+}
+
+export function collectWorkActToothNumbers(items: WorkActItem[]): number[] {
+  const nums = new Set<number>();
+  for (const item of items) {
+    if (item.toothNumber != null && Number.isFinite(item.toothNumber)) {
+      nums.add(Math.trunc(item.toothNumber));
+    }
+  }
+  return [...nums].sort((a, b) => a - b);
+}
+
+/** «зуб 16» или «зубы 16, 21» — только номера, без услуг. */
+export function formatWorkActTeethList(items: WorkActItem[]): string | null {
+  const teeth = collectWorkActToothNumbers(items);
+  if (teeth.length === 0) return null;
+  return teeth.length === 1 ? `зуб ${teeth[0]}` : `зубы ${teeth.join(", ")}`;
+}
+
+/** Краткий список услуг акта с номерами зубов для карточки пациента. */
+export function formatWorkActItemsWithTeeth(items: WorkActItem[], maxItems = 5): string {
+  const filled = items.filter(isWorkActLineFilled);
+  if (filled.length === 0) return "";
+  const shown = filled.slice(0, maxItems).map(formatWorkActItemWithTooth);
+  const rest = filled.length - maxItems;
+  return rest > 0 ? `${shown.join(" · ")} · …` : shown.join(" · ");
+}

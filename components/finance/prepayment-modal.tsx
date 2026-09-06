@@ -80,7 +80,9 @@ export function PrepaymentModal({
   const [items, setItems] = useState<PrepayItem[]>([]);
   const [discountType, setDiscountType] = useState<DiscountType>("percent");
   const [discount, setDiscount] = useState(0);
+  const [saving, setSaving] = useState(false);
   const initialized = useRef(false);
+  const savingLock = useRef(false);
   const clinicServices = useMemo(
     () => getClinicBillableServices(services),
     [services]
@@ -101,6 +103,8 @@ export function PrepaymentModal({
   useEffect(() => {
     if (!open) {
       initialized.current = false;
+      savingLock.current = false;
+      setSaving(false);
       return;
     }
     if (initialized.current) return;
@@ -156,6 +160,7 @@ export function PrepaymentModal({
   };
 
   const handleSave = () => {
+    if (savingLock.current || saving) return;
     if (!patientId) {
       toast.error("Выберите пациента");
       return;
@@ -180,6 +185,9 @@ export function PrepaymentModal({
     const patient = patients.find((p) => p.id === patientId);
     if (!patient) return;
 
+    savingLock.current = true;
+    setSaving(true);
+
     const prepId = generateId("pre");
     const actId = generateId("act");
     const actNumber = `ПР-${getNextActNumber()}`;
@@ -187,6 +195,7 @@ export function PrepaymentModal({
     const invoiceId = generateId("inv");
 
     const storedItems: {
+      id: string;
       serviceId?: string;
       serviceName: string;
       quantity: number;
@@ -195,12 +204,14 @@ export function PrepaymentModal({
       mode === "lump_sum"
         ? [
             {
+              id: generateId("ppi"),
               serviceName: "Предоплата за планируемые услуги",
               price: finalAmount,
               quantity: 1,
             },
           ]
         : items.map(({ serviceId, serviceName, quantity, price }) => ({
+            id: generateId("ppi"),
             serviceId,
             serviceName,
             quantity: normalizePlanItemQuantity(quantity),
@@ -230,6 +241,7 @@ export function PrepaymentModal({
       finalAmount,
       paidAmount: paid,
       remainingAmount,
+      settledAmount: 0,
       date: actDate,
       workActId: actId,
       actNumber,
@@ -297,6 +309,8 @@ export function PrepaymentModal({
           window.location.assign(`/finance?tab=acts&payAct=${actId}`);
         }, 50);
       } finally {
+        savingLock.current = false;
+        setSaving(false);
         endClinicCommandMutation();
       }
     })();
@@ -487,7 +501,9 @@ export function PrepaymentModal({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Отмена
             </Button>
-            <Button onClick={handleSave}>Внести предоплату</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "Создание…" : "Внести предоплату"}
+            </Button>
           </div>
         </div>
       </DialogContent>

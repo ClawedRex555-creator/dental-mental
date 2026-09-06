@@ -449,6 +449,11 @@ export interface WorkAct {
   discountBearer?: DiscountBearer;
   totalAmount: number;
   paymentStatus: PaymentStatus;
+  /**
+   * Календарный день полного закрытия (полной оплаты) акта.
+   * Используется для начисления ЗП врача — не путать с actDate (дата оказания).
+   */
+  closedAt?: string;
   invoiceId?: string;
   createdAt: string;
   notes?: string;
@@ -461,10 +466,22 @@ export interface WorkAct {
   plannedTotalAmount?: number;
 }
 
+/** Позиция документа предоплаты (можно закрывать частями в разные акты). */
+export interface PatientPrepaymentItem {
+  id?: string;
+  serviceId?: string;
+  serviceName: string;
+  price: number;
+  quantity?: number;
+  /** Акт оказанных услуг, в который зачтена позиция */
+  settledWorkActId?: string;
+  settledAt?: string;
+}
+
 export interface PatientPrepayment {
   id: string;
   patientId: string;
-  items: { serviceId?: string; serviceName: string; price: number; quantity?: number }[];
+  items: PatientPrepaymentItem[];
   /** Сумма услуг до скидки */
   totalAmount: number;
   paidAmount: number;
@@ -475,9 +492,11 @@ export interface PatientPrepayment {
   actNumber?: string;
   discountType?: DiscountType;
   discount?: number;
-  /** Когда аванс зачтён в акт оказанных услуг */
+  /** Когда аванс полностью зачтён (все позиции или вся сумма) */
   settledAt?: string;
   settledWorkActId?: string;
+  /** Уже зачтённая в акты сумма аванса */
+  settledAmount?: number;
   /** Сумма после скидки */
   finalAmount?: number;
 }

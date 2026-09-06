@@ -30,6 +30,12 @@ interface DbRow {
   signed_user_agent: string | null;
   created_by: string | null;
   created_at: Date;
+  signature_status?: string | null;
+  signature_method?: string | null;
+  sign_package_id?: string | null;
+  sign_operation_id?: string | null;
+  last_sign_sync_at?: Date | null;
+  idempotency_key?: string | null;
 }
 
 function mapRow(r: DbRow): DocumentSignRequestRecord {
@@ -50,6 +56,12 @@ function mapRow(r: DbRow): DocumentSignRequestRecord {
     signedAt: r.signed_at?.toISOString(),
     createdBy: r.created_by ?? undefined,
     createdAt: r.created_at.toISOString(),
+    signatureStatus: r.signature_status ?? undefined,
+    signatureMethod: r.signature_method ?? undefined,
+    signPackageId: r.sign_package_id ?? undefined,
+    signOperationId: r.sign_operation_id ?? undefined,
+    lastSignSyncAt: r.last_sign_sync_at?.toISOString(),
+    idempotencyKey: r.idempotency_key ?? undefined,
   };
 }
 
@@ -68,38 +80,150 @@ export async function createDocumentSignRequest(input: {
   tokenHash?: string;
   expiresAt: Date;
   createdBy?: string;
+  signatureStatus?: string;
+  signatureMethod?: string;
+  signPackageId?: string;
+  signOperationId?: string;
+  idempotencyKey?: string;
 }): Promise<DocumentSignRequestRecord | null> {
+  if (input.idempotencyKey) {
+    const existing = await getDocumentSignRequestByIdempotency(
+      input.clinicId,
+      input.idempotencyKey
+    );
+    if (existing) return existing;
+  }
+
+  try {
+    return (
+      (await withDb(async (client) => {
+        const res = await client.query<DbRow>(
+          `INSERT INTO document_sign_requests
+            (id, clinic_id, patient_id, appointment_id, phone, document_refs, provider,
+             external_id, fdoc_status, fdoc_sign_url, otp_hash, token_hash, expires_at, created_by,
+             signature_status, signature_method, sign_package_id, sign_operation_id, idempotency_key,
+             last_sign_sync_at)
+           VALUES (
+             COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6::jsonb, $7,
+             $8, $9, $10, $11, $12, $13, $14,
+             $15, $16, $17, $18, $19, NOW()
+           )
+           RETURNING *`,
+          [
+            input.id ?? null,
+            input.clinicId,
+            input.patientId,
+            input.appointmentId ?? null,
+            input.phone,
+            JSON.stringify(input.documentRefs),
+            input.provider ?? "emkaro",
+            input.externalId ?? null,
+            input.fdocStatus ?? null,
+            input.fdocSignUrl ?? null,
+            input.otpHash ?? null,
+            input.tokenHash ?? null,
+            input.expiresAt.toISOString(),
+            input.createdBy ?? null,
+            input.signatureStatus ?? null,
+            input.signatureMethod ?? null,
+            input.signPackageId ?? input.externalId ?? null,
+            input.signOperationId ?? null,
+            input.idempotencyKey ?? null,
+          ]
+        );
+        return mapRow(res.rows[0]!);
+      })) ?? null
+    );
+  } catch {
+    // Гонка двойного клика: unique (clinic_id, idempotency_key)
+    if (input.idempotencyKey) {
+      return getDocumentSignRequestByIdempotency(
+        input.clinicId,
+        input.idempotencyKey
+      );
+    }
+    return null;
+  }
+}
+
+export async function getDocumentSignRequestByIdempotency(
+  clinicId: string,
+  idempotencyKey: string
+): Promise<DocumentSignRequestRecord | null> {
   return (
     (await withDb(async (client) => {
       const res = await client.query<DbRow>(
-        `INSERT INTO document_sign_requests
-          (id, clinic_id, patient_id, appointment_id, phone, document_refs, provider,
-           external_id, fdoc_status, fdoc_sign_url, otp_hash, token_hash, expires_at, created_by)
-         VALUES (
-           COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6::jsonb, $7,
-           $8, $9, $10, $11, $12, $13, $14
-         )
-         RETURNING *`,
-        [
-          input.id ?? null,
-          input.clinicId,
-          input.patientId,
-          input.appointmentId ?? null,
-          input.phone,
-          JSON.stringify(input.documentRefs),
-          input.provider ?? "emkaro",
-          input.externalId ?? null,
-          input.fdocStatus ?? null,
-          input.fdocSignUrl ?? null,
-          input.otpHash ?? null,
-          input.tokenHash ?? null,
-          input.expiresAt.toISOString(),
-          input.createdBy ?? null,
-        ]
+        `SELECT * FROM document_sign_requests
+         WHERE clinic_id = $1 AND idempotency_key = $2
+         LIMIT 1`,
+        [clinicId, idempotencyKey]
       );
-      return mapRow(res.rows[0]!);
+      return res.rows[0] ? mapRow(res.rows[0]) : null;
     })) ?? null
   );
+}
+
+export async function findActiveEmkaroSignRequest(input: {
+  clinicId: string;
+  patientId: string;
+  documentIds: string[];
+}): Promise<DocumentSignRequestRecord | null> {
+  const pending = await listDocumentSignRequests(input.clinicId, input.patientId, 10);
+  const want = new Set(input.documentIds);
+  for (const req of pending) {
+    if (req.provider !== "emkaro_sign") continue;
+    if (req.status !== "pending") continue;
+    const ids = req.documentRefs.map((d) => d.id);
+    if (ids.length === want.size && ids.every((id) => want.has(id))) {
+      return req;
+    }
+  }
+  return null;
+}
+
+export async function applySignWebhookStatus(input: {
+  packageId: string;
+  signatureStatus: string;
+  signatureMethod?: string;
+  signedAt?: string;
+  signOperationId?: string;
+}): Promise<DocumentSignRequestRecord | null> {
+  const record = await getDocumentSignRequestByExternalId(input.packageId, "emkaro_sign");
+  if (!record) return null;
+
+  const statusMap: Record<string, DocumentSignStatus> = {
+    SIGNED: "signed",
+    EXPIRED: "expired",
+    CANCELLED: "cancelled",
+    FAILED: "failed",
+  };
+  const nextStatus = statusMap[input.signatureStatus.toUpperCase()] ?? record.status;
+
+  await withDb(async (client) => {
+    await client.query(
+      `UPDATE document_sign_requests SET
+         signature_status = $2,
+         signature_method = COALESCE($3, signature_method),
+         sign_package_id = COALESCE(sign_package_id, $4),
+         sign_operation_id = COALESCE($5, sign_operation_id),
+         last_sign_sync_at = NOW(),
+         status = CASE WHEN $6::text IS NOT NULL THEN $6 ELSE status END,
+         signed_at = CASE WHEN $6 = 'signed' THEN COALESCE($7::timestamptz, NOW()) ELSE signed_at END,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [
+        record.id,
+        input.signatureStatus,
+        input.signatureMethod ?? null,
+        input.packageId,
+        input.signOperationId ?? null,
+        nextStatus === record.status ? null : nextStatus,
+        input.signedAt ?? null,
+      ]
+    );
+  });
+
+  return getDocumentSignRequestById(record.clinicId, record.id);
 }
 
 export async function getDocumentSignRequestById(
@@ -119,16 +243,22 @@ export async function getDocumentSignRequestById(
 }
 
 export async function getDocumentSignRequestByExternalId(
-  externalId: string
+  externalId: string,
+  provider?: DocumentSignProvider
 ): Promise<DocumentSignRequestRecord | null> {
   return (
     (await withDb(async (client) => {
       const res = await client.query<DbRow>(
-        `SELECT * FROM document_sign_requests
-         WHERE provider = 'fdoc' AND external_id = $1
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [externalId]
+        provider
+          ? `SELECT * FROM document_sign_requests
+             WHERE provider = $2 AND external_id = $1
+             ORDER BY created_at DESC
+             LIMIT 1`
+          : `SELECT * FROM document_sign_requests
+             WHERE external_id = $1
+             ORDER BY created_at DESC
+             LIMIT 1`,
+        provider ? [externalId, provider] : [externalId]
       );
       const row = res.rows[0];
       return row ? mapRow(row) : null;

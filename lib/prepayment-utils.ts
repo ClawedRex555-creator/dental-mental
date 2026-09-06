@@ -1,4 +1,10 @@
-import type { PatientPrepayment, Payment, WorkAct } from "@/lib/types";
+import type {
+  PatientPrepayment,
+  PatientPrepaymentItem,
+  Payment,
+  WorkAct,
+} from "@/lib/types";
+import { normalizePlanItemQuantity } from "@/lib/treatment-plan-item-utils";
 import {
   getWorkActPaidAmount,
   getWorkActRemainingAmount,
@@ -22,19 +28,86 @@ export type OpenPrepaidSource = {
   act?: WorkAct;
 };
 
-/** Незачтённые документы предоплаты (есть внесённый аванс) */
+/** Стабильные id позиций для старых документов без id. */
+export function withPrepaymentItemIds(
+  prepayment: PatientPrepayment
+): PatientPrepayment {
+  return {
+    ...prepayment,
+    items: (prepayment.items ?? []).map((it, index) => ({
+      ...it,
+      id: it.id?.trim() || `${prepayment.id}_item_${index}`,
+    })),
+  };
+}
+
+export function isPrepaymentItemSettled(item: PatientPrepaymentItem): boolean {
+  return Boolean(item.settledWorkActId || item.settledAt);
+}
+
+export function getUnsettledPrepaymentItems(
+  prepayment: PatientPrepayment
+): PatientPrepaymentItem[] {
+  return withPrepaymentItemIds(prepayment).items.filter(
+    (it) => !isPrepaymentItemSettled(it)
+  );
+}
+
+export function prepaymentItemLineTotal(item: PatientPrepaymentItem): number {
+  return Math.max(0, item.price) * normalizePlanItemQuantity(item.quantity);
+}
+
+/** Незачтённые документы предоплаты (есть доступный аванс). */
 export function getOpenPatientPrepayments(
   prepayments: PatientPrepayment[] | undefined,
   patientId: string
 ): PatientPrepayment[] {
   if (!patientId) return [];
-  return (prepayments ?? []).filter(
-    (p) => p.patientId === patientId && !p.settledAt && p.paidAmount > 0
-  );
+  return (prepayments ?? []).filter((p) => {
+    if (p.patientId !== patientId || p.paidAmount <= 0) return false;
+    if (p.settledAt) return false;
+    return getPrepaymentAvailableCredit(p) > 0;
+  });
 }
 
-export function getPrepaymentAvailableCredit(prepayment: PatientPrepayment): number {
-  return Math.max(0, prepayment.paidAmount);
+export function getPrepaymentAvailableCredit(
+  prepayment: PatientPrepayment
+): number {
+  const settled = Math.max(0, prepayment.settledAmount ?? 0);
+  return Math.max(0, prepayment.paidAmount - settled);
+}
+
+/**
+ * Пометить выбранные позиции зачтёнными и обновить settledAmount.
+ * settledAt ставится, когда не осталось открытых позиций или аванс исчерпан.
+ */
+export function settlePrepaymentItems(
+  prepayment: PatientPrepayment,
+  itemIds: string[],
+  workActId: string,
+  appliedCredit: number,
+  settledAt: string
+): PatientPrepayment {
+  const idSet = new Set(itemIds.filter(Boolean));
+  const withIds = withPrepaymentItemIds(prepayment);
+  const items = withIds.items.map((it) =>
+    idSet.has(it.id!) && !isPrepaymentItemSettled(it)
+      ? { ...it, settledWorkActId: workActId, settledAt }
+      : it
+  );
+  const settledAmount =
+    Math.max(0, prepayment.settledAmount ?? 0) + Math.max(0, appliedCredit);
+  const availableAfter = Math.max(0, prepayment.paidAmount - settledAmount);
+  const hasOpenItems = items.some((it) => !isPrepaymentItemSettled(it));
+  const fullySettled = !hasOpenItems || availableAfter <= 0;
+
+  return {
+    ...withIds,
+    items,
+    settledAmount: Math.min(prepayment.paidAmount, settledAmount),
+    settledWorkActId: workActId,
+    ...(fullySettled ? { settledAt } : { settledAt: undefined }),
+  };
 }
 
 /** Акт услуг с частичной оплатой = предоплата (в т.ч. старые акты) */
@@ -56,7 +129,8 @@ export function getPartialActsAsPrepayments(
   if (!patientId) return [];
   return (workActs ?? [])
     .filter(
-      (a) => a.patientId === patientId && isPartialServiceActAsPrepayment(a, payments)
+      (a) =>
+        a.patientId === patientId && isPartialServiceActAsPrepayment(a, payments)
     )
     .sort((a, b) => b.actDate.localeCompare(a.actDate));
 }
@@ -81,18 +155,21 @@ export function getOpenPrepaidSources(
     prepDocs.map((p) => p.workActId).filter((id): id is string => Boolean(id))
   );
 
-  const fromDocs: OpenPrepaidSource[] = prepDocs.map((p) => ({
-    id: `prep:${p.id}`,
-    kind: "document",
-    patientId: p.patientId,
-    label: p.actNumber ? `№ ${p.actNumber}` : "Предоплата",
-    credit: getPrepaymentAvailableCredit(p),
-    remaining: Math.max(0, p.remainingAmount ?? 0),
-    serviceNames: (p.items ?? []).map((i) => i.serviceName).filter(Boolean),
-    date: p.date,
-    prepayment: p,
-    act: p.workActId ? acts.find((a) => a.id === p.workActId) : undefined,
-  }));
+  const fromDocs: OpenPrepaidSource[] = prepDocs.map((p) => {
+    const openItems = getUnsettledPrepaymentItems(p);
+    return {
+      id: `prep:${p.id}`,
+      kind: "document" as const,
+      patientId: p.patientId,
+      label: p.actNumber ? `№ ${p.actNumber}` : "Предоплата",
+      credit: getPrepaymentAvailableCredit(p),
+      remaining: Math.max(0, p.remainingAmount ?? 0),
+      serviceNames: openItems.map((i) => i.serviceName).filter(Boolean),
+      date: p.date,
+      prepayment: p,
+      act: p.workActId ? acts.find((a) => a.id === p.workActId) : undefined,
+    };
+  });
 
   const fromPartialActs: OpenPrepaidSource[] = getPartialActsAsPrepayments(
     acts,

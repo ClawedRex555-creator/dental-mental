@@ -4,7 +4,12 @@ import {
   APPOINTMENT_STATUS_LABELS,
   TREATMENT_PLAN_STATUS_LABELS,
 } from "@/lib/constants";
-import { findWorkActForAppointment } from "@/lib/visit-work-act";
+import { findWorkActForAppointment, findWorkActForMedicalRecord } from "@/lib/visit-work-act";
+import {
+  formatWorkActItemsWithTeeth,
+  formatWorkActItemWithTooth,
+  formatWorkActTeethList,
+} from "@/lib/work-act-utils";
 import type {
   Appointment,
   AppointmentStatus,
@@ -36,6 +41,8 @@ export interface MobileStaffMedicalRecordSummary {
   createdAt: string;
   doctorName: string;
   serviceName?: string;
+  teethSummary?: string;
+  servicesSummary?: string;
 }
 
 export interface MobileStaffFinanceActSummary {
@@ -77,7 +84,10 @@ function mapVisit(
   const workActs = data.workActs ?? [];
   const act = findWorkActForAppointment(apt, workActs, records);
   const status = apt.status as AppointmentStatus;
-  const actItems = act?.items?.slice(0, 3).map((i) => i.serviceName).join(", ");
+  const actItems = act?.items
+    ?.slice(0, 3)
+    .map((i) => formatWorkActItemWithTooth(i))
+    .join(", ");
 
   return {
     id: apt.id,
@@ -136,13 +146,20 @@ export function buildMobileStaffPatientCard(
 
   return {
     visits,
-    medicalRecords: records.slice(0, 15).map((r: MedicalRecord) => ({
-      id: r.id,
-      diagnosis: r.diagnosis,
-      createdAt: r.createdAt,
-      doctorName: doctorName(r.doctorId, doctors),
-      serviceName: r.serviceName,
-    })),
+    medicalRecords: records.slice(0, 15).map((r: MedicalRecord) => {
+      const act = findWorkActForMedicalRecord(r, workActs);
+      return {
+        id: r.id,
+        diagnosis: r.diagnosis,
+        createdAt: r.createdAt,
+        doctorName: doctorName(r.doctorId, doctors),
+        serviceName: r.serviceName,
+        teethSummary: act ? formatWorkActTeethList(act.items) ?? undefined : undefined,
+        servicesSummary: act
+          ? formatWorkActItemsWithTeeth(act.items, 4) || undefined
+          : undefined,
+      };
+    }),
     finance: {
       balance,
       totalSpent: patient.totalSpent ?? 0,

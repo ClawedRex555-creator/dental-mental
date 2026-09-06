@@ -44,6 +44,7 @@ function isPublicApi(pathname: string): boolean {
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/logout") ||
     pathname.startsWith("/api/auth/me") ||
+    pathname.startsWith("/api/auth/emkaro-sign/sso") ||
     pathname.startsWith("/api/clinic/context") ||
     pathname.startsWith("/api/landing/connection-requests") ||
     pathname.startsWith("/api/platform/auth/login") ||
@@ -150,6 +151,15 @@ export async function proxy(request: NextRequest) {
     }
 
     if (pathname === "/login") {
+      const from = request.nextUrl.searchParams.get("from");
+      // Уже в сессии, но пришли за SSO в Sign — не уводить в МИС-дашборд
+      if (
+        from &&
+        from.startsWith("/api/auth/emkaro-sign/sso") &&
+        !from.startsWith("//")
+      ) {
+        return NextResponse.redirect(new URL(from, request.url));
+      }
       return NextResponse.redirect(new URL(defaultPathForRole(session.role), request.url));
     }
 

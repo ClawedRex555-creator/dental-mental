@@ -243,7 +243,7 @@ export function isDateInRange(dateStr: string, from: Date, to: Date): boolean {
 }
 
 /** Зарплаты врачей (% от полностью оплаченных актов) и ассистентов (почасово) за период.
- *  ЗП врача начисляется по дате полной оплаты (не по дате акта). */
+ *  ЗП врача начисляется по дате закрытия акта (closedAt / день полной оплаты), не по дате акта. */
 export function computeStaffSalariesForRange(
   doctors: Doctor[],
   serviceActs: WorkAct[],

@@ -28,6 +28,7 @@ import {
   useClinicStore,
 } from "@/store/useClinicStore";
 import { cn, formatCurrency, formatDate, formatPhone, getAge, getFullName } from "@/lib/utils";
+import { PatientSignStatusCard } from "@/components/patients/patient-sign-status-card";
 import { AppointmentModal } from "@/components/appointments/appointment-modal";
 import { PrepaymentModal } from "@/components/finance/prepayment-modal";
 import { MedicalRecordModal } from "@/components/medical-records/medical-record-modal";
@@ -56,7 +57,11 @@ import { PatientModal } from "@/components/patients/patient-modal";
 import { PatientNotesPanel } from "@/components/patients/patient-notes-panel";
 import { PatientVisitDetailDialog } from "@/components/patients/patient-visit-detail-dialog";
 import { WorkActModal } from "@/components/finance/work-act-modal";
-import { findMedicalRecordForAppointment, findWorkActForAppointment } from "@/lib/visit-work-act";
+import {
+  findMedicalRecordForAppointment,
+  findWorkActForAppointment,
+  findWorkActForMedicalRecord,
+} from "@/lib/visit-work-act";
 import { isWorkActSyntheticVisit } from "@/lib/work-act-visit";
 import { printWorkAct } from "@/lib/work-act-print";
 import { getPatientDebtAmount } from "@/lib/patient-balance";
@@ -65,6 +70,10 @@ import {
   getWorkActPaidAmount,
   getWorkActRemainingAmount,
 } from "@/lib/work-act-payment";
+import {
+  formatWorkActItemsWithTeeth,
+  formatWorkActTeethList,
+} from "@/lib/work-act-utils";
 import { deletePatientViaCommandApi } from "@/lib/clinic-patient.client";
 import {
   setPatientTeethViaCommandApi,
@@ -553,6 +562,9 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
               )}
             </CardContent>
           </Card>
+          <div className="md:col-span-2">
+            <PatientSignStatusCard patientId={patient.id} />
+          </div>
           {activePlan && (
             <Card className="md:col-span-2">
               <CardHeader><CardTitle className="text-base">Активный план</CardTitle></CardHeader>
@@ -650,10 +662,22 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                           : `${apt.complaints ?? apt.reason ?? "—"} · ${doctor?.name ?? "врач не назначен"}`}
                       </p>
                       {visitAct && (
-                        <p className="mt-1 text-xs text-teal-700">
-                          Акт № {visitAct.actNumber}
-                          {visitAct.notes?.trim() ? " · есть примечание" : ""}
-                        </p>
+                        <>
+                          <p className="mt-1 text-xs text-teal-700">
+                            Акт № {visitAct.actNumber}
+                            {visitAct.notes?.trim() ? " · есть примечание" : ""}
+                          </p>
+                          {formatWorkActTeethList(visitAct.items) && (
+                            <p className="mt-0.5 text-xs font-medium text-slate-700">
+                              {formatWorkActTeethList(visitAct.items)}
+                            </p>
+                          )}
+                          {formatWorkActItemsWithTeeth(visitAct.items, 3) && (
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {formatWorkActItemsWithTeeth(visitAct.items, 3)}
+                            </p>
+                          )}
+                        </>
                       )}
                       {isOther && apt.reason && (
                         <p className="mt-1 text-xs text-amber-800">{apt.reason}</p>
@@ -687,6 +711,13 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
           ) : (
             records.map((r) => {
               const doctor = doctors.find((d) => d.id === r.doctorId);
+              const linkedAct = findWorkActForMedicalRecord(r, workActs);
+              const teethLine = linkedAct
+                ? formatWorkActTeethList(linkedAct.items)
+                : null;
+              const servicesLine = linkedAct
+                ? formatWorkActItemsWithTeeth(linkedAct.items, 4)
+                : null;
               return (
                 <Card key={r.id}>
                   <CardHeader className="pb-2">
@@ -697,6 +728,7 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                           {formatDate(r.createdAt)}
                           {doctor?.name ? ` · ${doctor.name}` : ""}
                           {r.serviceName ? ` · ${r.serviceName}` : ""}
+                          {teethLine ? ` · ${teethLine}` : ""}
                         </p>
                       </div>
                       {canDeleteRecords && (
@@ -742,6 +774,12 @@ export function PatientDetailView({ patient }: { patient: Patient }) {
                       <div>
                         <p className="font-medium text-slate-700">Лечение</p>
                         <p>{r.treatment}</p>
+                      </div>
+                    )}
+                    {servicesLine && (
+                      <div>
+                        <p className="font-medium text-slate-700">Услуги по акту</p>
+                        <p>{servicesLine}</p>
                       </div>
                     )}
                     {r.recommendations && (

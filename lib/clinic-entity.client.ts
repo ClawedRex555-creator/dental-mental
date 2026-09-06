@@ -96,3 +96,15 @@ export function createPrepaymentViaCommandApi(input: {
 }) {
   return postEntityCommand("/api/clinic/prepayments/create", input);
 }
+
+export function deletePrepaymentViaCommandApi(prepaymentId: string) {
+  return postEntityCommand("/api/clinic/prepayments/delete", { prepaymentId });
+}
+
+export function settlePrepaymentViaCommandApi(input: {
+  prepaymentId: string;
+  workActId: string;
+  itemIds: string[];
+}) {
+  return postEntityCommand("/api/clinic/prepayments/settle", input);
+}
