@@ -47,6 +47,14 @@ const MedflexSettingsPanel = dynamic(
   { ssr: false }
 );
 
+const SignSenderSettingsPanel = dynamic(
+  () =>
+    import("@/components/settings/sign-sender-settings-panel").then((m) => ({
+      default: m.SignSenderSettingsPanel,
+    })),
+  { ssr: false }
+);
+
 function roleLabel(role: UserRole): string {
   return ROLE_LABELS[role] ?? role;
 }
@@ -460,6 +468,9 @@ export default function AccountSettingsPage() {
               <MedflexSettingsPanel />
             </PanelErrorBoundary>
           </ModuleGate>
+          <PanelErrorBoundary title="Блок Emkaro Sign временно недоступен">
+            <SignSenderSettingsPanel />
+          </PanelErrorBoundary>
         </>
       )}
 

@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import type { ClinicPersistedState } from "@/lib/clinic-persisted-state";
 import { syncAppointmentsAfterActPaid } from "@/lib/appointment-act-payment";
 import { generateDefaultTeeth } from "@/lib/mock-data";
@@ -20,6 +21,10 @@ import {
 import { ensureMedicalRecordForWorkAct } from "@/lib/work-act-medical-record";
 import { applyWorkActItemsToTeeth } from "@/lib/work-act-teeth";
 import { syncVisitForWorkAct } from "@/lib/work-act-visit";
+
+function todayIsoDate(): string {
+  return format(new Date(), "yyyy-MM-dd");
+}
 
 export function buildPayWorkActPaymentId(
   actId: string,
@@ -44,11 +49,22 @@ function withPatientVisitFields(
 function applyFullyPaidState(
   state: ClinicPersistedState,
   actId: string,
-  medicalSync: { records: MedicalRecord[]; actMedicalRecordId?: string }
+  medicalSync: { records: MedicalRecord[]; actMedicalRecordId?: string },
+  closedAt: string = todayIsoDate()
 ): ClinicPersistedState {
   const workActs = state.workActs.map((a) => {
     if (a.id !== actId) return a;
-    const next: WorkAct = { ...a, paymentStatus: "paid" as const };
+    const next: WorkAct = {
+      ...a,
+      paymentStatus: "paid" as const,
+      // Не ставим «сегодня» на уже закрытых актах без closedAt (legacy) —
+      // иначе ЗП внезапно переедет в текущий день при повторном вызове.
+      ...(a.closedAt
+        ? { closedAt: a.closedAt }
+        : a.paymentStatus === "paid"
+          ? {}
+          : { closedAt }),
+    };
     if (medicalSync.actMedicalRecordId) {
       next.medicalRecordId = medicalSync.actMedicalRecordId;
     }
@@ -218,6 +234,7 @@ export function applyPayWorkActToPersistedState(
       ? state.invoices.find((i) => i.id === act.invoiceId)
       : undefined) ?? state.invoices.find((i) => i.workActId === input.actId);
 
+  const paidOn = todayIsoDate();
   const payment: Payment = {
     id: paymentId,
     patientId: act.patientId,
@@ -225,7 +242,8 @@ export function applyPayWorkActToPersistedState(
     amount: payAmount,
     method,
     status: "paid",
-    date: act.actDate,
+    /** День фактической оплаты/закрытия — для ЗП; выручка в отчётах берёт actDate. */
+    date: paidOn,
     comment: fullyPaid
       ? `Оплата по акту ${act.actNumber}`
       : `Предоплата по акту ${act.actNumber}`,
@@ -236,6 +254,7 @@ export function applyPayWorkActToPersistedState(
     const next: WorkAct = {
       ...a,
       paymentStatus: fullyPaid ? ("paid" as const) : ("partial" as const),
+      ...(fullyPaid ? { closedAt: a.closedAt ?? paidOn } : {}),
     };
     if (fullyPaid && medicalSync.actMedicalRecordId) {
       next.medicalRecordId = medicalSync.actMedicalRecordId;

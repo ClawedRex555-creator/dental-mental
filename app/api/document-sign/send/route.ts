@@ -7,6 +7,7 @@ import type { DocumentSignRef } from "@/lib/document-sign/types";
 import { getClinicDataDb } from "@/lib/clinic-data-db.server";
 import { getServerSession } from "@/lib/get-server-session";
 import { isDatabaseEnabled } from "@/lib/db";
+import { assertClinicModule } from "@/lib/module-access.server";
 import type { SessionPayload } from "@/lib/auth-session";
 
 type StaffSession = SessionPayload & { clinicId: string; clinicSlug: string };
@@ -33,9 +34,15 @@ export async function POST(request: Request) {
   if (sessionOrDenied instanceof NextResponse) return sessionOrDenied;
   const session = sessionOrDenied;
 
+  const moduleDenied = await assertClinicModule(session.clinicId, "document_sign");
+  if (moduleDenied) return moduleDenied;
+
   let body: {
     patientId?: string;
     appointmentId?: string;
+    doctorId?: string;
+    appointmentDate?: string;
+    sendToEgisz?: "yes" | "no";
     documents?: DocumentSignRef[];
   };
   try {
@@ -62,17 +69,31 @@ export async function POST(request: Request) {
       kind: d.kind ? String(d.kind) : undefined,
     }));
 
+  const doctor = body.doctorId
+    ? snapshot?.data.doctors.find((d) => d.id === body.doctorId)
+    : undefined;
+
   const result = await sendDocumentSignPackage({
     clinicId: session.clinicId,
     clinicSlug: session.clinicSlug,
     patient,
     documentRefs: documents,
     appointmentId: body.appointmentId?.trim(),
+    doctor,
+    appointmentDate: body.appointmentDate?.trim(),
+    sendToEgisz: body.sendToEgisz === "no" ? "no" : "yes",
     createdBy: session.userId,
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error ?? "Не удалось отправить" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: result.error ?? "Не удалось отправить",
+        rejected: result.rejected,
+        provider: result.provider,
+      },
+      { status: 400 }
+    );
   }
 
   await writeAuditLog(
@@ -100,5 +121,11 @@ export async function POST(request: Request) {
     externalId: result.externalId,
     debugOtp: result.debugOtp,
     debugSignUrl: result.debugSignUrl,
+    acceptedTitles: result.acceptedTitles,
+    rejected: result.rejected,
+    smsTaskId: result.smsTaskId,
+    smsTaskStatus: result.smsTaskStatus,
+    desktopStatus: result.desktopStatus,
+    alreadyExists: result.alreadyExists,
   });
 }

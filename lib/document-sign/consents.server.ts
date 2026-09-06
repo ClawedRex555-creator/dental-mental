@@ -29,9 +29,14 @@ export async function applyDocumentSignConsents(input: {
   requestId: string;
   documentRefs: DocumentSignRef[];
   signedAt: string;
-  source: "emkaro" | "fdoc";
+  source: "emkaro" | "fdoc" | "emkaro_sign";
 }): Promise<void> {
-  const label = input.source === "fdoc" ? "F.Doc" : "ПЭП по SMS";
+  const label =
+    input.source === "fdoc"
+      ? "F.Doc"
+      : input.source === "emkaro_sign"
+        ? "Emkaro Sign"
+        : "ПЭП по SMS";
   const consents = mapDocumentsToConsents(input.documentRefs);
   for (const c of consents) {
     await upsertPatientConsent({

@@ -33,9 +33,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { logAuditClient } from "@/lib/audit-client";
-import { isToday, isYesterday, parseISO } from "date-fns";
+import { format, isToday, isYesterday, isValid, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
-import { format } from "date-fns";
 
 const CATEGORY_ICONS: Record<PatientNoteCategory, typeof Pin> = {
   general: MessageSquarePlus,
@@ -57,6 +56,7 @@ function noteCategory(note: PatientNote): PatientNoteCategory {
 
 function groupLabel(iso: string): string {
   const d = parseISO(iso);
+  if (!isValid(d)) return "Без даты";
   if (isToday(d)) return "Сегодня";
   if (isYesterday(d)) return "Вчера";
   return format(d, "d MMMM yyyy", { locale: ru });

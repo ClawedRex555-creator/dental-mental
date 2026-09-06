@@ -53,13 +53,18 @@ import {
   isWorkActFullyPaid,
 } from "@/lib/work-act-payment";
 import { detachAppointmentFromWorkAct } from "@/lib/work-act-visit";
-import { canDeleteWorkActs } from "@/lib/rbac";
 import {
   getOpenPrepaidSources,
   getPrepaymentAvailableCredit,
+  getUnsettledPrepaymentItems,
+  prepaymentItemLineTotal,
+  settlePrepaymentItems,
+  withPrepaymentItemIds,
   type OpenPrepaidSource,
 } from "@/lib/prepayment-utils";
+import { settlePrepaymentViaCommandApi } from "@/lib/clinic-entity.client";
 import { normalizePlanItemQuantity } from "@/lib/treatment-plan-item-utils";
+import { canDeleteWorkActs } from "@/lib/rbac";
 import { ClinicServiceSearch } from "@/components/shared/clinic-service-search";
 import { PatientSearchSelect } from "@/components/shared/patient-search-select";
 import { formatCurrency, generateId, getFullName } from "@/lib/utils";
@@ -105,7 +110,7 @@ function buildWorkActFormSnapshot(input: {
   discountBearer: DiscountBearer;
   notes: string;
   linkedPrepaymentId: string | null;
-  prepayPath: "pending" | "new" | "settle";
+  prepayPath: "pending" | "select" | "new" | "settle";
 }): string {
   return JSON.stringify({
     patientId: input.patientId,
@@ -205,9 +210,15 @@ export function WorkActModal({
   const actMissing = Boolean(existingActId && !existingAct);
   const actNeedsFix = actMissing || (existingAct ? !workActHasFilledItems(existingAct) : false);
 
-  /** pending = нужно выбрать; new = обычный акт; settle = зачёт предоплаты */
-  const [prepayPath, setPrepayPath] = useState<"pending" | "new" | "settle">("pending");
+  /** pending = выбор источника; select = выбор услуг аванса; settle = зачёт; new = обычный акт */
+  const [prepayPath, setPrepayPath] = useState<
+    "pending" | "select" | "settle" | "new"
+  >("pending");
   const [linkedPrepaymentId, setLinkedPrepaymentId] = useState<string | null>(null);
+  const [settleItemIds, setSettleItemIds] = useState<Set<string>>(new Set());
+  const [confirmedSettleItemIds, setConfirmedSettleItemIds] = useState<string[]>(
+    []
+  );
 
   const linkedAppointmentId =
     defaultAppointmentId ??
@@ -486,40 +497,65 @@ export function WorkActModal({
     [prepayments, workActs, payments, patientId]
   );
 
-  const applyPrepaymentCredit = (act: WorkAct, prep: PatientPrepayment) => {
+  const applyPrepaymentCreditLocal = (
+    act: WorkAct,
+    prep: PatientPrepayment,
+    itemIds: string[]
+  ) => {
     const credit = getPrepaymentAvailableCredit(prep);
     if (credit <= 0) return;
     const applied = Math.min(credit, act.totalAmount);
     if (applied > 0) {
       payWorkAct(act.id, "transfer", applied);
     }
-    updatePrepayment(prep.id, {
-      settledAt: format(new Date(), "yyyy-MM-dd"),
-      settledWorkActId: act.id,
-      remainingAmount: Math.max(0, (prep.remainingAmount ?? 0)),
-      notes: [
-        prep.notes,
-        `Зачтено ${applied.toLocaleString("ru-RU")} ₽ в акт № ${act.actNumber}`,
-      ]
-        .filter(Boolean)
-        .join(". "),
-    });
+    const settledAt = format(new Date(), "yyyy-MM-dd");
+    const next = settlePrepaymentItems(prep, itemIds, act.id, applied, settledAt);
+    updatePrepayment(prep.id, next);
     updateWorkAct(act.id, { prepaymentId: prep.id });
   };
 
   const chooseNewAct = () => {
     setPrepayPath("new");
     setLinkedPrepaymentId(null);
+    setSettleItemIds(new Set());
+    setConfirmedSettleItemIds([]);
   };
 
   const chooseSettlePrepayment = (prep: PatientPrepayment) => {
+    const normalized = withPrepaymentItemIds(prep);
+    const openItems = getUnsettledPrepaymentItems(normalized);
+    if (openItems.length === 0) {
+      toast.error("Все услуги по этой предоплате уже зачтены");
+      return;
+    }
     setLinkedPrepaymentId(prep.id);
-    setPrepayPath("settle");
+    setPrepayPath("select");
+    setSettleItemIds(new Set());
+    setConfirmedSettleItemIds([]);
     setPatientId(prep.patientId);
     setTechnicalSelectionByItemId({});
+    setItems([]);
+    setNotes("");
     if (prep.discountType) setDiscountType(prep.discountType);
     if (prep.discount != null) setDiscount(String(prep.discount));
-    const nextItems = (prep.items ?? []).map((it) => {
+  };
+
+  const confirmSettleItemSelection = () => {
+    if (!linkedPrepaymentId) return;
+    const prep = (prepayments ?? []).find((p) => p.id === linkedPrepaymentId);
+    if (!prep) {
+      toast.error("Предоплата не найдена");
+      return;
+    }
+    const normalized = withPrepaymentItemIds(prep);
+    const selected = normalized.items.filter(
+      (it) => it.id && settleItemIds.has(it.id)
+    );
+    if (selected.length === 0) {
+      toast.error("Выберите хотя бы одну услугу");
+      return;
+    }
+    const nextItems = selected.map((it) => {
       const quantity = normalizePlanItemQuantity(it.quantity);
       const price = it.price;
       return {
@@ -532,12 +568,28 @@ export function WorkActModal({
       };
     });
     setItems(nextItems);
+    setConfirmedSettleItemIds(selected.map((it) => it.id!).filter(Boolean));
+    setPrepayPath("settle");
+    const openAll = getUnsettledPrepaymentItems(normalized);
+    const selectedAllOpen = selected.length === openAll.length;
+    if (!selectedAllOpen) {
+      setDiscount("0");
+    } else if (prep.discount != null) {
+      setDiscount(String(prep.discount));
+    }
+    const credit = getPrepaymentAvailableCredit(normalized);
+    const selectedTotal = selected.reduce(
+      (sum, it) => sum + prepaymentItemLineTotal(it),
+      0
+    );
     setNotes(
       `Оказание по предоплате ${prep.actNumber ?? ""}`.trim() +
-        (prep.paidAmount
-          ? `. Аванс: ${prep.paidAmount.toLocaleString("ru-RU")} ₽`
+        `. Услуг: ${selected.length}. Аванс доступно: ${credit.toLocaleString("ru-RU")} ₽` +
+        (selectedTotal > credit
+          ? `. К доплате после зачёта: ${Math.max(0, selectedTotal - credit).toLocaleString("ru-RU")} ₽`
           : "")
     );
+    refreshBaseline();
   };
 
   const chooseOpenPrepaidSource = (source: OpenPrepaidSource) => {
@@ -648,13 +700,6 @@ export function WorkActModal({
       updateAppointment(linkedAppointmentId, { workActId: actId });
     }
 
-    if (linkedPrepaymentId && prepayPath === "settle") {
-      const prep = (prepayments ?? []).find((p) => p.id === linkedPrepaymentId);
-      if (prep && !prep.settledAt) {
-        applyPrepaymentCredit(act, prep);
-      }
-    }
-
     return act;
   };
 
@@ -690,6 +735,35 @@ export function WorkActModal({
         options.afterLocalPersist?.(act);
       });
       markClinicSyncedAfterCommand(apiResult.updatedAt, apiResult.revision);
+
+      if (
+        linkedPrepaymentId &&
+        prepayPath === "settle" &&
+        confirmedSettleItemIds.length > 0
+      ) {
+        const settleApi = await settlePrepaymentViaCommandApi({
+          prepaymentId: linkedPrepaymentId,
+          workActId: act.id,
+          itemIds: confirmedSettleItemIds,
+        });
+        if (!settleApi.ok) {
+          toast.error(
+            settleApi.error ??
+              "Акт сохранён, но зачёт предоплаты не удался — повторите зачёт"
+          );
+          return false;
+        }
+        const prepNow = useClinicStore
+          .getState()
+          .prepayments?.find((p) => p.id === linkedPrepaymentId);
+        if (prepNow) {
+          runWithoutClinicFlush(() => {
+            applyPrepaymentCreditLocal(act, prepNow, confirmedSettleItemIds);
+          });
+        }
+        markClinicSyncedAfterCommand(settleApi.updatedAt, settleApi.revision);
+      }
+
       useClinicStore.getState().pauseClinicAutoSave(15_000);
       notifyClinicDataChanged();
 
@@ -966,26 +1040,26 @@ export function WorkActModal({
         </DialogHeader>
         <div className="space-y-4">
           {!existingActId && prepayPath === "pending" && openPrepaysForPatient.length > 0 && (
-            <div className="space-y-3 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
-              <p className="text-sm font-semibold text-teal-900">
+            <div className="space-y-3 rounded-xl border border-teal-500/30 bg-teal-500/10 p-4">
+              <p className="text-sm font-semibold text-teal-800 dark:text-teal-200">
                 У пациента есть предоплата
               </p>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-[var(--muted)]">
                 Учитываются документы аванса и частично оплаченные акты (в том числе старые).
-                Можно продолжить/зачесть или создать новый акт на другую процедуру.
+                Можно зачесть выбранные услуги или создать новый акт на другую процедуру.
               </p>
               <ul className="space-y-2">
                 {openPrepaysForPatient.map((source) => (
                   <li
                     key={source.id}
-                    className="rounded-lg border border-teal-100 bg-white px-3 py-2 text-sm"
+                    className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="font-medium text-slate-900">
+                        <p className="font-medium text-[var(--foreground)]">
                           {source.label} · внесено {formatCurrency(source.credit)}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-[var(--muted)]">
                           {source.kind === "partial_act"
                             ? "Частично оплаченный акт"
                             : "Документ предоплаты"}
@@ -1015,16 +1089,147 @@ export function WorkActModal({
               </Button>
             </div>
           )}
-          {prepayPath === "pending" &&
+
+          {!existingActId && prepayPath === "select" && linkedPrepaymentId && (
+            <div className="space-y-3 rounded-xl border border-teal-500/30 bg-teal-500/10 p-4">
+              <p className="text-sm font-semibold text-teal-800 dark:text-teal-200">
+                Выберите услуги для зачёта
+              </p>
+              <p className="text-sm text-[var(--muted)]">
+                В акт попадут только отмеченные позиции. Остальные останутся в предоплате
+                для следующих визитов.
+              </p>
+              {(() => {
+                const prep = (prepayments ?? []).find((p) => p.id === linkedPrepaymentId);
+                if (!prep) {
+                  return (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      Предоплата не найдена
+                    </p>
+                  );
+                }
+                const openItems = getUnsettledPrepaymentItems(prep);
+                const credit = getPrepaymentAvailableCredit(prep);
+                const selectedTotal = openItems
+                  .filter((it) => it.id && settleItemIds.has(it.id))
+                  .reduce((sum, it) => sum + prepaymentItemLineTotal(it), 0);
+                return (
+                  <>
+                    <p className="text-xs text-[var(--muted)]">
+                      Доступно аванса: {formatCurrency(credit)}
+                      {settleItemIds.size > 0
+                        ? ` · выбрано на ${formatCurrency(selectedTotal)}`
+                        : ""}
+                    </p>
+                    <ul className="max-h-64 space-y-2 overflow-y-auto">
+                      {openItems.map((it) => {
+                        const id = it.id!;
+                        const checked = settleItemIds.has(id);
+                        return (
+                          <li
+                            key={id}
+                            className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2"
+                          >
+                            <label className="flex cursor-pointer items-start gap-2 text-sm text-[var(--foreground)]">
+                              <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={checked}
+                                onChange={() => {
+                                  setSettleItemIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(id)) next.delete(id);
+                                    else next.add(id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="font-medium">{it.serviceName}</span>
+                                <span className="mt-0.5 block text-xs text-[var(--muted)]">
+                                  {normalizePlanItemQuantity(it.quantity)} ×{" "}
+                                  {formatCurrency(it.price)} ={" "}
+                                  {formatCurrency(prepaymentItemLineTotal(it))}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setSettleItemIds(
+                            new Set(openItems.map((it) => it.id!).filter(Boolean))
+                          )
+                        }
+                      >
+                        Выбрать все
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSettleItemIds(new Set())}
+                      >
+                        Снять все
+                      </Button>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        type="button"
+                        className="flex-1"
+                        disabled={settleItemIds.size === 0}
+                        onClick={confirmSettleItemSelection}
+                      >
+                        Составить акт из выбранных
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setPrepayPath("pending");
+                          setLinkedPrepaymentId(null);
+                          setSettleItemIds(new Set());
+                        }}
+                      >
+                        Назад
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {(prepayPath === "pending" || prepayPath === "select") &&
           openPrepaysForPatient.length > 0 &&
           !existingActId &&
           mode !== "doctor" ? null : (
           <>
           {prepayPath === "settle" && linkedPrepaymentId && (
-            <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900">
-              Режим зачёта предоплаты: услуги подставлены из аванса. При сохранении акт
-              будет закрыт зачётом внесённой суммы (при необходимости остаток доплатит
-              администратор).
+            <p className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-900 dark:text-teal-100">
+              Режим зачёта предоплаты: в акте только выбранные услуги (
+              {confirmedSettleItemIds.length}). При сохранении аванс зачтётся в счёт акта;
+              невыбранные услуги останутся для следующих визитов.
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={() => {
+                  if (!linkedPrepaymentId) return;
+                  const prep = (prepayments ?? []).find(
+                    (p) => p.id === linkedPrepaymentId
+                  );
+                  if (prep) chooseSettlePrepayment(prep);
+                }}
+              >
+                Изменить выбор
+              </button>
               <button
                 type="button"
                 className="ml-2 underline"

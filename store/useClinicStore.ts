@@ -295,6 +295,7 @@ interface ClinicState {
   saveDoctorMonthSchedule: (schedule: DoctorMonthSchedule) => void;
   addPrepayment: (prepayment: PatientPrepayment) => void;
   updatePrepayment: (id: string, data: Partial<PatientPrepayment>) => void;
+  removePrepayment: (id: string) => void;
   payWorkAct: (actId: string, method?: PaymentMethod, amount?: number) => boolean;
   /** ready_for_payment → completed, если акт уже оплачен */
   repairPaidActAppointments: () => void;
@@ -930,6 +931,12 @@ export const useClinicStore = create<ClinicState>()(
           prepayments: (s.prepayments ?? []).map((p) =>
             p.id === id ? { ...p, ...data } : p
           ),
+        }));
+      },
+
+      removePrepayment: (id) => {
+        set((s) => ({
+          prepayments: (s.prepayments ?? []).filter((p) => p.id !== id),
         }));
       },
 

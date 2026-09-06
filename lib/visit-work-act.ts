@@ -39,3 +39,15 @@ export function findMedicalRecordForAppointment(
   }
   return undefined;
 }
+
+/** Акт, привязанный к записи медкарты */
+export function findWorkActForMedicalRecord(
+  record: MedicalRecord,
+  workActs: WorkAct[]
+): WorkAct | undefined {
+  if (record.workActId) {
+    const byId = workActs.find((a) => a.id === record.workActId);
+    if (byId) return byId;
+  }
+  return workActs.find((a) => a.medicalRecordId === record.id);
+}

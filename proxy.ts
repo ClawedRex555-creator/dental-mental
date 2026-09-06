@@ -12,7 +12,7 @@ import {
 } from "@/lib/clinic-host";
 import { canAccessPath, defaultPathForRole, isAccountSettingsPath } from "@/lib/rbac";
 
-const PUBLIC_CLINIC_PATHS = ["/login"];
+const PUBLIC_CLINIC_PATHS = ["/login", "/sign"];
 const PLATFORM_PUBLIC_PATHS = [
   "/",
   "/platform/login",
@@ -44,12 +44,15 @@ function isPublicApi(pathname: string): boolean {
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/logout") ||
     pathname.startsWith("/api/auth/me") ||
+    pathname.startsWith("/api/auth/emkaro-sign/sso") ||
     pathname.startsWith("/api/clinic/context") ||
     pathname.startsWith("/api/landing/connection-requests") ||
     pathname.startsWith("/api/platform/auth/login") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/internal/tls-ask") ||
-    pathname.startsWith("/api/notifications/action")
+    pathname.startsWith("/api/notifications/action") ||
+    // Привязка телефона клиники: device token / short code, без staff-cookie
+    pathname.startsWith("/api/sign/sender-device/")
   );
 }
 
@@ -62,7 +65,11 @@ function isServiceApi(pathname: string): boolean {
     pathname.startsWith("/api/medflex/booking") ||
     pathname.startsWith("/api/medflex/health") ||
     pathname.startsWith("/api/medflex/process") ||
-    pathname.startsWith("/api/mobile/")
+    pathname.startsWith("/api/mobile/") ||
+    // Sign → МИС (HMAC), без cookie-сессии
+    pathname.startsWith("/api/webhooks/emkaro-sign") ||
+    pathname.startsWith("/api/integration/sign/webhook") ||
+    pathname.startsWith("/api/internal/patients/delivery-destination")
   );
 }
 
@@ -150,11 +157,25 @@ export async function proxy(request: NextRequest) {
     }
 
     if (pathname === "/login") {
+      const from = request.nextUrl.searchParams.get("from");
+      // Уже в сессии, но пришли за SSO в Sign — не уводить в МИС-дашборд
+      if (
+        from &&
+        from.startsWith("/api/auth/emkaro-sign/sso") &&
+        !from.startsWith("//")
+      ) {
+        return NextResponse.redirect(new URL(from, request.url));
+      }
       return NextResponse.redirect(new URL(defaultPathForRole(session.role), request.url));
     }
 
     if (pathname === "/") {
       return NextResponse.redirect(new URL(defaultPathForRole(session.role), request.url));
+    }
+
+    // /sign/* — публичные страницы (пациент / телефон клиники), даже при staff-сессии
+    if (isPublicClinicPath(pathname) && pathname !== "/login" && !pathname.startsWith("/login/")) {
+      return NextResponse.next();
     }
 
     const pathOnly = pathname.split("?")[0];

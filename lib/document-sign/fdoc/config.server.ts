@@ -31,11 +31,14 @@ export function isFdocConfigured(): boolean {
 
 export function resolveDocumentSignProvider(): DocumentSignProvider {
   const raw = process.env.DOCUMENT_SIGN_PROVIDER?.trim().toLowerCase();
+  if (raw === "emkaro_sign") return "emkaro_sign";
   if (raw === "fdoc" && isFdocConfigured()) return "fdoc";
   if (raw === "fdoc" && !isFdocConfigured()) return "emkaro";
   return "emkaro";
 }
 
 export function documentSignProviderLabel(provider: DocumentSignProvider): string {
-  return provider === "fdoc" ? "F.Doc" : "SMS (Emkaro)";
+  if (provider === "fdoc") return "F.Doc";
+  if (provider === "emkaro_sign") return "Emkaro Sign";
+  return "SMS (Emkaro)";
 }

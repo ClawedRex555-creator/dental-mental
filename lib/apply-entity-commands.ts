@@ -17,6 +17,14 @@ import { mergeCasePlanIds } from "@/lib/treatment-plan-case-utils";
 import { treatmentPlanNoteId } from "@/lib/treatment-plan-patient-note";
 import { allocateNextActSequence, formatWorkActNumber } from "@/lib/work-act-number";
 import { isWorkActLineFilled } from "@/lib/work-act-utils";
+import { applyDeleteWorkActToPersistedState } from "@/lib/apply-work-act-commands";
+import { applyPayWorkActToPersistedState } from "@/lib/apply-pay-work-act";
+import {
+  getPrepaymentAvailableCredit,
+  settlePrepaymentItems,
+  withPrepaymentItemIds,
+} from "@/lib/prepayment-utils";
+import { format } from "date-fns";
 
 export type ApplyEntityResult =
   | { ok: false; error: string }
@@ -336,6 +344,11 @@ export function applyCreatePrepaymentToPersistedState(
     id: prepId,
     workActId: actId,
     actNumber,
+    items: (prep.items ?? []).map((it, index) => ({
+      ...it,
+      id: it.id?.trim() || `${prepId}_item_${index}`,
+    })),
+    settledAmount: prep.settledAmount ?? 0,
   };
 
   const linkedInvoice = findInvoiceForAct(state.invoices, nextAct);
@@ -355,6 +368,138 @@ export function applyCreatePrepaymentToPersistedState(
       actCounter: Math.max(actCounter, state.actCounter),
       deletedWorkActIds: (state.deletedWorkActIds ?? []).filter((id) => id !== actId),
     },
+    entityId: prepId,
+    alreadyApplied: false,
+  };
+}
+
+/**
+ * Удалить документ предоплаты.
+ * — без акта: просто убрать запись;
+ * — с неоплаченным актом-авансом: удалить и акт;
+ * — с оплаченным актом: запрет.
+ */
+export function applyDeletePrepaymentToPersistedState(
+  state: ClinicPersistedState,
+  prepaymentIdInput: string
+): ApplyEntityResult {
+  const prepId = prepaymentIdInput?.trim();
+  if (!prepId) return { ok: false, error: "Не указана предоплата" };
+
+  const prep = (state.prepayments ?? []).find((p) => p.id === prepId);
+  if (!prep) {
+    return { ok: true, state, entityId: prepId, alreadyApplied: true };
+  }
+
+  const linkedAct = prep.workActId
+    ? state.workActs.find((a) => a.id === prep.workActId)
+    : state.workActs.find((a) => a.prepaymentId === prepId);
+
+  if (linkedAct) {
+    const paid = state.payments
+      .filter((p) => p.workActId === linkedAct.id && p.status === "paid")
+      .reduce((s, p) => s + p.amount, 0);
+    if (paid > 0 || linkedAct.paymentStatus === "paid") {
+      return {
+        ok: false,
+        error:
+          "Предоплата уже оплачена. Удалите оплату/акт в разделе «Акты», либо отмените платежи.",
+      };
+    }
+    const deletedAct = applyDeleteWorkActToPersistedState(state, linkedAct.id);
+    if (!deletedAct.ok) return deletedAct;
+    const nextPreps = (deletedAct.state.prepayments ?? []).filter((p) => p.id !== prepId);
+    return {
+      ok: true,
+      state: { ...deletedAct.state, prepayments: nextPreps },
+      entityId: prepId,
+      alreadyApplied: false,
+    };
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      prepayments: (state.prepayments ?? []).filter((p) => p.id !== prepId),
+    },
+    entityId: prepId,
+    alreadyApplied: false,
+  };
+}
+
+export type SettlePrepaymentCommandInput = {
+  prepaymentId: string;
+  workActId: string;
+  itemIds: string[];
+};
+
+/**
+ * Зачесть выбранные позиции предоплаты в акт оказанных услуг:
+ * помечает позиции, списывает кредит, проводит оплату transfer по акту.
+ */
+export function applySettlePrepaymentToPersistedState(
+  state: ClinicPersistedState,
+  input: SettlePrepaymentCommandInput
+): ApplyEntityResult {
+  const prepId = input.prepaymentId?.trim();
+  const actId = input.workActId?.trim();
+  const itemIds = (input.itemIds ?? []).map((id) => id.trim()).filter(Boolean);
+  if (!prepId || !actId) {
+    return { ok: false, error: "Не указаны предоплата или акт" };
+  }
+  if (itemIds.length === 0) {
+    return { ok: false, error: "Выберите услуги для зачёта" };
+  }
+
+  const prepRaw = (state.prepayments ?? []).find((p) => p.id === prepId);
+  if (!prepRaw) return { ok: false, error: "Предоплата не найдена" };
+  if (prepRaw.settledAt) {
+    return { ok: false, error: "Предоплата уже полностью зачтена" };
+  }
+
+  const act = state.workActs.find((a) => a.id === actId);
+  if (!act) return { ok: false, error: "Акт не найден" };
+  if (act.actType === "prepayment") {
+    return { ok: false, error: "Нельзя зачесть предоплату в акт-аванс" };
+  }
+  if (act.patientId !== prepRaw.patientId) {
+    return { ok: false, error: "Пациент акта не совпадает с предоплатой" };
+  }
+
+  const prep = withPrepaymentItemIds(prepRaw);
+  const credit = getPrepaymentAvailableCredit(prep);
+  if (credit <= 0) {
+    return { ok: false, error: "Нет доступного аванса для зачёта" };
+  }
+
+  const applied = Math.min(credit, Math.max(0, act.totalAmount));
+  const settledAt = format(new Date(), "yyyy-MM-dd");
+  const nextPrep = settlePrepaymentItems(prep, itemIds, actId, applied, settledAt);
+
+  let nextState: ClinicPersistedState = {
+    ...state,
+    prepayments: (state.prepayments ?? []).map((p) =>
+      p.id === prepId ? nextPrep : p
+    ),
+    workActs: state.workActs.map((a) =>
+      a.id === actId ? { ...a, prepaymentId: prepId } : a
+    ),
+  };
+
+  if (applied > 0) {
+    const paid = applyPayWorkActToPersistedState(nextState, {
+      actId,
+      method: "transfer",
+      amount: applied,
+    });
+    if (!paid.ok) return paid;
+    nextState = paid.state;
+  }
+
+  return {
+    ok: true,
+    state: nextState,
     entityId: prepId,
     alreadyApplied: false,
   };

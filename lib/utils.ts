@@ -57,7 +57,10 @@ export function formatDateTime(date: string | Date | undefined): string {
 }
 
 export function getAge(birthDate: string): number {
-  return differenceInYears(new Date(), parseISO(birthDate));
+  if (!birthDate?.trim()) return 0;
+  const d = parseISO(birthDate);
+  if (!isValid(d)) return 0;
+  return differenceInYears(new Date(), d);
 }
 
 export function getFullName(

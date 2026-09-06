@@ -4,6 +4,7 @@ import {
   applyAddPatientNoteToPersistedState,
   applyCreatePrepaymentToPersistedState,
   applyDeletePatientNoteToPersistedState,
+  applyDeletePrepaymentToPersistedState,
   applyDeleteTreatmentPlanCaseToPersistedState,
   applyDeleteTreatmentPlanToPersistedState,
   applyUpsertMedicalRecordToPersistedState,
@@ -198,5 +199,76 @@ describe("apply-entity-commands", () => {
     assert.equal(result.state.workActs[0]?.actType, "prepayment");
     assert.equal(result.state.invoices.length, 1);
     assert.ok(result.state.workActs[0]?.actNumber);
+  });
+
+  it("deletes orphan prepayment without act", () => {
+    const state = createFreshPersistedState();
+    state.prepayments = [
+      {
+        id: "prep-orphan",
+        patientId: "p1",
+        items: [{ serviceName: "Аванс", price: 300000, quantity: 1 }],
+        totalAmount: 700000,
+        discountType: "percent",
+        discount: 0,
+        finalAmount: 700000,
+        paidAmount: 300000,
+        remainingAmount: 400000,
+        date: "2026-09-05",
+      },
+    ];
+    const deleted = applyDeletePrepaymentToPersistedState(state, "prep-orphan");
+    assert.equal(deleted.ok, true);
+    if (!deleted.ok) return;
+    assert.equal(deleted.state.prepayments.length, 0);
+  });
+
+  it("deletes unpaid prepayment act with document", () => {
+    const state = createFreshPersistedState();
+    const created = applyCreatePrepaymentToPersistedState(state, {
+      prepayment: {
+        id: "prep2",
+        patientId: "p1",
+        items: [{ serviceName: "Чистка", price: 1000, quantity: 1 }],
+        totalAmount: 1000,
+        discountType: "percent",
+        discount: 0,
+        finalAmount: 1000,
+        paidAmount: 500,
+        remainingAmount: 500,
+        date: "2026-08-12",
+      },
+      workAct: {
+        id: "act2",
+        actNumber: "",
+        actDate: "2026-08-12",
+        patientId: "p1",
+        doctorId: "d1",
+        items: [
+          {
+            id: "wai2",
+            serviceName: "Чистка",
+            quantity: 1,
+            price: 1000,
+            total: 1000,
+          },
+        ],
+        subtotalAmount: 1000,
+        discountType: "percent",
+        discount: 0,
+        totalAmount: 500,
+        plannedTotalAmount: 1000,
+        paymentStatus: "pending",
+        createdAt: "2026-08-12",
+        actType: "prepayment",
+      },
+    });
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const deleted = applyDeletePrepaymentToPersistedState(created.state, "prep2");
+    assert.equal(deleted.ok, true);
+    if (!deleted.ok) return;
+    assert.equal(deleted.state.prepayments.length, 0);
+    assert.equal(deleted.state.workActs.length, 0);
   });
 });

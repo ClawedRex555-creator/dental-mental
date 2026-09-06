@@ -12,5 +12,5 @@ export async function GET(request: Request) {
   const hostDenied = assertClinicHost(session, request);
   if (hostDenied) return hostDenied;
 
-  return NextResponse.json(getDocumentSignConfigView());
+  return NextResponse.json(await getDocumentSignConfigView(session.clinicId));
 }

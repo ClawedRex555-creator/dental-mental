@@ -1,4 +1,4 @@
-export type DocumentSignProvider = "emkaro" | "fdoc";
+export type DocumentSignProvider = "emkaro" | "fdoc" | "emkaro_sign";
 
 export type DocumentSignStatus = "pending" | "signed" | "expired" | "cancelled" | "failed";
 
@@ -25,6 +25,12 @@ export interface DocumentSignRequestRecord {
   signedAt?: string;
   createdBy?: string;
   createdAt: string;
+  signatureStatus?: string;
+  signatureMethod?: string;
+  signPackageId?: string;
+  signOperationId?: string;
+  lastSignSyncAt?: string;
+  idempotencyKey?: string;
 }
 
 export interface DocumentSignPublicView {
@@ -44,5 +50,9 @@ export interface DocumentSignConfigView {
   configuredProvider: DocumentSignProvider;
   fdocConfigured: boolean;
   emkaroSmsConfigured: boolean;
+  emkaroSignConfigured: boolean;
+  emkaroSignTenantConfigured: boolean;
+  moduleEnabled: boolean;
+  ready: boolean;
   label: string;
 }

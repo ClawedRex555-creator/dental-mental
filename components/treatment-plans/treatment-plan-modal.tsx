@@ -107,6 +107,26 @@ export function TreatmentPlanModal({
     clinicSettings,
   } = useClinicStore();
   const canDeletePlans = canDeleteTreatmentPlans(currentUser.role);
+  const isOwner = currentUser.role === "owner";
+
+  const handleToggleDone = (itemId: string, done: boolean) => {
+    const item = items.find((i) => i.id === itemId);
+    if (
+      item?.status === "completed" &&
+      item.completedWorkActId &&
+      !done &&
+      !isOwner
+    ) {
+      toast.error("Снять отметку «Сделано» может только владелец клиники");
+      return;
+    }
+    updateItem(itemId, {
+      status: done ? "completed" : "planned",
+      ...(done
+        ? {}
+        : { completedWorkActId: undefined, completedAt: undefined }),
+    });
+  };
 
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -450,15 +470,6 @@ export function TreatmentPlanModal({
     void savePlanViaCommand(payload, { thenPrepayment: true });
   };
 
-  const handleToggleDone = (itemId: string, done: boolean) => {
-    updateItem(itemId, {
-      status: done ? "completed" : "planned",
-      ...(done
-        ? {}
-        : { completedWorkActId: undefined, completedAt: undefined }),
-    });
-  };
-
   const handleCreateActFromSelected = () => {
     const ids = [...selectedIds];
     if (ids.length === 0) {
@@ -778,6 +789,14 @@ export function TreatmentPlanModal({
                             <input
                               type="checkbox"
                               checked={done}
+                              disabled={Boolean(
+                                done && item.completedWorkActId && !isOwner
+                              )}
+                              title={
+                                done && item.completedWorkActId && !isOwner
+                                  ? "Снять отметку может только владелец"
+                                  : undefined
+                              }
                               onChange={(e) =>
                                 handleToggleDone(item.id, e.target.checked)
                               }

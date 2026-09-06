@@ -4,12 +4,15 @@ import {
   applyAddPatientNoteToPersistedState,
   applyCreatePrepaymentToPersistedState,
   applyDeletePatientNoteToPersistedState,
+  applyDeletePrepaymentToPersistedState,
+  applySettlePrepaymentToPersistedState,
   applyDeleteTreatmentPlanCaseToPersistedState,
   applyDeleteTreatmentPlanToPersistedState,
   applyUpsertMedicalRecordToPersistedState,
   applyUpsertTreatmentPlanCaseToPersistedState,
   applyUpsertTreatmentPlanToPersistedState,
   type CreatePrepaymentCommandInput,
+  type SettlePrepaymentCommandInput,
 } from "@/lib/apply-entity-commands";
 import {
   APPOINTMENT_CMD_HEADERS,
@@ -112,5 +115,20 @@ export async function handleCreatePrepayment(
 ) {
   return runEntityCommand(request, (state) =>
     asApplyAppointment(applyCreatePrepaymentToPersistedState(state, input))
+  );
+}
+
+export async function handleDeletePrepayment(request: Request, prepaymentId: string) {
+  return runEntityCommand(request, (state) =>
+    asApplyAppointment(applyDeletePrepaymentToPersistedState(state, prepaymentId))
+  );
+}
+
+export async function handleSettlePrepayment(
+  request: Request,
+  input: SettlePrepaymentCommandInput
+) {
+  return runEntityCommand(request, (state) =>
+    asApplyAppointment(applySettlePrepaymentToPersistedState(state, input))
   );
 }

@@ -35,7 +35,9 @@ import {
   markClinicSyncedAfterCommand,
   notifyClinicDataChanged,
 } from "@/lib/clinic-data-sync.client";
-import { useIsModuleEnabled } from "@/components/clinic/module-guard";
+import { ModuleGate, useIsModuleEnabled } from "@/components/clinic/module-guard";
+import { SendToSignConfirmDialog } from "@/components/document-sign/send-to-sign-confirm-dialog";
+import { formatPatientDisplayName } from "@/lib/notifications/template-service";
 import {
   beginClinicCommandMutation,
   endClinicCommandMutation,
@@ -213,19 +215,45 @@ function AppointmentDocumentsModalBody({
   const [docSearch, setDocSearch] = useState("");
   const [signSending, setSignSending] = useState(false);
   const [signButtonLabel, setSignButtonLabel] = useState("Подписать по SMS");
+  const [signReady, setSignReady] = useState(true);
+  const [signProvider, setSignProvider] = useState<string | null>(null);
+  const [confirmSignOpen, setConfirmSignOpen] = useState(false);
+  const [desktopSignStatus, setDesktopSignStatus] = useState<string | null>(null);
+  const documentSignEnabled = useIsModuleEnabled("document_sign");
 
   useEffect(() => {
+    if (!documentSignEnabled) return;
     void fetch("/api/document-sign/config", { credentials: "same-origin" })
       .then((r) => r.json())
-      .then((data: { label?: string; activeProvider?: string }) => {
-        if (data.activeProvider === "fdoc") {
-          setSignButtonLabel("Отправить на подпись (F.Doc)");
-        } else if (data.label) {
-          setSignButtonLabel(`Подписать (${data.label})`);
+      .then(
+        (data: {
+          label?: string;
+          activeProvider?: string;
+          moduleEnabled?: boolean;
+          ready?: boolean;
+          emkaroSignConfigured?: boolean;
+          emkaroSignTenantConfigured?: boolean;
+        }) => {
+          if (!data.moduleEnabled) return;
+          setSignProvider(data.activeProvider ?? null);
+          if (data.activeProvider === "emkaro_sign") {
+            setSignButtonLabel("Отправить на подпись");
+            setSignReady(
+              data.ready !== false &&
+                data.emkaroSignConfigured !== false &&
+                data.emkaroSignTenantConfigured !== false
+            );
+          } else if (data.activeProvider === "fdoc") {
+            setSignButtonLabel("Отправить на подпись (F.Doc)");
+            setSignReady(true);
+          } else if (data.label) {
+            setSignButtonLabel(`Подписать (${data.label})`);
+            setSignReady(true);
+          }
         }
-      })
+      )
       .catch(() => undefined);
-  }, []);
+  }, [documentSignEnabled]);
 
   const collectSelectedDocuments = useCallback((): ArrivalPrintDocument[] => {
     const toPrint: ArrivalPrintDocument[] = [];
@@ -276,6 +304,10 @@ function AppointmentDocumentsModalBody({
       toast.error("У пациента не указан телефон");
       return;
     }
+    if (signProvider === "emkaro_sign" && !signReady) {
+      toast.error("Emkaro Sign не настроен или клиника не привязана");
+      return;
+    }
 
     const toSign = collectSelectedDocuments();
     if (toSign.length === 0) {
@@ -283,6 +315,16 @@ function AppointmentDocumentsModalBody({
       return;
     }
 
+    if (signProvider === "emkaro_sign") {
+      setConfirmSignOpen(true);
+      return;
+    }
+
+    void executeSignSend(toSign);
+  };
+
+  const executeSignSend = (toSign: ArrivalPrintDocument[]) => {
+    if (!patient) return;
     setSignSending(true);
     void (async () => {
       try {
@@ -293,6 +335,9 @@ function AppointmentDocumentsModalBody({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             patientId: patient.id,
+            doctorId,
+            appointmentDate,
+            sendToEgisz,
             documents: toSign.map((d) => ({
               id: d.id,
               name: d.name,
@@ -306,12 +351,38 @@ function AppointmentDocumentsModalBody({
           debugOtp?: string;
           debugSignUrl?: string;
           provider?: string;
+          externalId?: string;
+          desktopStatus?: string;
+          alreadyExists?: boolean;
+          rejected?: Array<{ title: string; reason: string; requiredMethod?: string }>;
         };
         if (!res.ok) {
-          toast.error(data.error ?? "Не удалось отправить SMS");
+          toast.error(data.error ?? "Не удалось отправить", { duration: 12_000 });
           return;
         }
-        if (data.debugOtp && data.debugSignUrl) {
+
+        const rejectedList = data.rejected ?? [];
+        if (data.provider === "emkaro_sign") {
+          if (!data.externalId) {
+            toast.error("Emkaro Sign не создал пакет", { duration: 10_000 });
+            return;
+          }
+          if (data.debugSignUrl) {
+            console.info("[emkaro-sign]", data.debugSignUrl);
+          }
+          setDesktopSignStatus(data.desktopStatus ?? "Пакет создан");
+          if (data.alreadyExists) {
+            toast.info(data.desktopStatus ?? "Пакет уже существует");
+          } else if (rejectedList.length > 0) {
+            toast.warning(
+              `${data.desktopStatus ?? "Пакет создан"}. Не ушли:\n` +
+                rejectedList.map((r) => `• ${r.title}: ${r.reason}`).join("\n"),
+              { duration: 15_000 }
+            );
+          } else {
+            toast.success(data.desktopStatus ?? "Пакет создан");
+          }
+        } else if (data.debugOtp && data.debugSignUrl) {
           toast.success(
             `Тест: код ${data.debugOtp}. Ссылка в консоли (SMS не настроен).`,
             { duration: 15_000 }
@@ -322,6 +393,7 @@ function AppointmentDocumentsModalBody({
         } else {
           toast.success("SMS со ссылкой и кодом отправлено пациенту");
         }
+        setConfirmSignOpen(false);
         onDone();
         onOpenChange(false);
       } catch {
@@ -860,17 +932,38 @@ function AppointmentDocumentsModalBody({
       </div>
 
       <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={signSending}
-          onClick={handleSignBySms}
-        >
-          <MessageSquare className="h-4 w-4" />
-          {signSending ? "Отправка…" : signButtonLabel}
-        </Button>
+        <ModuleGate module="document_sign">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={signSending || (signProvider === "emkaro_sign" && !signReady)}
+            title={
+              signProvider === "emkaro_sign" && !signReady
+                ? "Emkaro Sign не настроен или клиника не привязана"
+                : undefined
+            }
+            onClick={handleSignBySms}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {signSending ? "Отправка…" : signButtonLabel}
+          </Button>
+        </ModuleGate>
         <Button onClick={handlePrint}>Печать выбранных</Button>
       </div>
+      {desktopSignStatus && (
+        <p className="text-xs text-[var(--muted)]">{desktopSignStatus}</p>
+      )}
+      {patient && (
+        <SendToSignConfirmDialog
+          open={confirmSignOpen}
+          onOpenChange={setConfirmSignOpen}
+          patientName={formatPatientDisplayName(patient)}
+          patientPhone={patient.phone}
+          documentNames={collectSelectedDocuments().map((d) => d.name)}
+          busy={signSending}
+          onConfirm={() => executeSignSend(collectSelectedDocuments())}
+        />
+      )}
     </>
   );
 }
